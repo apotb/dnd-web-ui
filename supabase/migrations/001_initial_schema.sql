@@ -1,56 +1,12 @@
 -- D&D Campaign Manager - Initial Schema
 -- Run this in Supabase SQL Editor or via supabase db push
+-- Run the entire script in one go (Select All → Run).
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ---------------------------------------------------------------------------
--- Helper functions for RLS
--- ---------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.is_campaign_member(p_campaign_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.campaign_members
-    WHERE campaign_id = p_campaign_id
-      AND user_id = auth.uid()
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION public.is_campaign_dm(p_campaign_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.campaign_members
-    WHERE campaign_id = p_campaign_id
-      AND user_id = auth.uid()
-      AND role = 'dm'
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION public.encounter_campaign_id(p_encounter_id UUID)
-RETURNS UUID
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT campaign_id FROM public.encounters WHERE id = p_encounter_id;
-$$;
-
--- ---------------------------------------------------------------------------
--- Tables
+-- Tables (must exist before RLS helper functions)
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE public.campaigns (
@@ -143,6 +99,51 @@ CREATE TRIGGER encounters_updated_at
 CREATE TRIGGER encounter_combatants_updated_at
   BEFORE UPDATE ON public.encounter_combatants
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- Helper functions for RLS (after tables exist)
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.is_campaign_member(p_campaign_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.campaign_members
+    WHERE campaign_id = p_campaign_id
+      AND user_id = auth.uid()
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_campaign_dm(p_campaign_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.campaign_members
+    WHERE campaign_id = p_campaign_id
+      AND user_id = auth.uid()
+      AND role = 'dm'
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.encounter_campaign_id(p_encounter_id UUID)
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT campaign_id FROM public.encounters WHERE id = p_encounter_id;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
