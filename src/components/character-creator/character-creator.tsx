@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AbilityKey, SkillKey } from "@/lib/schemas/character";
 import { SKILL_LABELS } from "@/lib/dnd/calculations";
 import { ABILITY_KEYS, isValidPointBuy } from "@/lib/dnd/phb/point-buy";
 import {
   buildCharacterExport,
   computeRacialBonuses,
+  getClassSkillExclusions,
   validateCreatorState,
 } from "@/lib/dnd/character-builder/build-character";
 import {
@@ -308,15 +309,45 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
   }
 
   const grantedSkills = useMemo(() => {
-    const skills = new Set<string>();
-    selectedRace?.skillProficiencies?.forEach((s) => skills.add(SKILL_LABELS[s]));
-    selectedBackground?.skillProficiencies.forEach((s) => skills.add(SKILL_LABELS[s]));
-    state.raceSkillChoices.forEach((s) => skills.add(SKILL_LABELS[s]));
-    if (state.raceId === "human" && state.subraceId === "variant" && state.variantHumanSkill) {
-      skills.add(SKILL_LABELS[state.variantHumanSkill]);
+    const skills = getClassSkillExclusions(state);
+    return skills.map((s) => SKILL_LABELS[s]);
+  }, [state]);
+
+  const raceSkillExclusions = useMemo(
+    () => selectedRace?.skillProficiencies ?? [],
+    [selectedRace]
+  );
+
+  const backgroundSkillExclusions = useMemo(() => {
+    const excluded = new Set<SkillKey>([
+      ...(selectedRace?.skillProficiencies ?? []),
+      ...state.raceSkillChoices,
+    ]);
+    if (
+      state.raceId === "human" &&
+      state.subraceId === "variant" &&
+      state.variantHumanSkill
+    ) {
+      excluded.add(state.variantHumanSkill);
     }
-    return [...skills];
+    selectedBackground?.skillProficiencies.forEach((s) => excluded.add(s));
+    return [...excluded];
   }, [selectedRace, selectedBackground, state]);
+
+  const classSkillExclusions = useMemo(
+    () => getClassSkillExclusions(state),
+    [state]
+  );
+
+  useEffect(() => {
+    if (currentStep !== "skills") return;
+    setState((prev) => {
+      const excluded = getClassSkillExclusions(prev);
+      const pruned = prev.classSkills.filter((s) => !excluded.includes(s));
+      if (pruned.length === prev.classSkills.length) return prev;
+      return { ...prev, classSkills: pruned };
+    });
+  }, [currentStep, classSkillExclusions]);
 
   return (
     <div className="creator-wrap">
@@ -462,6 +493,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                     selected={state.raceSkillChoices}
                     max={selectedRace.skillChoices.count}
                     options={selectedRace.skillChoices.options}
+                    excluded={raceSkillExclusions}
                     onChange={(skills) => update({ raceSkillChoices: skills })}
                   />
                 </>
@@ -496,6 +528,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                     <SkillPicker
                       selected={state.raceSkillChoices}
                       max={1}
+                      excluded={raceSkillExclusions}
                       onChange={(skills) => update({ raceSkillChoices: skills })}
                     />
                   ) : null}
@@ -572,6 +605,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                   <SkillPicker
                     selected={state.variantHumanSkill ? [state.variantHumanSkill] : []}
                     max={1}
+                    excluded={raceSkillExclusions}
                     onChange={(skills) =>
                       update({ variantHumanSkill: skills[0] ?? "" })
                     }
@@ -673,6 +707,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                     selected={state.backgroundSkillChoices}
                     max={selectedBackground.skillChoices.count}
                     options={selectedBackground.skillChoices.options}
+                    excluded={backgroundSkillExclusions}
                     onChange={(skills) => update({ backgroundSkillChoices: skills })}
                   />
                 </>
@@ -974,6 +1009,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 selected={state.classSkills}
                 max={selectedClass.skillChoiceCount}
                 options={selectedClass.skillOptions}
+                excluded={classSkillExclusions}
                 onChange={(skills) => update({ classSkills: skills })}
               />
             </>
@@ -1087,14 +1123,19 @@ function SkillPicker({
   selected,
   max,
   options,
+  excluded = [],
   onChange,
 }: {
   selected: SkillKey[];
   max: number;
   options?: SkillKey[];
+  excluded?: SkillKey[];
   onChange: (skills: SkillKey[]) => void;
 }) {
-  const keys = options ?? (Object.keys(SKILL_LABELS) as SkillKey[]);
+  const excludedSet = useMemo(() => new Set(excluded), [excluded]);
+  const keys = (options ?? (Object.keys(SKILL_LABELS) as SkillKey[])).filter(
+    (key) => !excludedSet.has(key)
+  );
   return (
     <div className="creator-chip-row creator-skill-grid">
       {keys.map((key) => (

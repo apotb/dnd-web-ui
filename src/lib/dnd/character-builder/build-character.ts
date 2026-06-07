@@ -129,7 +129,7 @@ export function computeFinalScores(state: CharacterCreatorState) {
   return { scores, breakdown };
 }
 
-function collectSkillProficiencies(state: CharacterCreatorState): Set<SkillKey> {
+export function collectSkillProficiencies(state: CharacterCreatorState): Set<SkillKey> {
   const skills = new Set<SkillKey>();
   const race = getRace(state.raceId);
   const background = getBackground(state.backgroundId);
@@ -145,6 +145,13 @@ function collectSkillProficiencies(state: CharacterCreatorState): Set<SkillKey> 
   }
 
   return skills;
+}
+
+/** Skills granted before class skill picks (for filtering the class skills menu). */
+export function getClassSkillExclusions(state: CharacterCreatorState): SkillKey[] {
+  const skills = collectSkillProficiencies(state);
+  state.classSkills.forEach((s) => skills.delete(s));
+  return [...skills];
 }
 
 function collectLanguages(state: CharacterCreatorState): string[] {
