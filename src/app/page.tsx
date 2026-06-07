@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getIsDmLoggedIn } from "@/lib/auth/campaign-access";
+import { getAuthUser } from "@/lib/auth/campaign-access";
 import { CreateCampaignForm } from "@/components/campaign/create-campaign-form";
-import { DmLoginInline } from "@/components/layout/dm-login-inline";
+import { CampaignAuthHeader } from "@/components/layout/campaign-auth-header";
 import { RetroShell } from "@/components/layout/retro-shell";
 
 export default async function HomePage() {
@@ -25,13 +25,13 @@ export default async function HomePage() {
     redirect(`/campaigns/${list[0].id}`);
   }
 
-  const isDm = await getIsDmLoggedIn();
+  const user = await getAuthUser();
 
   return (
     <RetroShell>
       <div className="retro-header-row">
         <span className="retro-title">dnd-web-ui</span>
-        <DmLoginInline isDm={isDm} />
+        <CampaignAuthHeader userEmail={user?.email ?? null} />
       </div>
 
       <div className="retro-spacer-lg" />
@@ -49,7 +49,7 @@ export default async function HomePage() {
           ))}
         </div>
       ) : (
-        isDm && <CreateCampaignForm />
+        user && <CreateCampaignForm />
       )}
     </RetroShell>
   );

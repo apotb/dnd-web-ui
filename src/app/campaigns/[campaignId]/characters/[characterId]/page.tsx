@@ -1,10 +1,9 @@
 import { notFound } from "next/navigation";
-import { requireCampaignAccess } from "@/lib/auth/campaign-access";
+import { getCharacterAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
-import { createClient } from "@/lib/supabase/server";
+import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
 import { CharacterEditor } from "@/components/character/character-editor";
 import { CharacterSheet } from "@/components/character/character-sheet";
-import type { Character } from "@/lib/types/database";
 
 export default async function CharacterDetailPage({
   params,
@@ -12,21 +11,13 @@ export default async function CharacterDetailPage({
   params: Promise<{ campaignId: string; characterId: string }>;
 }) {
   const { campaignId, characterId } = await params;
-  const access = await requireCampaignAccess(campaignId);
-  const supabase = await createClient();
+  const access = await getCharacterAccess(campaignId, characterId);
 
-  const { data: row } = await supabase
-    .from("characters")
-    .select("*")
-    .eq("id", characterId)
-    .eq("campaign_id", campaignId)
-    .single();
+  if (!access) notFound();
 
-  if (!row) notFound();
+  const character = parseCharacterRow(access.character, access.isDm);
 
-  const character = parseCharacterRow(row as Character, access.isDm);
-
-  if (access.isDm) {
+  if (access.canEdit) {
     return (
       <CharacterEditor
         characterId={character.id}
@@ -34,11 +25,24 @@ export default async function CharacterDetailPage({
         initialName={character.name}
         initialPlayerName={character.player_name}
         initialData={character.data}
+        canDelete={access.isDm}
+        showDmNotes={access.isDm}
+        showEditingNote={access.isOwner && !access.isDm}
       />
     );
   }
 
   return (
-    <CharacterSheet data={character.data} isDm={false} editable={false} />
+    <>
+      <CharacterClaimBanner
+        characterId={character.id}
+        characterName={character.name}
+        campaignId={campaignId}
+        isLoggedIn={!!access.user}
+        canClaim={access.canClaim}
+        isOwner={false}
+      />
+      <CharacterSheet data={character.data} isDm={false} editable={false} />
+    </>
   );
 }

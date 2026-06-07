@@ -30,6 +30,7 @@ export interface Character {
   campaign_id: string;
   name: string;
   player_name: string;
+  owner_user_id: string | null;
   data: Json;
   created_at: string;
   updated_at: string;
@@ -93,6 +94,7 @@ export type Database = {
           campaign_id: string;
           name: string;
           player_name?: string;
+          owner_user_id?: string | null;
           data?: Json;
           created_at?: string;
           updated_at?: string;

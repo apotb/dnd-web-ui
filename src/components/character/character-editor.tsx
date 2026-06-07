@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -14,6 +15,9 @@ interface CharacterEditorProps {
   initialName: string;
   initialPlayerName: string;
   initialData: CharacterData;
+  canDelete?: boolean;
+  showDmNotes?: boolean;
+  showEditingNote?: boolean;
 }
 
 export function CharacterEditor({
@@ -22,6 +26,9 @@ export function CharacterEditor({
   initialName,
   initialPlayerName,
   initialData,
+  canDelete = true,
+  showDmNotes = true,
+  showEditingNote = false,
 }: CharacterEditorProps) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -69,6 +76,20 @@ export function CharacterEditor({
     <div>
       <h2 className="page-title">Edit Character</h2>
 
+      <div className="page-intro">
+        <Link
+          href={`/campaigns/${campaignId}/characters`}
+          className="retro-back-link"
+        >
+          ← Characters
+        </Link>
+        {showEditingNote ? (
+          <p className="retro-note">
+            You are editing <strong>{name}</strong>.
+          </p>
+        ) : null}
+      </div>
+
       <section className="retro-box">
         <div className="sheet-editor-toolbar">
           <div className="sheet-editor-fields">
@@ -115,13 +136,15 @@ export function CharacterEditor({
             >
               {saving ? "..." : "Save"}
             </button>
-            <button
-              type="button"
-              className="candy-btn"
-              onClick={deleteCharacter}
-            >
-              Delete
-            </button>
+            {canDelete ? (
+              <button
+                type="button"
+                className="candy-btn"
+                onClick={deleteCharacter}
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
 
           {message && <p className="retro-muted">{message}</p>}
@@ -131,7 +154,7 @@ export function CharacterEditor({
       <section className="retro-box character-sheet-wrap">
         <CharacterSheet
           data={data}
-          isDm
+          isDm={showDmNotes}
           editable
           onChange={setData}
         />

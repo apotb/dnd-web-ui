@@ -24,7 +24,7 @@ export function CampaignOverview({
   initialCharacters,
   isDm,
 }: CampaignOverviewProps) {
-  const characters = useRealtimeCharacters(campaignId, initialCharacters);
+  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
 
   return (
     <div>

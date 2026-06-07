@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { DmLoginInline } from "@/components/layout/dm-login-inline";
+import { CampaignAuthHeader } from "@/components/layout/campaign-auth-header";
 
 interface CampaignNavProps {
   campaignId: string;
   campaignName: string;
-  isDm: boolean;
+  userEmail: string | null;
 }
 
 export function CampaignNav({
   campaignId,
   campaignName,
-  isDm,
+  userEmail,
 }: CampaignNavProps) {
   const pathname = usePathname();
   const base = `/campaigns/${campaignId}`;
@@ -28,7 +28,7 @@ export function CampaignNav({
     <>
       <div className="retro-header-row">
         <span className="retro-title">{campaignName}</span>
-        <DmLoginInline isDm={isDm} />
+        <CampaignAuthHeader userEmail={userEmail} />
       </div>
 
       <nav className="nav-row nav-row-primary">

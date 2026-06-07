@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
 import { CharacterSheet } from "@/components/character/character-sheet";
 import { CharacterImportButton } from "@/components/character/character-import-button";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
@@ -11,18 +12,40 @@ interface CharacterSheetsListProps {
   campaignId: string;
   initialCharacters: ParsedCharacter[];
   isDm: boolean;
+  userId: string | null;
 }
 
 function selectionStorageKey(campaignId: string) {
   return `campaign-character-selection-${campaignId}`;
 }
 
+function canEditCharacter(
+  character: ParsedCharacter,
+  isDm: boolean,
+  userId: string | null
+) {
+  return isDm || (!!userId && character.owner_user_id === userId);
+}
+
+function canClaimCharacter(
+  character: ParsedCharacter,
+  userId: string | null,
+  userOwnedCharacterId: string | null
+) {
+  return (
+    !!userId &&
+    character.owner_user_id === null &&
+    userOwnedCharacterId === null
+  );
+}
+
 export function CharacterSheetsList({
   campaignId,
   initialCharacters,
   isDm,
+  userId,
 }: CharacterSheetsListProps) {
-  const characters = useRealtimeCharacters(campaignId, initialCharacters);
+  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
   const sortedCharacters = useMemo(
     () => [...characters].sort((a, b) => a.name.localeCompare(b.name)),
     [characters]
@@ -67,7 +90,22 @@ export function CharacterSheetsList({
     }
   }
 
+  const userOwnedCharacter = useMemo(
+    () => sortedCharacters.find((c) => c.owner_user_id === userId) ?? null,
+    [sortedCharacters, userId]
+  );
+
   const selectedCharacter = sortedCharacters.find((c) => c.id === selectedId);
+  const selectedCanEdit = selectedCharacter
+    ? canEditCharacter(selectedCharacter, isDm, userId)
+    : false;
+  const selectedCanClaim = selectedCharacter
+    ? canClaimCharacter(
+        selectedCharacter,
+        userId,
+        userOwnedCharacter?.id ?? null
+      )
+    : false;
 
   return (
     <div>
@@ -93,27 +131,40 @@ export function CharacterSheetsList({
               <option key={character.id} value={character.id}>
                 {character.name}
                 {character.player_name ? ` · ${character.player_name}` : ""}
+                {character.owner_user_id === userId ? " · yours" : ""}
               </option>
             ))}
           </select>
 
           {selectedCharacter ? (
-            <section className="retro-box character-sheet-wrap">
-              {isDm ? (
-                <p className="retro-edit-link">
-                  <Link
-                    href={`/campaigns/${campaignId}/characters/${selectedCharacter.id}`}
-                  >
-                    [ edit {selectedCharacter.name} ]
-                  </Link>
-                </p>
+            <>
+              {!selectedCanEdit ? (
+                <CharacterClaimBanner
+                  characterId={selectedCharacter.id}
+                  characterName={selectedCharacter.name}
+                  campaignId={campaignId}
+                  isLoggedIn={!!userId}
+                  canClaim={selectedCanClaim}
+                  isOwner={false}
+                />
               ) : null}
-              <CharacterSheet
-                data={selectedCharacter.data}
-                isDm={false}
-                editable={false}
-              />
-            </section>
+              <section className="retro-box character-sheet-wrap">
+                {selectedCanEdit ? (
+                  <p className="retro-edit-link">
+                    <Link
+                      href={`/campaigns/${campaignId}/characters/${selectedCharacter.id}`}
+                    >
+                      [ edit {selectedCharacter.name} ]
+                    </Link>
+                  </p>
+                ) : null}
+                <CharacterSheet
+                  data={selectedCharacter.data}
+                  isDm={false}
+                  editable={false}
+                />
+              </section>
+            </>
           ) : null}
         </>
       )}

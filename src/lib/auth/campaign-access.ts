@@ -1,11 +1,44 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { Campaign, CampaignRole } from "@/lib/types/database";
+import type { Campaign, CampaignRole, Character } from "@/lib/types/database";
+import type { User } from "@supabase/supabase-js";
 
 export interface CampaignAccess {
   campaign: Campaign;
   isDm: boolean;
   role: CampaignRole | null;
+  user: User | null;
+}
+
+export interface CharacterAccess extends CampaignAccess {
+  character: Character;
+  isOwner: boolean;
+  canClaim: boolean;
+  canEdit: boolean;
+  ownedCharacter: { id: string; name: string } | null;
+}
+
+async function getUserOwnedCharacterInCampaign(
+  campaignId: string,
+  userId: string
+): Promise<{ id: string; name: string } | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("characters")
+    .select("id, name")
+    .eq("campaign_id", campaignId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+
+  return data ?? null;
+}
+
+export async function getAuthUser(): Promise<User | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
 }
 
 export async function getCampaignAccess(
@@ -26,7 +59,7 @@ export async function getCampaignAccess(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { campaign, isDm: false, role: null };
+    return { campaign, isDm: false, role: null, user: null };
   }
 
   const { data: membership } = await supabase
@@ -42,6 +75,45 @@ export async function getCampaignAccess(
     campaign,
     isDm: role === "dm",
     role,
+    user,
+  };
+}
+
+export async function getCharacterAccess(
+  campaignId: string,
+  characterId: string
+): Promise<CharacterAccess | null> {
+  const access = await getCampaignAccess(campaignId);
+  if (!access) return null;
+
+  const supabase = await createClient();
+  const { data: row } = await supabase
+    .from("characters")
+    .select("*")
+    .eq("id", characterId)
+    .eq("campaign_id", campaignId)
+    .single();
+
+  if (!row) return null;
+
+  const character = row as Character;
+  const ownedCharacter = access.user
+    ? await getUserOwnedCharacterInCampaign(campaignId, access.user.id)
+    : null;
+  const isOwner = !!access.user && character.owner_user_id === access.user.id;
+  const canClaim =
+    !!access.user &&
+    character.owner_user_id === null &&
+    ownedCharacter === null;
+  const canEdit = access.isDm || isOwner;
+
+  return {
+    ...access,
+    character,
+    isOwner,
+    canClaim,
+    canEdit,
+    ownedCharacter,
   };
 }
 
@@ -57,17 +129,4 @@ export async function requireDm(campaignId: string): Promise<CampaignAccess> {
   const access = await requireCampaignAccess(campaignId);
   if (!access.isDm) redirect(`/campaigns/${campaignId}`);
   return access;
-}
-
-export async function getIsDmLoggedIn(): Promise<boolean> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const dmEmail = process.env.DM_EMAIL?.trim().toLowerCase();
-  if (dmEmail && user.email?.toLowerCase() !== dmEmail) return false;
-
-  return true;
 }

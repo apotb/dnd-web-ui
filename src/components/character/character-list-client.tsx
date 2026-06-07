@@ -15,7 +15,7 @@ export function CharacterListClient({
   initialCharacters,
   isDm,
 }: CharacterListClientProps) {
-  const characters = useRealtimeCharacters(campaignId, initialCharacters);
+  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
 
   return (
     <CharacterList

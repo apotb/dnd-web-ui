@@ -28,6 +28,7 @@ export default async function CharactersPage({
       campaignId={campaignId}
       initialCharacters={characters}
       isDm={access.isDm}
+      userId={access.user?.id ?? null}
     />
   );
 }

@@ -33,7 +33,7 @@ export default async function CampaignLayout({
       <CampaignNav
         campaignId={campaignId}
         campaignName={access.campaign.name}
-        isDm={access.isDm}
+        userEmail={access.user?.email ?? null}
       />
       {children}
     </RetroShell>

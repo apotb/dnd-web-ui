@@ -7,7 +7,8 @@ import type { Character } from "@/lib/types/database";
 
 export function useRealtimeCharacters(
   campaignId: string,
-  initialCharacters: ParsedCharacter[]
+  initialCharacters: ParsedCharacter[],
+  isDm: boolean
 ) {
   const [characters, setCharacters] = useState(initialCharacters);
 
@@ -37,11 +38,29 @@ export function useRealtimeCharacters(
             return;
           }
 
-          const row = payload.new as Character;
-          const parsed = parseCharacterRow(row, true);
+          const row = payload.new as Partial<Character> & { id?: string };
+          if (!row.id) return;
 
           setCharacters((prev) => {
-            const idx = prev.findIndex((c) => c.id === parsed.id);
+            const idx = prev.findIndex((c) => c.id === row.id);
+            const existing = idx >= 0 ? prev[idx] : null;
+
+            const merged: Character = {
+              id: row.id!,
+              campaign_id: row.campaign_id ?? existing?.campaign_id ?? campaignId,
+              name: row.name ?? existing?.name ?? "",
+              player_name: row.player_name ?? existing?.player_name ?? "",
+              owner_user_id:
+                row.owner_user_id !== undefined
+                  ? row.owner_user_id
+                  : (existing?.owner_user_id ?? null),
+              data: row.data ?? existing?.data ?? {},
+              created_at: row.created_at ?? existing?.created_at ?? "",
+              updated_at: row.updated_at ?? existing?.updated_at ?? "",
+            };
+
+            const parsed = parseCharacterRow(merged, isDm);
+
             if (idx >= 0) {
               const next = [...prev];
               next[idx] = parsed;
@@ -56,7 +75,7 @@ export function useRealtimeCharacters(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [campaignId]);
+  }, [campaignId, isDm]);
 
   return characters;
 }

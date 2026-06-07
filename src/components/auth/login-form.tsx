@@ -1,17 +1,25 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { formatAuthError } from "@/lib/auth/auth-errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") ?? "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{
+    text: string;
+    type: "error" | "success";
+  } | null>(null);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
 
   async function handleSubmit(e: React.FormEvent) {
@@ -27,12 +35,16 @@ export function LoginForm() {
         : await supabase.auth.signUp({ email, password });
 
     if (result.error) {
-      setMessage(result.error.message);
+      setMessage({ text: formatAuthError(result.error.message), type: "error" });
     } else if (mode === "signup") {
-      setMessage("Account created. You can sign in now.");
+      setMessage({
+        text: "Account created. You can sign in now.",
+        type: "success",
+      });
       setMode("signin");
     } else {
-      window.location.href = "/campaigns";
+      router.push(next);
+      router.refresh();
     }
 
     setLoading(false);
@@ -44,7 +56,30 @@ export function LoginForm() {
         <CardTitle>D&amp;D Campaign Manager</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="candy-btn-row login-form-mode-row">
+          <button
+            type="button"
+            className={`candy-btn${mode === "signin" ? " candy-btn-active" : ""}`}
+            onClick={() => {
+              setMode("signin");
+              setMessage(null);
+            }}
+          >
+            Log in
+          </button>
+          <button
+            type="button"
+            className={`candy-btn${mode === "signup" ? " candy-btn-active" : ""}`}
+            onClick={() => {
+              setMode("signup");
+              setMessage(null);
+            }}
+          >
+            Sign up
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 login-form-fields">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -66,23 +101,19 @@ export function LoginForm() {
               minLength={6}
             />
           </div>
-          {message && (
-            <p className="text-sm text-muted-foreground">{message}</p>
-          )}
+          {message ? (
+            <p
+              className={
+                message.type === "success"
+                  ? "login-form-message-success"
+                  : "login-form-message-error"
+              }
+            >
+              {message.text}
+            </p>
+          ) : null}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "..." : mode === "signin" ? "Sign in" : "Sign up"}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full"
-            onClick={() =>
-              setMode((m) => (m === "signin" ? "signup" : "signin"))
-            }
-          >
-            {mode === "signin"
-              ? "Need an account? Sign up"
-              : "Already have an account? Sign in"}
+            {loading ? "..." : mode === "signin" ? "Log in" : "Sign up"}
           </Button>
         </form>
       </CardContent>

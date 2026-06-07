@@ -16,7 +16,7 @@ export type ParsedCombatant = Omit<EncounterCombatant, "data"> & {
 };
 
 export function parseCharacterRow(row: Character, isDm: boolean): ParsedCharacter {
-  const data = characterDataSchema.parse(row.data);
+  const data = characterDataSchema.parse(row.data ?? {});
   return {
     ...row,
     data: isDm ? data : stripDmNotesFromCharacterData(data),
