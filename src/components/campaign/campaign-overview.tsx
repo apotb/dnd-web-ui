@@ -39,17 +39,7 @@ export function CampaignOverview({
         />
 
         <section className="retro-box">
-          <div className="retro-section-header">
-            <p className="retro-box-title">Party Members</p>
-            {isDm && (
-              <Link
-                href={`/campaigns/${campaignId}/characters/new`}
-                className="retro-inline-link"
-              >
-                + New character
-              </Link>
-            )}
-          </div>
+          <p className="retro-box-title">Party Members</p>
           {characters.length === 0 ? (
             <p className="retro-muted">No characters yet.</p>
           ) : (

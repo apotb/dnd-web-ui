@@ -172,6 +172,16 @@ export function CharacterSheet({
               onChange={(v) => updateBasic({ portrait: v })}
             />
           </div>
+          {data.languages.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Languages: {data.languages.join(", ")}
+            </p>
+          ) : null}
+          {data.toolProficiencies.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Tool proficiencies: {data.toolProficiencies.join(", ")}
+            </p>
+          ) : null}
           {data.basicInfo.portrait && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -218,7 +228,19 @@ export function CharacterSheet({
                         }
                       />
                     ) : (
-                      <p className="text-2xl font-bold">
+                      <p
+                        className="text-2xl font-bold"
+                        title={
+                          data.abilityScoreBreakdown?.[key]
+                            ? data.abilityScoreBreakdown[key].sources
+                                .map(
+                                  (s) =>
+                                    `${s.label}: ${s.value >= 0 ? "+" : ""}${s.value}`
+                                )
+                                .join("\n")
+                            : undefined
+                        }
+                      >
                         {data.abilityScores[key]}
                       </p>
                     )}

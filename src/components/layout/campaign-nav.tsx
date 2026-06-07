@@ -18,8 +18,11 @@ export function CampaignNav({
   const pathname = usePathname();
   const base = `/campaigns/${campaignId}`;
   const onOverview = pathname === base;
-  const onCharacters = pathname.startsWith(`${base}/characters`);
+  const onCharacters =
+    pathname.startsWith(`${base}/characters`) &&
+    !pathname.startsWith(`${base}/create-character`);
   const onCombat = pathname.startsWith(`${base}/combat`);
+  const onCreate = pathname.startsWith(`${base}/create-character`);
 
   return (
     <>
@@ -46,6 +49,12 @@ export function CampaignNav({
           className={`candy-btn${onCombat ? " candy-btn-active" : ""}`}
         >
           Combat
+        </Link>
+        <Link
+          href={`${base}/create-character`}
+          className={`candy-btn${onCreate ? " candy-btn-active" : ""}`}
+        >
+          Create Character
         </Link>
       </nav>
     </>

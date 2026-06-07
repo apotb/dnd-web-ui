@@ -1,19 +1,10 @@
 import { redirect } from "next/navigation";
-import { requireDm } from "@/lib/auth/campaign-access";
-import { NewCharacterForm } from "@/components/character/new-character-form";
 
-export default async function NewCharacterPage({
+export default async function LegacyNewCharacterPage({
   params,
 }: {
   params: Promise<{ campaignId: string }>;
 }) {
   const { campaignId } = await params;
-  await requireDm(campaignId);
-
-  return (
-    <div>
-      <h2 className="page-title">Create Character</h2>
-      <NewCharacterForm campaignId={campaignId} />
-    </div>
-  );
+  redirect(`/campaigns/${campaignId}/create-character`);
 }

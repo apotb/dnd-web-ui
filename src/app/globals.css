@@ -682,3 +682,177 @@ body.retro-body a:visited {
   flex: 1 1 140px;
   margin-bottom: 0;
 }
+
+/* Character creator */
+.creator-intro {
+  margin: -8px 0 16px;
+}
+
+.creator-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.creator-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.creator-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.creator-two-col {
+  display: grid;
+  gap: 20px;
+}
+
+@media (min-width: 720px) {
+  .creator-two-col {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.creator-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.creator-skill-grid .candy-btn-sm,
+.creator-lang-grid .candy-btn-sm {
+  font-size: 11px;
+  padding: 6px 8px;
+}
+
+.creator-spell-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.creator-spell-grid .candy-btn-sm {
+  font-size: 11px;
+}
+
+.creator-ability-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.creator-ability-cell {
+  text-align: center;
+  padding: 12px;
+  margin: 0;
+}
+
+.creator-ability-label {
+  font-weight: 700;
+  font-size: 14px;
+  margin: 0;
+}
+
+.creator-ability-name {
+  font-size: 11px;
+  margin: 0 0 8px;
+  color: #444;
+}
+
+.creator-ability-score {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.creator-ability-mod {
+  font-size: 16px;
+  margin: 4px 0 0;
+}
+
+.creator-ability-racial {
+  font-size: 10px;
+  margin: 4px 0 0;
+  color: #555;
+}
+
+.creator-ability-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.candy-btn-sm {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.creator-nav {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.creator-error {
+  color: #8b0000;
+  font-weight: 700;
+  margin: 0;
+}
+
+.creator-error-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: #8b0000;
+}
+
+.creator-summary {
+  margin: 8px 0 0;
+  font-weight: 700;
+}
+
+.creator-grants {
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px dashed #888;
+}
+
+.creator-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.creator-equip-choice {
+  margin-top: 12px;
+}
+
+.creator-gold-roll {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.creator-points {
+  margin: 0 0 12px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

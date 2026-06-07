@@ -149,10 +149,25 @@ export const inventoryItemSchema = z.object({
   id: z.string().default(() => crypto.randomUUID()),
   name: z.string().default(""),
   quantity: z.number().int().min(0).default(1),
+  weightLb: z.number().min(0).optional(),
   equipped: z.boolean().default(false),
   magicItem: z.boolean().default(false),
   notes: z.string().default(""),
 });
+
+export const abilityScoreBreakdownEntrySchema = z.object({
+  base: z.number().int(),
+  racial: z.number().int().default(0),
+  other: z.number().int().default(0),
+  sources: z
+    .array(z.object({ label: z.string(), value: z.number().int() }))
+    .default([]),
+});
+
+export const abilityScoreBreakdownSchema = z.record(
+  abilityKeySchema,
+  abilityScoreBreakdownEntrySchema
+);
 
 export const currencySchema = z.object({
   cp: z.number().int().min(0).default(0),
@@ -188,9 +203,12 @@ export const featureSchema = z.object({
 export const characterDataSchema = z.object({
   basicInfo: basicInfoSchema.default(() => basicInfoSchema.parse({})),
   abilityScores: abilityScoresSchema.default(() => abilityScoresSchema.parse({})),
+  abilityScoreBreakdown: abilityScoreBreakdownSchema.optional(),
   proficiencyBonusOverride: z.number().optional(),
   savingThrows: savingThrowsSchema.default({}),
   skills: skillsSchema.default({}),
+  languages: z.array(z.string()).default([]),
+  toolProficiencies: z.array(z.string()).default([]),
   combat: combatStatsSchema.default(() => combatStatsSchema.parse({})),
   attacks: z.array(attackSchema).default([]),
   spells: spellsSchema.default(() => spellsSchema.parse({})),
@@ -202,6 +220,7 @@ export type AbilityKey = z.infer<typeof abilityKeySchema>;
 export type SkillKey = z.infer<typeof skillKeySchema>;
 export type BasicInfo = z.infer<typeof basicInfoSchema>;
 export type AbilityScores = z.infer<typeof abilityScoresSchema>;
+export type AbilityScoreBreakdown = z.infer<typeof abilityScoreBreakdownSchema>;
 export type SkillProficiency = z.infer<typeof skillProficiencySchema>;
 export type CombatStats = z.infer<typeof combatStatsSchema>;
 export type Attack = z.infer<typeof attackSchema>;
