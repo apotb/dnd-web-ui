@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Courier_Prime } from "next/font/google";
+import { CampaignBackground } from "@/components/layout/campaign-background";
 import "./globals.css";
 
 const courier = Courier_Prime({
@@ -20,7 +21,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${courier.variable} h-full`}>
-      <body className="retro-body">{children}</body>
+      <body className="retro-body">
+        <CampaignBackground />
+        <div className="retro-page">{children}</div>
+      </body>
     </html>
   );
 }
