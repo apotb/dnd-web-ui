@@ -22,6 +22,7 @@ import {
   getRaceSpeed,
   getRaceWeaponProficiencies,
   usesLizardfolkNaturalArmor,
+  usesTortleNaturalArmor,
 } from "@/lib/dnd/phb/race-mechanics";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import type { CharacterCreatorState } from "./types";
@@ -268,6 +269,8 @@ function calculateAc(
     ac = bestArmor.base + dexBonus + (hasShield ? 2 : 0);
   } else if (usesLizardfolkNaturalArmor(state, false)) {
     ac = 13 + dexMod + (hasShield ? 2 : 0);
+  } else if (usesTortleNaturalArmor(state, false)) {
+    ac = 17 + (hasShield ? 2 : 0);
   } else if (classId === "barbarian") {
     ac = 10 + dexMod + conMod + (hasShield ? 2 : 0);
   } else if (classId === "monk") {

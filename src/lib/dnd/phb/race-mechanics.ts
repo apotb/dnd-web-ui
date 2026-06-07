@@ -46,3 +46,10 @@ export function usesLizardfolkNaturalArmor(
 ): boolean {
   return state.raceId === "lizardfolk" && !wearingArmor;
 }
+
+export function usesTortleNaturalArmor(
+  state: CharacterCreatorState,
+  wearingArmor: boolean
+): boolean {
+  return state.raceId === "tortle" && !wearingArmor;
+}

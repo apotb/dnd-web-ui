@@ -551,6 +551,41 @@ export const EXTENDED_RACES: PhbRace[] = [
     ],
   },
   {
+    id: "tortle",
+    name: "Tortle",
+    size: "Medium",
+    speed: 30,
+    abilityBonus: { kind: "fixed", bonuses: { str: 2, wis: 1 } },
+    languages: ["Common", "Aquan"],
+    skillProficiencies: ["survival"],
+    traits: [
+      {
+        name: "Claws",
+        description: "Your claws are natural weapons. Unarmed strikes deal 1d4 slashing damage.",
+      },
+      {
+        name: "Hold Breath",
+        description: "You can hold your breath for up to 1 hour.",
+      },
+      {
+        name: "Natural Armor",
+        description: "Your shell provides a base AC of 17. Your Dexterity modifier doesn't affect this number. You can use a shield.",
+      },
+      {
+        name: "Shell Defense",
+        description: "As an action, you can withdraw into your shell. Until you emerge, you gain a +4 bonus to AC, advantage on Strength and Constitution saving throws, and are prone. Your speed is 0 and you can't benefit from your speed.",
+      },
+      {
+        name: "Survival Instinct",
+        description: "You have proficiency in the Survival skill.",
+      },
+      {
+        name: "Swim Speed",
+        description: "You have a swimming speed of 30 feet.",
+      },
+    ],
+  },
+  {
     id: "warforged",
     name: "Warforged",
     size: "Medium",
