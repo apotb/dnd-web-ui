@@ -1,4 +1,90 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --radius: 0.25rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0 0 0);
+  --input: oklch(0 0 0);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0 0 0);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+}
 
 /* Candy Box–style base — keep outside @layer so Tailwind doesn't override */
 html {
@@ -166,16 +252,78 @@ body.retro-body a:visited {
 }
 
 .retro-box-title {
-  margin: 0 0 14px;
+  margin: 0;
   font-size: 15px;
   font-weight: 700;
 }
 
-/* Candy Box menu buttons — stacked bordered rectangles */
+.retro-section-header {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.retro-box > .retro-box-title {
+  margin-bottom: 14px;
+}
+
+.retro-section-header .retro-box-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.retro-box-subtitle {
+  margin: 16px 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.retro-box-narrow {
+  max-width: 420px;
+}
+
+/* Horizontal nav rows — equal-width tabs */
+.nav-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  width: 100%;
+}
+
+.nav-row-primary {
+  margin-top: 20px;
+}
+
+.page-title {
+  margin: 20px 0 16px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.nav-row .candy-btn {
+  flex: 1;
+  margin: 0;
+}
+
+.nav-row-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nav-row-stack .candy-btn {
+  flex: none;
+  width: 100%;
+}
+
+/* Candy Box menu buttons */
 .candy-btn {
   display: block;
-  width: 100%;
-  margin: 0 0 10px;
   padding: 10px 14px;
   background: #f4f4f4;
   border: 1px solid #000;
@@ -185,10 +333,6 @@ body.retro-body a:visited {
   text-decoration: none;
   cursor: pointer;
   box-sizing: border-box;
-}
-
-.candy-btn:last-child {
-  margin-bottom: 0;
 }
 
 .candy-btn:hover {
@@ -205,7 +349,7 @@ body.retro-body a:visited {
 }
 
 .candy-btn-active {
-  background: #ddd;
+  background: #aaa;
   font-weight: 700;
 }
 
@@ -213,19 +357,6 @@ body.retro-body a:visited {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.candy-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.candy-tabs {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
 }
 
 .candy-label {
@@ -305,4 +436,190 @@ body.retro-body a:visited {
   padding: 10px 12px;
   background: #e8e8e8;
   border: 1px solid #666;
+}
+
+/* Character sheet tabs — horizontal candy-style row */
+.sheet-tabs[data-orientation="horizontal"] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sheet-tabs [data-slot="tabs-list"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.sheet-tabs [data-slot="tabs-trigger"] {
+  flex: 1 1 calc(33.333% - 6px);
+  min-width: 0;
+  height: auto;
+  padding: 8px 10px;
+  border: 1px solid #000;
+  border-radius: 0;
+  background: #f4f4f4;
+  color: #000;
+  font: inherit;
+  font-size: 13px;
+  white-space: normal;
+  text-align: center;
+}
+
+.sheet-tabs [data-slot="tabs-trigger"][data-active] {
+  background: #aaa;
+  font-weight: 700;
+}
+
+.sheet-tabs [data-slot="tabs-trigger"]::after {
+  display: none;
+}
+
+.sheet-editor-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sheet-editor-fields {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 480px) {
+  .sheet-editor-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.sheet-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.animals-section-header {
+  margin-bottom: 10px;
+}
+
+.party-animal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.party-animal-entry:first-child .party-animal-heading {
+  margin-top: 0;
+}
+
+.party-animal-heading {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.party-animal-block {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #888;
+}
+
+.party-animal-block:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.party-animal-fields {
+  display: grid;
+  gap: 0 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.party-animal-fields .candy-input {
+  margin-bottom: 10px;
+}
+
+.party-animal-fields .candy-label {
+  margin-bottom: 4px;
+}
+
+.party-animal-supplies {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.party-animal-block .retro-box-subtitle {
+  margin-top: 12px;
+}
+
+.party-inventory-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.party-inventory-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.party-inventory-input {
+  flex: 1 1 120px;
+  margin-bottom: 0;
+}
+
+.party-animal-supplies .party-inventory-row > .party-inventory-input:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.party-supplies-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.party-supplies-table .party-supplies-col-item {
+  width: auto;
+}
+
+.party-supplies-table .party-supplies-col-wt {
+  width: 84px;
+}
+
+.party-supplies-table .party-supplies-col-qty {
+  width: 56px;
+}
+
+.party-supplies-table .party-supplies-col-total {
+  width: 112px;
+}
+
+.party-supplies-table th.party-supplies-num,
+.party-supplies-table td.party-supplies-num {
+  white-space: nowrap;
+}
+
+.party-inventory-wt,
+.party-inventory-qty {
+  flex: 0 0 52px;
+  width: 52px;
+  min-width: 52px;
+}
+
+.party-inventory-select {
+  flex: 1 1 140px;
+  margin-bottom: 0;
 }

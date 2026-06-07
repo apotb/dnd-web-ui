@@ -3,9 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { CharacterSheet } from "@/components/character/character-sheet";
 import { JsonImportExport } from "@/components/character/json-import-export";
 import type { CharacterData } from "@/lib/schemas/character";
@@ -69,48 +66,68 @@ export function CharacterEditor({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="char-name">Character Name</Label>
-            <Input
-              id="char-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
+    <div>
+      <h2 className="page-title">Edit Character</h2>
+
+      <section className="retro-box">
+        <div className="sheet-editor-toolbar">
+          <div className="sheet-editor-fields">
+            <div>
+              <label className="candy-label" htmlFor="char-name">
+                Character name
+              </label>
+              <input
+                id="char-name"
+                className="candy-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="candy-label" htmlFor="player-name">
+                Player name
+              </label>
+              <input
+                id="player-name"
+                className="candy-input"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="player-name">Player Name</Label>
-            <Input
-              id="player-name"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
+
+          <div className="sheet-editor-actions">
+            <JsonImportExport
+              name={name}
+              playerName={playerName}
+              data={data}
+              onImport={({ name: n, playerName: pn, data: d }) => {
+                setName(n);
+                setPlayerName(pn);
+                setData(d);
+              }}
             />
+            <button
+              type="button"
+              className="candy-btn"
+              onClick={save}
+              disabled={saving}
+            >
+              {saving ? "..." : "Save"}
+            </button>
+            <button
+              type="button"
+              className="candy-btn"
+              onClick={deleteCharacter}
+            >
+              Delete
+            </button>
           </div>
+
+          {message && <p className="retro-muted">{message}</p>}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <JsonImportExport
-            name={name}
-            playerName={playerName}
-            data={data}
-            onImport={({ name: n, playerName: pn, data: d }) => {
-              setName(n);
-              setPlayerName(pn);
-              setData(d);
-            }}
-          />
-          <Button onClick={save} disabled={saving}>
-            {saving ? "Saving..." : "Save"}
-          </Button>
-          <Button variant="destructive" onClick={deleteCharacter}>
-            Delete
-          </Button>
-        </div>
-      </div>
-      {message && (
-        <p className="text-sm text-muted-foreground">{message}</p>
-      )}
+      </section>
+
       <CharacterSheet
         data={data}
         isDm

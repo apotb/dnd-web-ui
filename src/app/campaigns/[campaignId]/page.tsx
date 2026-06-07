@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
+import { parsePartyData } from "@/lib/schemas/party";
 import { CampaignOverview } from "@/components/campaign/campaign-overview";
 import type { Character } from "@/lib/types/database";
 
@@ -27,6 +28,7 @@ export default async function CampaignHomePage({
   return (
     <CampaignOverview
       campaignId={campaignId}
+      initialPartyData={parsePartyData(access.campaign.party_data)}
       initialCharacters={characters}
       isDm={access.isDm}
     />

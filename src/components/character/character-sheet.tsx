@@ -121,7 +121,7 @@ export function CharacterSheet({
         <Badge variant="outline">Proficiency {formatModifier(profBonus)}</Badge>
       </div>
 
-      <Tabs defaultValue="overview" className="w-full">
+      <Tabs defaultValue="overview" className="sheet-tabs w-full">
         <TabsList className="flex h-auto w-full flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="abilities">Abilities/Skills</TabsTrigger>
@@ -726,9 +726,12 @@ export function CharacterSheet({
         <TabsContent value="inventory" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Currency</CardTitle>
+              <CardTitle className="text-base">Personal Inventory</CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-5 gap-2">
+            <CardContent className="space-y-4">
+          <div>
+            <p className="mb-2 text-sm font-medium">Currency</p>
+            <div className="grid grid-cols-5 gap-2">
               {(["cp", "sp", "ep", "gp", "pp"] as const).map((coin) => (
                 <Field
                   key={coin}
@@ -749,12 +752,12 @@ export function CharacterSheet({
                   }
                 />
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Items</CardTitle>
+          <div>
+            <div className="mb-2 flex flex-row items-center justify-between">
+              <p className="text-sm font-medium">Items</p>
               {editable && (
                 <Button
                   size="sm"
@@ -781,8 +784,8 @@ export function CharacterSheet({
                   Add Item
                 </Button>
               )}
-            </CardHeader>
-            <CardContent className="space-y-2">
+            </div>
+            <div className="space-y-2">
               {data.inventory.items.map((item, i) => (
                 <div
                   key={item.id}
@@ -842,6 +845,8 @@ export function CharacterSheet({
                   )}
                 </div>
               ))}
+            </div>
+          </div>
             </CardContent>
           </Card>
         </TabsContent>

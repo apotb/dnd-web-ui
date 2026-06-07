@@ -12,6 +12,7 @@ export interface Campaign {
   id: string;
   name: string;
   created_by: string;
+  party_data: Json;
   created_at: string;
   updated_at: string;
 }
@@ -66,6 +67,7 @@ export type Database = {
           id?: string;
           name: string;
           created_by: string;
+          party_data?: Json;
           created_at?: string;
           updated_at?: string;
         };

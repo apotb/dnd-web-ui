@@ -3,10 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createDefaultCharacterData } from "@/lib/schemas/character";
 
 export function NewCharacterForm({ campaignId }: { campaignId: string }) {
@@ -40,31 +36,33 @@ export function NewCharacterForm({ campaignId }: { campaignId: string }) {
   }
 
   return (
-    <Card className="max-w-md">
-      <CardHeader>
-        <CardTitle>New Character</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="name">Character Name</Label>
-          <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="player">Player Name</Label>
-          <Input
-            id="player"
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-          />
-        </div>
-        <Button onClick={create} disabled={loading}>
-          {loading ? "Creating..." : "Create Character"}
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="retro-box retro-box-narrow">
+      <label className="candy-label" htmlFor="character-name">
+        Character name
+      </label>
+      <input
+        id="character-name"
+        className="candy-input"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <label className="candy-label" htmlFor="player-name">
+        Player name
+      </label>
+      <input
+        id="player-name"
+        className="candy-input"
+        value={playerName}
+        onChange={(e) => setPlayerName(e.target.value)}
+      />
+      <button
+        type="button"
+        className="candy-btn"
+        onClick={create}
+        disabled={loading}
+      >
+        {loading ? "..." : "Create character"}
+      </button>
+    </div>
   );
 }

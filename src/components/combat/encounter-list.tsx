@@ -4,9 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Encounter } from "@/lib/types/database";
 
 interface EncounterListProps {
@@ -46,54 +43,47 @@ export function EncounterList({
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Combat</h1>
+    <div>
+      <h2 className="page-title">Combat</h2>
 
       {isDm && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">New Encounter</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Input
-              className="max-w-xs"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <Button onClick={createEncounter} disabled={creating}>
-              {creating ? "Creating..." : "Create Encounter"}
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="retro-box">
+          <p className="retro-box-title">New encounter</p>
+          <label className="candy-label" htmlFor="encounter-name">
+            Name
+          </label>
+          <input
+            id="encounter-name"
+            className="candy-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button
+            type="button"
+            className="candy-btn"
+            onClick={createEncounter}
+            disabled={creating}
+          >
+            {creating ? "..." : "Create encounter"}
+          </button>
+        </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {encounters.map((enc) => (
-          <Link key={enc.id} href={`/campaigns/${campaignId}/combat/${enc.id}`}>
-            <Card className="transition-colors hover:bg-muted/50">
-              <CardHeader>
-                <CardTitle className="text-lg">{enc.name}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                {enc.active ? (
-                  <span className="text-primary font-medium">
-                    Active · Round {enc.round}
-                  </span>
-                ) : (
-                  "Not started"
-                )}
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
-
-      {encounters.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            No encounters yet.
-          </CardContent>
-        </Card>
+      {encounters.length === 0 ? (
+        <p className="retro-muted">No encounters yet.</p>
+      ) : (
+        <div className="nav-row-stack">
+          {encounters.map((enc) => (
+            <Link
+              key={enc.id}
+              href={`/campaigns/${campaignId}/combat/${enc.id}`}
+              className="candy-btn"
+            >
+              {enc.name}
+              {enc.active ? ` · Round ${enc.round}` : ""}
+            </Link>
+          ))}
+        </div>
       )}
     </div>
   );

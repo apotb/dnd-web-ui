@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { DmLoginInline } from "@/components/layout/dm-login-inline";
 
 interface CampaignNavProps {
@@ -14,7 +15,11 @@ export function CampaignNav({
   campaignName,
   isDm,
 }: CampaignNavProps) {
+  const pathname = usePathname();
   const base = `/campaigns/${campaignId}`;
+  const onOverview = pathname === base;
+  const onCharacters = pathname.startsWith(`${base}/characters`);
+  const onCombat = pathname.startsWith(`${base}/combat`);
 
   return (
     <>
@@ -23,21 +28,26 @@ export function CampaignNav({
         <DmLoginInline isDm={isDm} />
       </div>
 
-      <nav className="candy-nav">
-        <Link href={base} className="candy-btn">
+      <nav className="nav-row nav-row-primary">
+        <Link
+          href={base}
+          className={`candy-btn${onOverview ? " candy-btn-active" : ""}`}
+        >
           Overview
         </Link>
-        <Link href={`${base}/combat`} className="candy-btn">
+        <Link
+          href={`${base}/characters`}
+          className={`candy-btn${onCharacters ? " candy-btn-active" : ""}`}
+        >
+          Characters
+        </Link>
+        <Link
+          href={`${base}/combat`}
+          className={`candy-btn${onCombat ? " candy-btn-active" : ""}`}
+        >
           Combat
         </Link>
-        {isDm && (
-          <Link href={`${base}/characters/new`} className="candy-btn">
-            + New character
-          </Link>
-        )}
       </nav>
-
-      <div className="retro-spacer-lg" />
     </>
   );
 }

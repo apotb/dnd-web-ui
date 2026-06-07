@@ -11,8 +11,8 @@ export default async function NewCharacterPage({
   await requireDm(campaignId);
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Create Character</h1>
+    <div>
+      <h2 className="page-title">Create Character</h2>
       <NewCharacterForm campaignId={campaignId} />
     </div>
   );

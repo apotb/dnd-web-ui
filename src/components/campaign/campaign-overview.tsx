@@ -1,140 +1,71 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { CharacterSheet } from "@/components/character/character-sheet";
+import { PartyInventory } from "@/components/campaign/party-inventory";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import {
   formatModifier,
   getAbilityModifiers,
 } from "@/lib/dnd/calculations";
-import {
-  aggregatePartyInventory,
-  formatCurrency,
-  getTopSkills,
-} from "@/lib/dnd/party-summary";
+import { getTopSkills } from "@/lib/dnd/party-summary";
+import type { PartyData } from "@/lib/schemas/party";
 
 interface CampaignOverviewProps {
   campaignId: string;
+  initialPartyData: PartyData;
   initialCharacters: ParsedCharacter[];
   isDm: boolean;
 }
 
 export function CampaignOverview({
   campaignId,
+  initialPartyData,
   initialCharacters,
   isDm,
 }: CampaignOverviewProps) {
   const characters = useRealtimeCharacters(campaignId, initialCharacters);
-  const [tab, setTab] = useState<"party" | "characters">("party");
-  const inventory = aggregatePartyInventory(characters);
 
   return (
     <div>
-      <div className="candy-tabs">
-        <button
-          type="button"
-          className={tab === "party" ? "candy-btn candy-btn-active" : "candy-btn"}
-          onClick={() => setTab("party")}
-        >
-          Party
-        </button>
-        <button
-          type="button"
-          className={
-            tab === "characters" ? "candy-btn candy-btn-active" : "candy-btn"
-          }
-          onClick={() => setTab("characters")}
-        >
-          Characters
-        </button>
-      </div>
+      <h2 className="page-title">Overview</h2>
 
-      {tab === "party" ? (
-        <div className="retro-stack">
-          <section className="retro-box">
-            <p className="retro-box-title">Party Inventory</p>
-            <p>
-              <strong>Coin:</strong> {formatCurrency(inventory.currency)}
-            </p>
-            {inventory.items.length === 0 ? (
-              <p className="retro-muted">No items recorded.</p>
-            ) : (
-              <table className="retro-table">
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th>Qty</th>
-                    <th>Holder</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inventory.items.map((item, i) => (
-                    <tr key={`${item.characterName}-${item.name}-${i}`}>
-                      <td>{item.name}</td>
-                      <td>{item.quantity}</td>
-                      <td>{item.characterName}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
+      <div className="retro-stack">
+        <PartyInventory
+          campaignId={campaignId}
+          initialPartyData={initialPartyData}
+          characters={characters}
+          isDm={isDm}
+        />
 
-          <section className="retro-box">
+        <section className="retro-box">
+          <div className="retro-section-header">
             <p className="retro-box-title">Party Members</p>
-            {characters.length === 0 ? (
-              <p className="retro-muted">
-                No characters yet.
-                {isDm && (
-                  <>
-                    {" "}
-                    <Link href={`/campaigns/${campaignId}/characters/new`}>
-                      Create one
-                    </Link>
-                    .
-                  </>
-                )}
-              </p>
-            ) : (
-              <div className="retro-stack">
-                {characters.map((character) => (
-                  <PartyMemberSummary
-                    key={character.id}
-                    character={character}
-                    campaignId={campaignId}
-                    isDm={isDm}
-                  />
-                ))}
-              </div>
+            {isDm && (
+              <Link
+                href={`/campaigns/${campaignId}/characters/new`}
+                className="retro-inline-link"
+              >
+                + New character
+              </Link>
             )}
-          </section>
-        </div>
-      ) : (
-        <div className="retro-stack">
+          </div>
           {characters.length === 0 ? (
             <p className="retro-muted">No characters yet.</p>
           ) : (
-            characters.map((character) => (
-              <section key={character.id} className="retro-box">
-                {isDm ? (
-                  <p className="retro-edit-link">
-                    <Link href={`/campaigns/${campaignId}/characters/${character.id}`}>
-                      [ edit {character.name} ]
-                    </Link>
-                  </p>
-                ) : null}
-                <CharacterSheet
-                  data={character.data}
-                  isDm={false}
-                  editable={false}
+            <div className="retro-stack">
+              {characters.map((character) => (
+                <PartyMemberSummary
+                  key={character.id}
+                  character={character}
+                  campaignId={campaignId}
+                  isDm={isDm}
                 />
-              </section>
-            ))
+              ))}
+            </div>
           )}
-        </div>
-      )}
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,9 +1,8 @@
 import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { createClient } from "@/lib/supabase/server";
-import { CharacterListClient } from "@/components/character/character-list-client";
+import { CharacterSheetsList } from "@/components/character/character-sheets-list";
 import type { Character } from "@/lib/types/database";
-import type { ParsedCharacter } from "@/lib/character/utils";
 
 export default async function CharactersPage({
   params,
@@ -25,7 +24,7 @@ export default async function CharactersPage({
   );
 
   return (
-    <CharacterListClient
+    <CharacterSheetsList
       campaignId={campaignId}
       initialCharacters={characters}
       isDm={access.isDm}
