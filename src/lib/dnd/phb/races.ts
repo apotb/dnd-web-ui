@@ -1,4 +1,5 @@
 import type { PhbRace } from "./types";
+import { EXTENDED_RACES } from "./extended-races";
 
 export const PHB_RACES: PhbRace[] = [
   {
@@ -298,8 +299,12 @@ export const PHB_RACES: PhbRace[] = [
   },
 ];
 
+export const ALL_RACES: PhbRace[] = [...PHB_RACES, ...EXTENDED_RACES].sort((a, b) =>
+  a.name.localeCompare(b.name)
+);
+
 export function getRace(id: string): PhbRace | undefined {
-  return PHB_RACES.find((r) => r.id === id);
+  return ALL_RACES.find((r) => r.id === id);
 }
 
 export function getRaceDisplayName(raceId: string, subraceId?: string): string {

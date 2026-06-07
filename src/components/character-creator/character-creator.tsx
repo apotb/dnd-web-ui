@@ -33,7 +33,7 @@ import {
   PHB_CLASSES,
 } from "@/lib/dnd/phb/classes";
 import { PHB_FEATS } from "@/lib/dnd/phb/feats";
-import { getRace, PHB_RACES } from "@/lib/dnd/phb/races";
+import { getRace, ALL_RACES } from "@/lib/dnd/phb/races";
 import { getRaceGrantLines } from "@/lib/dnd/phb/race-grants";
 import {
   getCantripsForList,
@@ -340,7 +340,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 }
               >
                 <option value="">— choose —</option>
-                {PHB_RACES.map((r) => (
+                {ALL_RACES.map((r) => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
               </select>
