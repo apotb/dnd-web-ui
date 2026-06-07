@@ -18,9 +18,10 @@ import {
 } from "@/lib/dnd/character-builder/types";
 import {
   ARTISAN_TOOLS,
+  ALL_BACKGROUNDS,
+  EXPLORER_TOOLS,
   GAMING_SETS,
   MUSICAL_INSTRUMENTS,
-  PHB_BACKGROUNDS,
   STANDARD_LANGUAGES,
 } from "@/lib/dnd/phb/backgrounds";
 import {
@@ -31,9 +32,9 @@ import {
   getClass,
   PHB_CLASSES,
 } from "@/lib/dnd/phb/classes";
-import { rollStartingGold } from "@/lib/dnd/phb/equipment";
 import { PHB_FEATS } from "@/lib/dnd/phb/feats";
 import { getRace, PHB_RACES } from "@/lib/dnd/phb/races";
+import { getRaceGrantLines } from "@/lib/dnd/phb/race-grants";
 import {
   getCantripsForList,
   getLevel1SpellsForList,
@@ -61,8 +62,21 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
   const currentStep = visibleSteps[stepIndex] ?? "identity";
 
   const selectedRace = getRace(state.raceId);
-  const selectedBackground = PHB_BACKGROUNDS.find((b) => b.id === state.backgroundId);
+  const selectedBackground = ALL_BACKGROUNDS.find((b) => b.id === state.backgroundId);
   const selectedClass = getClass(state.classId);
+
+  const raceGrantLines = useMemo(() => {
+    if (!selectedRace) return [];
+    return getRaceGrantLines(selectedRace, {
+      subraceId: state.subraceId,
+      halfElfAbilityBonuses: state.halfElfAbilityBonuses,
+      halfElfSkills: state.halfElfSkills,
+      variantHumanAbilityBonuses: state.variantHumanAbilityBonuses,
+      variantHumanSkill: state.variantHumanSkill,
+      variantHumanFeat: state.variantHumanFeat,
+      raceLanguageChoices: state.raceLanguageChoices,
+    });
+  }, [selectedRace, state]);
 
   const racialPreview = useMemo(() => {
     const bonuses = computeRacialBonuses(state);
@@ -127,6 +141,14 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
         if (selectedBackground?.toolProficiencies?.includes("musical instrument") && !state.backgroundMusicalInstrument) {
           return "Choose a musical instrument from your background.";
         }
+        if (
+          selectedBackground?.toolProficiencies?.includes(
+            "cartographer's tools or navigator's tools"
+          ) &&
+          !state.backgroundExplorerTool
+        ) {
+          return "Choose cartographer's or navigator's tools for Archaeologist.";
+        }
         return null;
       }
       case "class": {
@@ -186,15 +208,12 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
         return null;
       }
       case "equipment":
-        if (!state.useStartingGold && selectedClass) {
+        if (selectedClass) {
           for (let i = 0; i < selectedClass.equipmentChoices.length; i++) {
             if (state.equipmentChoiceIndices[i] === undefined) {
               return "Make all equipment choices.";
             }
           }
-        }
-        if (state.useStartingGold && state.rolledGold === null) {
-          return "Roll for starting gold or switch to equipment packages.";
         }
         return null;
       default:
@@ -342,6 +361,16 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 </>
               ) : null}
 
+              {selectedRace ? (
+                <div className="creator-grants">
+                  {raceGrantLines.map((line) => (
+                    <p key={line.label} className="retro-muted">
+                      {line.label}: {line.value}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+
               {state.raceId === "half-elf" ? (
                 <>
                   <p className="candy-label">+1 to two abilities (not Charisma)</p>
@@ -447,11 +476,12 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                     backgroundArtisanTool: "",
                     backgroundGamingSet: "",
                     backgroundMusicalInstrument: "",
+                    backgroundExplorerTool: "",
                   })
                 }
               >
                 <option value="">— choose —</option>
-                {PHB_BACKGROUNDS.map((b) => (
+                {ALL_BACKGROUNDS.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
@@ -529,21 +559,32 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                   </select>
                 </>
               ) : null}
+
+              {selectedBackground?.toolProficiencies?.includes(
+                "cartographer's tools or navigator's tools"
+              ) ? (
+                <>
+                  <label className="candy-label">Explorer&apos;s tools</label>
+                  <select
+                    className="candy-input"
+                    value={state.backgroundExplorerTool}
+                    onChange={(e) => update({ backgroundExplorerTool: e.target.value })}
+                  >
+                    <option value="">— choose —</option>
+                    {EXPLORER_TOOLS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
             </div>
           </div>
-
-          {grantedSkills.length ? (
-            <p className="creator-summary">
-              Proficiencies so far: {grantedSkills.join(", ")}
-            </p>
-          ) : null}
         </section>
       ) : null}
 
       {currentStep === "class" ? (
         <section className="retro-box creator-section">
           <h3 className="retro-box-title">Class</h3>
-          <label className="candy-label">Class</label>
           <select
             className="candy-input"
             value={state.classId}
@@ -661,9 +702,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
       {currentStep === "abilities" ? (
         <section className="retro-box creator-section">
           <h3 className="retro-box-title">Ability Scores (Point Buy)</h3>
-          <p className="retro-muted">
-            Scores shown include racial bonuses. Hover a score to see the breakdown.
-          </p>
+          <p className="retro-muted">Scores shown include racial bonuses.</p>
           <AbilityScorePanel
             baseScores={state.baseScores}
             racialPreview={racialPreview}
@@ -678,7 +717,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
         <section className="retro-box creator-section">
           <h3 className="retro-box-title">Class Skills</h3>
           {grantedSkills.length ? (
-            <p className="creator-summary">Already proficient: {grantedSkills.join(", ")}</p>
+            <p className="retro-note">Already proficient: {grantedSkills.join(", ")}</p>
           ) : null}
           {selectedClass ? (
             <>
@@ -706,46 +745,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
       {currentStep === "equipment" ? (
         <section className="retro-box creator-section">
           <h3 className="retro-box-title">Starting Equipment</h3>
-          <label className="creator-check">
-            <input
-              type="checkbox"
-              checked={state.useStartingGold}
-              onChange={(e) =>
-                update({
-                  useStartingGold: e.target.checked,
-                  rolledGold: e.target.checked ? state.rolledGold : null,
-                })
-              }
-            />
-            Roll for starting gold instead of class equipment packages
-          </label>
-
-          {state.useStartingGold && selectedClass ? (
-            <div className="creator-gold-roll">
-              <p className="retro-muted">
-                Roll {selectedClass.startingGold.dice}d{selectedClass.startingGold.sides} ×{" "}
-                {selectedClass.startingGold.multiplier} gp (plus background gold).
-              </p>
-              <button
-                type="button"
-                className="candy-btn"
-                onClick={() =>
-                  update({
-                    rolledGold: rollStartingGold(
-                      selectedClass.startingGold.dice,
-                      selectedClass.startingGold.sides,
-                      selectedClass.startingGold.multiplier
-                    ),
-                  })
-                }
-              >
-                Roll gold
-              </button>
-              {state.rolledGold !== null ? (
-                <p className="creator-summary">Rolled: {state.rolledGold} gp</p>
-              ) : null}
-            </div>
-          ) : selectedClass ? (
+          {selectedClass ? (
             selectedClass.equipmentChoices.map((choice, index) => (
               <div key={choice.prompt} className="creator-equip-choice">
                 <p className="candy-label">{choice.prompt}</p>

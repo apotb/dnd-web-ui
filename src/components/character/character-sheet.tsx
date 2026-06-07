@@ -165,12 +165,6 @@ export function CharacterSheet({
               type="number"
               onChange={(v) => updateBasic({ level: parseInt(v) || 1 })}
             />
-            <Field
-              label="Portrait URL"
-              value={data.basicInfo.portrait}
-              editable={editable}
-              onChange={(v) => updateBasic({ portrait: v })}
-            />
           </div>
           {data.languages.length > 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -182,14 +176,6 @@ export function CharacterSheet({
               Tool proficiencies: {data.toolProficiencies.join(", ")}
             </p>
           ) : null}
-          {data.basicInfo.portrait && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={data.basicInfo.portrait}
-              alt={data.basicInfo.name}
-              className="max-h-48 rounded-md border object-cover"
-            />
-          )}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Quick Stats</CardTitle>

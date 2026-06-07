@@ -3,10 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import {
-  characterExportSchema,
-  safeParseCharacterData,
-} from "@/lib/schemas/character";
+import { parseCharacterImportFile } from "@/lib/character/parse-import";
 
 interface CharacterImportButtonProps {
   campaignId: string;
@@ -23,29 +20,7 @@ export function CharacterImportButton({ campaignId }: CharacterImportButtonProps
     setError(null);
 
     try {
-      const text = await file.text();
-      const parsed = JSON.parse(text) as unknown;
-
-      let name = "Imported Character";
-      let playerName = "";
-      let data;
-
-      const exportResult = characterExportSchema.safeParse(parsed);
-      if (exportResult.success) {
-        name = exportResult.data.name;
-        playerName = exportResult.data.playerName;
-        data = exportResult.data.data;
-      } else {
-        const dataResult = safeParseCharacterData(parsed);
-        if (!dataResult.success) {
-          setError("Invalid character JSON");
-          setLoading(false);
-          return;
-        }
-        data = dataResult.data;
-        name = data.basicInfo.name || name;
-        playerName = data.basicInfo.playerName;
-      }
+      const { name, playerName, data } = await parseCharacterImportFile(file);
 
       const supabase = createClient();
       const { data: row, error: insertError } = await supabase

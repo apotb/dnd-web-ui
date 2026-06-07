@@ -163,8 +163,59 @@ export const PHB_BACKGROUNDS: PhbBackground[] = [
   },
 ];
 
+/** Backgrounds from Tomb of Annihilation (Appendix A). */
+export const TOA_BACKGROUNDS: PhbBackground[] = [
+  {
+    id: "anthropologist",
+    name: "Anthropologist",
+    skillProficiencies: ["insight", "religion"],
+    languageChoices: 2,
+    equipment: [
+      "leather-bound notebook",
+      "ink",
+      "ink pen",
+      "traveler's clothes",
+      "trinket of special significance",
+      "belt pouch",
+    ],
+    gold: 10,
+    feature: {
+      name: "Adept Linguist",
+      description:
+        "After observing a humanoid culture for at least 1 day, you can communicate basic ideas with anyone who speaks that culture's language (DM's discretion). Complex or abstract concepts require normal fluency.",
+    },
+  },
+  {
+    id: "archaeologist",
+    name: "Archaeologist",
+    skillProficiencies: ["history", "survival"],
+    toolProficiencies: ["cartographer's tools or navigator's tools"],
+    languageChoices: 1,
+    equipment: [
+      "wooden case with map to a ruin",
+      "lantern, bullseye",
+      "pick, miner's",
+      "traveler's clothes",
+      "shovel",
+      "tent, two-person",
+      "trinket from dig site",
+      "belt pouch",
+    ],
+    gold: 25,
+    feature: {
+      name: "Historical Knowledge",
+      description:
+        "When you enter a ruin or dungeon, you can determine its original purpose and who built it (DM may require a DC 15 Intelligence (History) check). If you succeed, you learn one legend associated with the location.",
+    },
+  },
+];
+
+export const ALL_BACKGROUNDS: PhbBackground[] = [...PHB_BACKGROUNDS, ...TOA_BACKGROUNDS].sort(
+  (a, b) => a.name.localeCompare(b.name)
+);
+
 export function getBackground(id: string): PhbBackground | undefined {
-  return PHB_BACKGROUNDS.find((b) => b.id === id);
+  return ALL_BACKGROUNDS.find((b) => b.id === id);
 }
 
 export const STANDARD_LANGUAGES = [
@@ -225,3 +276,5 @@ export const MUSICAL_INSTRUMENTS = [
   "Shawm",
   "Viol",
 ];
+
+export const EXPLORER_TOOLS = ["Cartographer's tools", "Navigator's tools"];

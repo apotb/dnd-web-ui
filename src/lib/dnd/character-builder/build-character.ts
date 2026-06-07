@@ -164,6 +164,11 @@ function collectTools(state: CharacterCreatorState): string[] {
       tools.add(state.backgroundGamingSet);
     } else if (t === "musical instrument" && state.backgroundMusicalInstrument) {
       tools.add(state.backgroundMusicalInstrument);
+    } else if (
+      t === "cartographer's tools or navigator's tools" &&
+      state.backgroundExplorerTool
+    ) {
+      tools.add(state.backgroundExplorerTool);
     } else if (!t.includes(" or ") && !t.endsWith(" set")) {
       tools.add(t);
     } else if (t === "gaming set") {
@@ -188,7 +193,7 @@ function resolveEquipmentNames(state: CharacterCreatorState): string[] {
     names.push(...background.equipment);
   }
 
-  if (cls && !state.useStartingGold) {
+  if (cls) {
     names.push(...cls.fixedEquipment);
     cls.equipmentChoices.forEach((choice, index) => {
       const optionIndex = state.equipmentChoiceIndices[index] ?? 0;
@@ -412,9 +417,6 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
   const expanded = expandEquipmentItems(itemNames);
 
   let gp = background?.gold ?? 0;
-  if (state.useStartingGold && state.rolledGold !== null) {
-    gp += state.rolledGold;
-  }
 
   const speed =
     state.raceId === "elf" && state.subraceId === "wood"
@@ -493,7 +495,7 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
         magicItem: false,
         notes: "",
       })),
-      notes: state.useStartingGold ? "Purchased gear with rolled starting gold." : "",
+      notes: "",
     },
     features: buildFeatures(state),
   };

@@ -128,12 +128,14 @@ export function CharacterEditor({
         </div>
       </section>
 
-      <CharacterSheet
-        data={data}
-        isDm
-        editable
-        onChange={setData}
-      />
+      <section className="retro-box character-sheet-wrap">
+        <CharacterSheet
+          data={data}
+          isDm
+          editable
+          onChange={setData}
+        />
+      </section>
     </div>
   );
 }

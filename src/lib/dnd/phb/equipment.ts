@@ -185,6 +185,10 @@ export const PHB_ITEMS: PhbItem[] = [
   { id: "animal-trophy", name: "Trophy from animal", weightLb: 1, type: "gear" },
   { id: "con-tools", name: "Con tools (10 gp)", weightLb: 1, type: "gear" },
   { id: "dead-colleague-letter", name: "Letter from dead colleague", weightLb: 0, type: "gear" },
+  { id: "leather-bound-notebook", name: "Leather-bound notebook", weightLb: 1, type: "gear" },
+  { id: "trinket-special", name: "Trinket of special significance", weightLb: 0, type: "gear" },
+  { id: "wooden-case-map", name: "Wooden case with map to a ruin", weightLb: 2, type: "gear" },
+  { id: "trinket-dig-site", name: "Trinket from dig site", weightLb: 0, type: "gear" },
   { id: "dark-hooded-clothes", name: "Dark common clothes with hood", weightLb: 3, type: "gear" },
 ];
 

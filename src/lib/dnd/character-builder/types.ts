@@ -34,6 +34,7 @@ export interface CharacterCreatorState {
   backgroundArtisanTool: string;
   backgroundGamingSet: string;
   backgroundMusicalInstrument: string;
+  backgroundExplorerTool: string;
   fightingStyle: string;
   favoredEnemy: string;
   favoredTerrain: string;
@@ -68,6 +69,7 @@ export function createInitialCreatorState(): CharacterCreatorState {
     backgroundArtisanTool: "",
     backgroundGamingSet: "",
     backgroundMusicalInstrument: "",
+    backgroundExplorerTool: "",
     fightingStyle: "",
     favoredEnemy: "",
     favoredTerrain: "",

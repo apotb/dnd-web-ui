@@ -1,20 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  characterExportSchema,
-  safeParseCharacterData,
-  type CharacterData,
-} from "@/lib/schemas/character";
+import { useRef, useState } from "react";
+import { characterExportSchema, type CharacterData } from "@/lib/schemas/character";
+import { parseCharacterImportFile } from "@/lib/character/parse-import";
 
 interface JsonImportExportProps {
   name: string;
@@ -33,9 +21,9 @@ export function JsonImportExport({
   data,
   onImport,
 }: JsonImportExportProps) {
-  const [open, setOpen] = useState(false);
-  const [jsonText, setJsonText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   function handleExport() {
     const payload = characterExportSchema.parse({
@@ -55,72 +43,54 @@ export function JsonImportExport({
     URL.revokeObjectURL(url);
   }
 
-  function handleImport() {
-    setError(null);
+  async function handleFile(file: File) {
+    setImporting(true);
+    setImportError(null);
+
     try {
-      const parsed = JSON.parse(jsonText) as unknown;
-
-      // Support both export envelope and raw character data
-      const exportResult = characterExportSchema.safeParse(parsed);
-      if (exportResult.success) {
-        onImport({
-          name: exportResult.data.name,
-          playerName: exportResult.data.playerName,
-          data: exportResult.data.data,
-        });
-        setOpen(false);
-        return;
-      }
-
-      const dataResult = safeParseCharacterData(parsed);
-      if (dataResult.success) {
-        onImport({
-          name: dataResult.data.basicInfo.name || name,
-          playerName: dataResult.data.basicInfo.playerName || playerName,
-          data: dataResult.data,
-        });
-        setOpen(false);
-        return;
-      }
-
-      setError("Invalid character JSON. Check the format and try again.");
+      const result = await parseCharacterImportFile(file, { name, playerName });
+      onImport(result);
     } catch {
-      setError("Could not parse JSON.");
+      setImportError("Invalid character JSON");
     }
+
+    setImporting(false);
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button type="button" variant="outline" size="sm" onClick={handleExport}>
+    <div className="sheet-json-actions">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".json,application/json"
+        className="sr-only"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleFile(file);
+          e.target.value = "";
+        }}
+      />
+      <button type="button" className="candy-btn candy-btn-sm" onClick={handleExport}>
         Export JSON
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => setOpen(true)}
-      >
-        Import JSON
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Import Character JSON</DialogTitle>
-          </DialogHeader>
-          <Textarea
-            rows={12}
-            placeholder='Paste character export JSON or raw "data" object...'
-            value={jsonText}
-            onChange={(e) => setJsonText(e.target.value)}
-          />
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <Button onClick={handleImport}>Import</Button>
-        </DialogContent>
-      </Dialog>
+      </button>
+      {importError ? (
+        <button
+          type="button"
+          className="retro-inline-link retro-inline-error-link"
+          onClick={() => setImportError(null)}
+        >
+          {importError}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="candy-btn candy-btn-sm"
+          disabled={importing}
+          onClick={() => inputRef.current?.click()}
+        >
+          {importing ? "Importing…" : "Import .json"}
+        </button>
+      )}
     </div>
   );
 }
