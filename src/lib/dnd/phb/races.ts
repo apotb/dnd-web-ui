@@ -35,6 +35,7 @@ export const PHB_RACES: PhbRace[] = [
         id: "mountain",
         name: "Mountain Dwarf",
         abilityBonus: { str: 2 },
+        armorProficiencies: ["light armor", "medium armor"],
         extras: ["Dwarven Armor Training: proficiency with light and medium armor."],
       },
     ],
@@ -251,7 +252,7 @@ export const PHB_RACES: PhbRace[] = [
         description: "You gain proficiency in two skills of your choice.",
       },
     ],
-    skillProficiencies: [],
+    skillChoices: { count: 2, prompt: "Two skill proficiencies" },
   },
   {
     id: "half-orc",
@@ -280,7 +281,7 @@ export const PHB_RACES: PhbRace[] = [
     name: "Tiefling",
     size: "Medium",
     speed: 30,
-    abilityBonus: { kind: "fixed", bonuses: { cha: 2, int: 1 } },
+    abilityBonus: { kind: "fixed", bonuses: { cha: 2 } },
     languages: ["Common", "Infernal"],
     traits: [
       {
@@ -291,9 +292,79 @@ export const PHB_RACES: PhbRace[] = [
         name: "Hellish Resistance",
         description: "You have resistance to fire damage.",
       },
+    ],
+    subraces: [
       {
-        name: "Infernal Legacy",
-        description: "You know the thaumaturgy cantrip. At 3rd level, hellish rebuke; at 5th level, darkness (Charisma).",
+        id: "asmodeus",
+        name: "Asmodeus",
+        abilityBonus: { int: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level hellish rebuke; 5th level darkness (Charisma).",
+        ],
+      },
+      {
+        id: "baalzebul",
+        name: "Baalzebul",
+        abilityBonus: { int: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level ray of sickness; 5th level crown of madness (Charisma).",
+        ],
+      },
+      {
+        id: "dispater",
+        name: "Dispater",
+        abilityBonus: { dex: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level disguise self; 5th level detect thoughts (Charisma).",
+        ],
+      },
+      {
+        id: "fierna",
+        name: "Fierna",
+        abilityBonus: { int: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level friends; 5th level suggestion (Charisma).",
+        ],
+      },
+      {
+        id: "glasya",
+        name: "Glasya",
+        abilityBonus: { dex: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level minor illusion; 5th level invisibility (Charisma).",
+        ],
+      },
+      {
+        id: "levistus",
+        name: "Levistus",
+        abilityBonus: { con: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level armor of Agathys; 5th level darkness (Charisma).",
+        ],
+      },
+      {
+        id: "mammon",
+        name: "Mammon",
+        abilityBonus: { int: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level Tenser's floating disk; 5th level arcane lock (Charisma).",
+        ],
+      },
+      {
+        id: "mephistopheles",
+        name: "Mephistopheles",
+        abilityBonus: { int: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level burning hands; 5th level flame blade (Charisma).",
+        ],
+      },
+      {
+        id: "zariel",
+        name: "Zariel",
+        abilityBonus: { str: 1 },
+        extras: [
+          "Infernal Legacy: thaumaturgy; 3rd level searing smite; 5th level branding smite (Charisma).",
+        ],
       },
     ],
   },

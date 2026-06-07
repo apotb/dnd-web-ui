@@ -33,8 +33,10 @@ import {
   PHB_CLASSES,
 } from "@/lib/dnd/phb/classes";
 import { PHB_FEATS } from "@/lib/dnd/phb/feats";
+import { MARTIAL_WEAPONS } from "@/lib/dnd/phb/martial-weapons";
 import { getRace, ALL_RACES } from "@/lib/dnd/phb/races";
 import { getRaceGrantLines } from "@/lib/dnd/phb/race-grants";
+import { GENERAL_TOOLS } from "@/lib/dnd/phb/tools";
 import {
   getCantripsForList,
   getLevel1SpellsForList,
@@ -70,7 +72,10 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
     return getRaceGrantLines(selectedRace, {
       subraceId: state.subraceId,
       halfElfAbilityBonuses: state.halfElfAbilityBonuses,
-      halfElfSkills: state.halfElfSkills,
+      raceSkillChoices: state.raceSkillChoices,
+      raceWeaponChoices: state.raceWeaponChoices,
+      raceToolChoice: state.raceToolChoice,
+      raceSkillOrTool: state.raceSkillOrTool,
       variantHumanAbilityBonuses: state.variantHumanAbilityBonuses,
       variantHumanSkill: state.variantHumanSkill,
       variantHumanFeat: state.variantHumanFeat,
@@ -114,8 +119,28 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
         if (state.raceId === "half-elf" && state.halfElfAbilityBonuses.length !== 2) {
           return "Half-Elf: pick two ability scores for +1 (not Charisma).";
         }
-        if (state.raceId === "half-elf" && state.halfElfSkills.length !== 2) {
-          return "Half-Elf: pick two skill proficiencies.";
+        if (selectedRace?.skillChoices && !selectedRace.skillOrToolChoice) {
+          const { count } = selectedRace.skillChoices;
+          if (state.raceSkillChoices.length !== count) {
+            return `${selectedRace.name}: pick ${count} skill proficiency${count === 1 ? "" : "ies"}.`;
+          }
+        }
+        if (selectedRace?.skillOrToolChoice) {
+          if (!state.raceSkillOrTool) {
+            return `${selectedRace.name}: choose a skill or a tool.`;
+          }
+          if (state.raceSkillOrTool === "skill" && state.raceSkillChoices.length !== 1) {
+            return `${selectedRace.name}: pick one skill.`;
+          }
+          if (state.raceSkillOrTool === "tool" && !state.raceToolChoice) {
+            return `${selectedRace.name}: pick one tool.`;
+          }
+        }
+        if (selectedRace?.weaponChoices) {
+          const { count } = selectedRace.weaponChoices;
+          if (state.raceWeaponChoices.length !== count) {
+            return `${selectedRace.name}: pick ${count} martial weapon${count === 1 ? "" : "s"}.`;
+          }
         }
         if (state.raceId === "human" && state.subraceId === "variant") {
           if (state.variantHumanAbilityBonuses.length !== 2) return "Variant Human: pick two +1 abilities.";
@@ -132,13 +157,42 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
         if (state.backgroundLanguageChoices.length < bgLangCount) {
           return `Choose ${bgLangCount} language(s) from your background.`;
         }
-        if (selectedBackground?.toolProficiencies?.includes("artisan's tools") && !state.backgroundArtisanTool) {
+        if (selectedBackground?.skillChoices) {
+          const { count } = selectedBackground.skillChoices;
+          if (state.backgroundSkillChoices.length !== count) {
+            return `${selectedBackground.name}: pick ${count} background skill${count === 1 ? "" : "s"}.`;
+          }
+        }
+        if (selectedBackground?.toolPick && !state.backgroundToolPick) {
+          return `${selectedBackground.name}: pick a tool type.`;
+        }
+        if (selectedBackground?.toolMultiPick) {
+          const { count } = selectedBackground.toolMultiPick;
+          if (state.backgroundToolMulti.length !== count) {
+            return `${selectedBackground.name}: pick ${count} tools.`;
+          }
+        }
+        const needsGaming =
+          selectedBackground?.toolProficiencies?.includes("gaming set") ||
+          (selectedBackground?.toolPick?.options.includes("gaming set") &&
+            state.backgroundToolPick === "gaming set") ||
+          state.backgroundToolMulti.includes("gaming set");
+        const needsArtisan =
+          selectedBackground?.toolProficiencies?.includes("artisan's tools") ||
+          (selectedBackground?.toolPick?.options.includes("artisan's tools") &&
+            state.backgroundToolPick === "artisan's tools");
+        const needsInstrument =
+          selectedBackground?.toolProficiencies?.includes("musical instrument") ||
+          (selectedBackground?.toolPick?.options.includes("musical instrument") &&
+            state.backgroundToolPick === "musical instrument") ||
+          state.backgroundToolMulti.includes("musical instrument");
+        if (needsArtisan && !state.backgroundArtisanTool) {
           return "Choose an artisan's tool from your background.";
         }
-        if (selectedBackground?.toolProficiencies?.includes("gaming set") && !state.backgroundGamingSet) {
+        if (needsGaming && !state.backgroundGamingSet) {
           return "Choose a gaming set from your background.";
         }
-        if (selectedBackground?.toolProficiencies?.includes("musical instrument") && !state.backgroundMusicalInstrument) {
+        if (needsInstrument && !state.backgroundMusicalInstrument) {
           return "Choose a musical instrument from your background.";
         }
         if (
@@ -257,9 +311,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
     const skills = new Set<string>();
     selectedRace?.skillProficiencies?.forEach((s) => skills.add(SKILL_LABELS[s]));
     selectedBackground?.skillProficiencies.forEach((s) => skills.add(SKILL_LABELS[s]));
-    if (state.raceId === "half-elf") {
-      state.halfElfSkills.forEach((s) => skills.add(SKILL_LABELS[s]));
-    }
+    state.raceSkillChoices.forEach((s) => skills.add(SKILL_LABELS[s]));
     if (state.raceId === "human" && state.subraceId === "variant" && state.variantHumanSkill) {
       skills.add(SKILL_LABELS[state.variantHumanSkill]);
     }
@@ -331,7 +383,10 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                     raceId: e.target.value,
                     subraceId: "",
                     halfElfAbilityBonuses: [],
-                    halfElfSkills: [],
+                    raceSkillChoices: [],
+                    raceWeaponChoices: [],
+                    raceToolChoice: "",
+                    raceSkillOrTool: "",
                     variantHumanAbilityBonuses: [],
                     variantHumanSkill: "",
                     variantHumanFeat: "",
@@ -394,12 +449,99 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                       </button>
                     ))}
                   </div>
-                  <p className="candy-label">Two skill proficiencies</p>
+                </>
+              ) : null}
+
+              {selectedRace?.skillChoices && !selectedRace.skillOrToolChoice ? (
+                <>
+                  <p className="candy-label">
+                    {selectedRace.skillChoices.prompt ??
+                      `${selectedRace.skillChoices.count} skill proficiency${selectedRace.skillChoices.count === 1 ? "" : "ies"}`}
+                  </p>
                   <SkillPicker
-                    selected={state.halfElfSkills}
-                    max={2}
-                    onChange={(skills) => update({ halfElfSkills: skills })}
+                    selected={state.raceSkillChoices}
+                    max={selectedRace.skillChoices.count}
+                    options={selectedRace.skillChoices.options}
+                    onChange={(skills) => update({ raceSkillChoices: skills })}
                   />
+                </>
+              ) : null}
+
+              {selectedRace?.skillOrToolChoice ? (
+                <>
+                  <p className="candy-label">
+                    {selectedRace.skillOrToolChoice.prompt ?? "Skill or tool"}
+                  </p>
+                  <div className="creator-chip-row">
+                    <button
+                      type="button"
+                      className={`candy-btn candy-btn-sm${state.raceSkillOrTool === "skill" ? " candy-btn-active" : ""}`}
+                      onClick={() =>
+                        update({ raceSkillOrTool: "skill", raceToolChoice: "" })
+                      }
+                    >
+                      Skill
+                    </button>
+                    <button
+                      type="button"
+                      className={`candy-btn candy-btn-sm${state.raceSkillOrTool === "tool" ? " candy-btn-active" : ""}`}
+                      onClick={() =>
+                        update({ raceSkillOrTool: "tool", raceSkillChoices: [] })
+                      }
+                    >
+                      Tool
+                    </button>
+                  </div>
+                  {state.raceSkillOrTool === "skill" ? (
+                    <SkillPicker
+                      selected={state.raceSkillChoices}
+                      max={1}
+                      onChange={(skills) => update({ raceSkillChoices: skills })}
+                    />
+                  ) : null}
+                  {state.raceSkillOrTool === "tool" ? (
+                    <select
+                      className="candy-input"
+                      value={state.raceToolChoice}
+                      onChange={(e) => update({ raceToolChoice: e.target.value })}
+                    >
+                      <option value="">— choose tool —</option>
+                      {GENERAL_TOOLS.map((tool) => (
+                        <option key={tool} value={tool}>
+                          {tool}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                </>
+              ) : null}
+
+              {selectedRace?.weaponChoices ? (
+                <>
+                  <p className="candy-label">
+                    {selectedRace.weaponChoices.prompt ??
+                      `${selectedRace.weaponChoices.count} martial weapons`}
+                  </p>
+                  <div className="creator-chip-row creator-lang-grid">
+                    {MARTIAL_WEAPONS.map((weapon) => (
+                      <button
+                        key={weapon}
+                        type="button"
+                        className={`candy-btn candy-btn-sm${state.raceWeaponChoices.includes(weapon) ? " candy-btn-active" : ""}`}
+                        onClick={() =>
+                          update({
+                            raceWeaponChoices: toggleInList(
+                              state.raceWeaponChoices,
+                              weapon,
+                              selectedRace.weaponChoices!.count
+                            ),
+                          })
+                        }
+                      >
+                        {weapon}
+                      </button>
+                    ))}
+                  </div>
                 </>
               ) : null}
 
@@ -477,6 +619,9 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                     backgroundGamingSet: "",
                     backgroundMusicalInstrument: "",
                     backgroundExplorerTool: "",
+                    backgroundSkillChoices: [],
+                    backgroundToolPick: "",
+                    backgroundToolMulti: [],
                   })
                 }
               >
@@ -489,16 +634,109 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
               {selectedBackground ? (
                 <div className="creator-grants">
                   <p className="retro-muted">
-                    Skills: {selectedBackground.skillProficiencies.map((s) => SKILL_LABELS[s]).join(", ")}
+                    Skills:{" "}
+                    {[
+                      ...selectedBackground.skillProficiencies.map((s) => SKILL_LABELS[s]),
+                      ...state.backgroundSkillChoices.map((s) => SKILL_LABELS[s]),
+                    ].join(", ") || "—"}
                   </p>
-                  {selectedBackground.toolProficiencies?.length ? (
+                  {(selectedBackground.toolProficiencies?.length ||
+                    selectedBackground.toolPick ||
+                    selectedBackground.toolMultiPick) ? (
                     <p className="retro-muted">
-                      Tools: {selectedBackground.toolProficiencies.join(", ")}
+                      Tools:{" "}
+                      {[
+                        ...(selectedBackground.toolProficiencies ?? []),
+                        ...(state.backgroundToolPick ? [state.backgroundToolPick] : []),
+                        ...state.backgroundToolMulti,
+                        ...(state.backgroundArtisanTool ? [state.backgroundArtisanTool] : []),
+                        ...(state.backgroundGamingSet ? [state.backgroundGamingSet] : []),
+                        ...(state.backgroundMusicalInstrument
+                          ? [state.backgroundMusicalInstrument]
+                          : []),
+                        ...(state.backgroundExplorerTool ? [state.backgroundExplorerTool] : []),
+                      ].join(", ")}
                     </p>
                   ) : null}
                   <p className="retro-muted">Starting gold: {selectedBackground.gold} gp</p>
                   <p className="retro-muted">Feature: {selectedBackground.feature.name}</p>
                 </div>
+              ) : null}
+
+              {selectedBackground?.skillChoices ? (
+                <>
+                  <p className="candy-label">
+                    {selectedBackground.skillChoices.prompt ??
+                      `${selectedBackground.skillChoices.count} background skill(s)`}
+                  </p>
+                  <SkillPicker
+                    selected={state.backgroundSkillChoices}
+                    max={selectedBackground.skillChoices.count}
+                    options={selectedBackground.skillChoices.options}
+                    onChange={(skills) => update({ backgroundSkillChoices: skills })}
+                  />
+                </>
+              ) : null}
+
+              {selectedBackground?.toolPick ? (
+                <>
+                  <p className="candy-label">
+                    {selectedBackground.toolPick.prompt ?? "Tool proficiency"}
+                  </p>
+                  <div className="creator-chip-row">
+                    {selectedBackground.toolPick.options.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`candy-btn candy-btn-sm${state.backgroundToolPick === option ? " candy-btn-active" : ""}`}
+                        onClick={() =>
+                          update({
+                            backgroundToolPick: option,
+                            backgroundArtisanTool:
+                              option === "artisan's tools" ? state.backgroundArtisanTool : "",
+                            backgroundGamingSet:
+                              option === "gaming set" ? state.backgroundGamingSet : "",
+                            backgroundMusicalInstrument:
+                              option === "musical instrument"
+                                ? state.backgroundMusicalInstrument
+                                : "",
+                          })
+                        }
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
+              {selectedBackground?.toolMultiPick ? (
+                <>
+                  <p className="candy-label">
+                    {selectedBackground.toolMultiPick.prompt ??
+                      `Choose ${selectedBackground.toolMultiPick.count} tools`}
+                  </p>
+                  <div className="creator-chip-row">
+                    {selectedBackground.toolMultiPick.options.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`candy-btn candy-btn-sm${state.backgroundToolMulti.includes(option) ? " candy-btn-active" : ""}`}
+                        onClick={() =>
+                          update({
+                            backgroundToolMulti: toggleInList(
+                              state.backgroundToolMulti,
+                              option,
+                              selectedBackground.toolMultiPick!.count
+                            ),
+                          })
+                        }
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : null}
 
               {(selectedBackground?.languageChoices ?? 0) > 0 ? (
@@ -512,7 +750,9 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 </>
               ) : null}
 
-              {selectedBackground?.toolProficiencies?.includes("artisan's tools") ? (
+              {(selectedBackground?.toolProficiencies?.includes("artisan's tools") ||
+                (selectedBackground?.toolPick?.options.includes("artisan's tools") &&
+                  state.backgroundToolPick === "artisan's tools")) ? (
                 <>
                   <label className="candy-label">Artisan&apos;s tools</label>
                   <select
@@ -528,7 +768,10 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 </>
               ) : null}
 
-              {selectedBackground?.toolProficiencies?.includes("gaming set") ? (
+              {(selectedBackground?.toolProficiencies?.includes("gaming set") ||
+                (selectedBackground?.toolPick?.options.includes("gaming set") &&
+                  state.backgroundToolPick === "gaming set") ||
+                state.backgroundToolMulti.includes("gaming set")) ? (
                 <>
                   <label className="candy-label">Gaming set</label>
                   <select
@@ -544,7 +787,10 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 </>
               ) : null}
 
-              {selectedBackground?.toolProficiencies?.includes("musical instrument") ? (
+              {(selectedBackground?.toolProficiencies?.includes("musical instrument") ||
+                (selectedBackground?.toolPick?.options.includes("musical instrument") &&
+                  state.backgroundToolPick === "musical instrument") ||
+                state.backgroundToolMulti.includes("musical instrument")) ? (
                 <>
                   <label className="candy-label">Musical instrument</label>
                   <select

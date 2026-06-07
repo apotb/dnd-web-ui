@@ -6,7 +6,10 @@ import type { PhbRace } from "./types";
 export interface RaceGrantContext {
   subraceId?: string;
   halfElfAbilityBonuses?: AbilityKey[];
-  halfElfSkills?: SkillKey[];
+  raceSkillChoices?: SkillKey[];
+  raceWeaponChoices?: string[];
+  raceToolChoice?: string;
+  raceSkillOrTool?: "skill" | "tool" | "";
   variantHumanAbilityBonuses?: AbilityKey[];
   variantHumanSkill?: SkillKey | "";
   variantHumanFeat?: string;
@@ -41,20 +44,30 @@ export function getRaceGrantLines(
   const languages = describeLanguages(race, ctx);
   if (languages) lines.push({ label: "Languages", value: languages });
 
-  const weapons = race.weaponProficiencies?.length
-    ? race.weaponProficiencies.join(", ")
-    : "";
-  if (weapons) lines.push({ label: "Weapon proficiencies", value: weapons });
+  const weapons = [
+    ...(race.weaponProficiencies ?? []),
+    ...(subrace?.weaponProficiencies ?? []),
+    ...(ctx.raceWeaponChoices ?? []),
+  ];
+  if (weapons.length) {
+    lines.push({ label: "Weapon proficiencies", value: weapons.join(", ") });
+  }
 
-  const armor = race.armorProficiencies?.length
-    ? race.armorProficiencies.join(", ")
-    : "";
-  if (armor) lines.push({ label: "Armor proficiencies", value: armor });
+  const armor = [
+    ...(race.armorProficiencies ?? []),
+    ...(subrace?.armorProficiencies ?? []),
+  ];
+  if (armor.length) {
+    lines.push({ label: "Armor proficiencies", value: armor.join(", ") });
+  }
 
-  const tools = race.toolProficiencies?.length
-    ? race.toolProficiencies.join(", ")
-    : "";
-  if (tools) lines.push({ label: "Tool proficiencies", value: tools });
+  const tools = [
+    ...(race.toolProficiencies ?? []),
+    ...(ctx.raceToolChoice ? [ctx.raceToolChoice] : []),
+  ];
+  if (tools.length) {
+    lines.push({ label: "Tool proficiencies", value: tools.join(", ") });
+  }
 
   if (subrace?.extras?.length) {
     lines.push({
@@ -124,7 +137,11 @@ function describeAbilityBonuses(
       }
     }
     return Object.entries(merged)
-      .map(([key, value]) => `${ABILITY_LABELS[key as AbilityKey]} +${value}`)
+      .filter(([, value]) => value !== 0)
+      .map(([key, value]) => {
+        const label = ABILITY_LABELS[key as AbilityKey];
+        return value > 0 ? `${label} +${value}` : `${label} ${value}`;
+      })
       .join(", ");
   }
 
@@ -138,11 +155,23 @@ function describeSkills(race: PhbRace, ctx: RaceGrantContext): string | null {
     parts.push(SKILL_LABELS[skill]);
   });
 
-  if (race.id === "half-elf") {
-    if (ctx.halfElfSkills?.length) {
-      parts.push(...ctx.halfElfSkills.map((s) => SKILL_LABELS[s]));
+  if (race.skillOrToolChoice) {
+    if (ctx.raceSkillOrTool === "skill" && ctx.raceSkillChoices?.length) {
+      parts.push(...ctx.raceSkillChoices.map((s) => SKILL_LABELS[s]));
+    } else if (ctx.raceSkillOrTool === "tool" && ctx.raceToolChoice) {
+      parts.push(`tool: ${ctx.raceToolChoice}`);
     } else {
-      parts.push("two skills of your choice");
+      parts.push("one skill or tool of your choice");
+    }
+  } else if (race.skillChoices) {
+    if (ctx.raceSkillChoices?.length) {
+      parts.push(...ctx.raceSkillChoices.map((s) => SKILL_LABELS[s]));
+    } else {
+      parts.push(
+        race.skillChoices.count === 1
+          ? "one skill of your choice"
+          : `${race.skillChoices.count} skills of your choice`
+      );
     }
   }
 

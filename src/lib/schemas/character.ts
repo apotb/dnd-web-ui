@@ -209,6 +209,8 @@ export const characterDataSchema = z.object({
   skills: skillsSchema.default({}),
   languages: z.array(z.string()).default([]),
   toolProficiencies: z.array(z.string()).default([]),
+  weaponProficiencies: z.array(z.string()).default([]),
+  armorProficiencies: z.array(z.string()).default([]),
   combat: combatStatsSchema.default(() => combatStatsSchema.parse({})),
   attacks: z.array(attackSchema).default([]),
   spells: spellsSchema.default(() => spellsSchema.parse({})),

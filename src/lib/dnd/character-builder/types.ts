@@ -28,13 +28,19 @@ export interface CharacterCreatorState {
   variantHumanAbilityBonuses: AbilityKey[];
   variantHumanSkill: SkillKey | "";
   variantHumanFeat: string;
-  halfElfSkills: SkillKey[];
+  raceSkillChoices: SkillKey[];
+  raceWeaponChoices: string[];
+  raceToolChoice: string;
+  raceSkillOrTool: "skill" | "tool" | "";
   raceLanguageChoices: string[];
   backgroundLanguageChoices: string[];
   backgroundArtisanTool: string;
   backgroundGamingSet: string;
   backgroundMusicalInstrument: string;
   backgroundExplorerTool: string;
+  backgroundSkillChoices: SkillKey[];
+  backgroundToolPick: "" | "gaming set" | "artisan's tools" | "musical instrument";
+  backgroundToolMulti: Array<"thieves' tools" | "gaming set" | "musical instrument">;
   fightingStyle: string;
   favoredEnemy: string;
   favoredTerrain: string;
@@ -63,13 +69,19 @@ export function createInitialCreatorState(): CharacterCreatorState {
     variantHumanAbilityBonuses: [],
     variantHumanSkill: "",
     variantHumanFeat: "",
-    halfElfSkills: [],
+    raceSkillChoices: [],
+    raceWeaponChoices: [],
+    raceToolChoice: "",
+    raceSkillOrTool: "",
     raceLanguageChoices: [],
     backgroundLanguageChoices: [],
     backgroundArtisanTool: "",
     backgroundGamingSet: "",
     backgroundMusicalInstrument: "",
     backgroundExplorerTool: "",
+    backgroundSkillChoices: [],
+    backgroundToolPick: "",
+    backgroundToolMulti: [],
     fightingStyle: "",
     favoredEnemy: "",
     favoredTerrain: "",

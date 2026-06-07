@@ -1,6 +1,9 @@
 import type { PhbRace } from "./types";
 
-/** Races from EEPC, Volo's, MToF, Eberron, and other WotC supplements (2014 rules). */
+/**
+ * Supplemental races using D&D 5e (2014) rules from:
+ * EEPC, Volo's Guide to Monsters, Mordenkainen's Tome of Foes, Eberron: Rising from the Last War.
+ */
 export const EXTENDED_RACES: PhbRace[] = [
   {
     id: "aarakocra",
@@ -16,7 +19,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Talons",
-        description: "You are proficient with your unarmed strikes, which deal 1d4 slashing damage.",
+        description: "You are proficient with your unarmed strikes, which deal 1d4 slashing damage on a hit.",
       },
     ],
   },
@@ -38,7 +41,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Healing Hands",
-        description: "As an action, restore hit points equal to your level (once per long rest).",
+        description: "As an action, you touch a creature and restore hit points equal to your level (once per long rest).",
       },
       {
         name: "Light Bearer",
@@ -50,7 +53,7 @@ export const EXTENDED_RACES: PhbRace[] = [
         id: "protector",
         name: "Protector",
         abilityBonus: { wis: 1 },
-        extras: ["Radiant Soul: Once per long rest, sprout wings for 1 minute and deal extra radiant damage once per turn."],
+        extras: ["Radiant Soul: Once per long rest, sprout spectral wings for 1 minute and deal extra radiant damage once per turn."],
       },
       {
         id: "scourge",
@@ -81,15 +84,19 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Long-Limbed",
-        description: "Your reach is 5 feet greater than normal when making melee attacks on your turn.",
+        description: "When you make a melee attack on your turn, your reach is 5 feet greater than normal.",
       },
       {
         name: "Powerful Build",
-        description: "You count as one size larger when determining carrying capacity and push/drag/lift limits.",
+        description: "You count as one size larger when determining carrying capacity and the weight you can push, drag, or lift.",
       },
       {
         name: "Surprise Attack",
-        description: "If you hit a surprised creature, it takes an extra 2d6 damage (once per turn).",
+        description: "If you hit a creature surprised by you, it takes an extra 2d6 damage from the attack (once per turn).",
+      },
+      {
+        name: "Sneaky",
+        description: "You are proficient in the Stealth skill.",
       },
     ],
   },
@@ -101,14 +108,15 @@ export const EXTENDED_RACES: PhbRace[] = [
     abilityBonus: { kind: "fixed", bonuses: { cha: 2, dex: 1 } },
     languages: ["Common"],
     languageChoices: 2,
+    skillChoices: { count: 2, prompt: "Changeling Instincts (two skills)" },
     traits: [
       {
         name: "Shapechanger",
-        description: "As an action, you can change your appearance and voice. You revert when you die.",
+        description: "As an action, you can change your appearance and voice. You determine the specifics; your clothing and equipment aren't changed.",
       },
       {
         name: "Changeling Instincts",
-        description: "You gain proficiency in two skills of your choice.",
+        description: "You gain proficiency with two skills of your choice.",
       },
     ],
   },
@@ -119,7 +127,6 @@ export const EXTENDED_RACES: PhbRace[] = [
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { wis: 2, str: 1 } },
     languages: ["Common", "Elvish", "Giant"],
-    skillProficiencies: ["nature", "survival"],
     traits: [
       {
         name: "Firbolg Magic",
@@ -127,7 +134,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Hidden Step",
-        description: "As a bonus action, turn invisible until the start of your next turn (once per short or long rest).",
+        description: "As a bonus action, you turn invisible until the start of your next turn or until you attack, deal damage, or force a save (once per short or long rest).",
       },
       {
         name: "Powerful Build",
@@ -149,7 +156,7 @@ export const EXTENDED_RACES: PhbRace[] = [
     traits: [
       {
         name: "Elemental Legacy",
-        description: "Your subrace determines your elemental cantrip and resistance.",
+        description: "Your subrace determines your elemental cantrip, resistance, and other traits.",
       },
     ],
     subraces: [
@@ -157,25 +164,25 @@ export const EXTENDED_RACES: PhbRace[] = [
         id: "air",
         name: "Air Genasi",
         abilityBonus: { dex: 2, wis: 1 },
-        extras: ["Unending Breath", "Mingle with the Wind (shocking grasp cantrip)", "Lightning resistance"],
+        extras: ["Unending Breath", "Mingle with the Wind (shocking grasp)", "Lightning resistance"],
       },
       {
         id: "earth",
         name: "Earth Genasi",
         abilityBonus: { str: 2, con: 1 },
-        extras: ["Earth Walk", "Merge with Stone (blade ward cantrip)", "Pass without trace 1/day"],
+        extras: ["Earth Walk", "Merge with Stone (blade ward)", "Pass without trace 1/day"],
       },
       {
         id: "fire",
         name: "Fire Genasi",
         abilityBonus: { int: 2, con: 1 },
-        extras: ["Darkvision 60 ft", "Fire resistance", "Reach to the Blaze (produce flame cantrip)"],
+        extras: ["Darkvision 60 ft", "Fire resistance", "Reach to the Blaze (produce flame)"],
       },
       {
         id: "water",
         name: "Water Genasi",
         abilityBonus: { wis: 2, con: 1 },
-        extras: ["Acid resistance", "Amphibious", "Call to the Wave (shape water cantrip)", "Swim speed 30 ft"],
+        extras: ["Acid resistance", "Amphibious", "Call to the Wave (shape water)", "Swim speed 30 ft"],
       },
     ],
   },
@@ -186,18 +193,19 @@ export const EXTENDED_RACES: PhbRace[] = [
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { str: 2, int: 1 } },
     languages: ["Common", "Gith"],
+    languageChoices: 1,
+    skillOrToolChoice: { prompt: "Decadent Mastery (one skill or one tool)" },
     weaponProficiencies: ["greatsword", "longsword", "shortsword"],
     traits: [
       {
         name: "Decadent Mastery",
-        description: "You learn one language of your choice and gain proficiency with one skill or tool.",
+        description: "You learn one language of your choice and gain proficiency with one skill or tool of your choice.",
       },
       {
         name: "Githyanki Psionics",
         description: "You know the mage hand cantrip; at 3rd level jump; at 5th level misty step (Intelligence).",
       },
     ],
-    languageChoices: 1,
   },
   {
     id: "githzerai",
@@ -209,11 +217,11 @@ export const EXTENDED_RACES: PhbRace[] = [
     traits: [
       {
         name: "Mental Discipline",
-        description: "You have advantage on saving throws against being charmed and frightened.",
+        description: "You have advantage on saving throws against the charmed and frightened conditions.",
       },
       {
         name: "Githzerai Psionics",
-        description: "You know mage hand; at 3rd level shield; at 5th level detect thoughts (Wisdom).",
+        description: "You know the mage hand cantrip; at 3rd level shield; at 5th level detect thoughts (Wisdom).",
       },
     ],
   },
@@ -254,7 +262,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Stone's Endurance",
-        description: "When you take damage, reduce it by 1d12 + Con mod (once per short or long rest).",
+        description: "When you take damage, you can use your reaction to roll 1d12 + Con mod and reduce the damage by that total (once per short or long rest).",
       },
       {
         name: "Powerful Build",
@@ -262,7 +270,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Mountain Born",
-        description: "You are acclimated to high altitude and cold climates.",
+        description: "You are acclimated to high altitude, including elevations above 20,000 feet, and cold climates.",
       },
     ],
   },
@@ -273,7 +281,8 @@ export const EXTENDED_RACES: PhbRace[] = [
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { con: 2, int: 1 } },
     languages: ["Common", "Goblin"],
-    weaponProficiencies: ["longsword", "shortsword", "longbow", "shortbow"],
+    weaponChoices: { count: 2, prompt: "Martial Training (two martial weapons)" },
+    armorProficiencies: ["light armor"],
     traits: [
       {
         name: "Darkvision",
@@ -285,10 +294,9 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Saving Face",
-        description: "If you miss an attack or fail a check, add +5 after seeing the roll (once per short or long rest).",
+        description: "When you miss an attack roll or fail an ability check or save, add +5 to the roll after seeing the result (once per short or long rest).",
       },
     ],
-    armorProficiencies: ["light armor"],
   },
   {
     id: "kalashtar",
@@ -296,7 +304,7 @@ export const EXTENDED_RACES: PhbRace[] = [
     size: "Medium",
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { wis: 2, cha: 1 } },
-    languages: ["Common", "Quori", "One language of your choice"],
+    languages: ["Common", "Quori"],
     languageChoices: 1,
     traits: [
       {
@@ -309,11 +317,11 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Mind Link",
-        description: "You can telepathically speak to creatures you can see within 10 feet.",
+        description: "You can telepathically speak to any creature you can see within 10 feet.",
       },
       {
         name: "Severed from Dreams",
-        description: "You don't dream and are immune to spells that require you to dream.",
+        description: "You don't dream and are immune to spells and effects that require you to dream.",
       },
     ],
   },
@@ -324,19 +332,23 @@ export const EXTENDED_RACES: PhbRace[] = [
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { dex: 2, wis: 1 } },
     languages: ["Common", "Auran"],
-    skillProficiencies: ["deception", "stealth"],
+    skillChoices: {
+      count: 2,
+      options: ["acrobatics", "deception", "stealth", "sleightOfHand"],
+      prompt: "Kenku Training (two skills)",
+    },
     traits: [
       {
         name: "Expert Forgery",
-        description: "You can duplicate another creature's handwriting and craftwork.",
+        description: "You can duplicate another creature's handwriting and craftwork given enough time and materials.",
       },
       {
         name: "Kenku Training",
-        description: "You are proficient in your choice of two skills or tools.",
+        description: "You are proficient in your choice of two skills from Acrobatics, Deception, Stealth, and Sleight of Hand.",
       },
       {
         name: "Mimicry",
-        description: "You can mimic sounds and voices you have heard.",
+        description: "You can mimic sounds you have heard, including voices.",
       },
     ],
   },
@@ -345,7 +357,7 @@ export const EXTENDED_RACES: PhbRace[] = [
     name: "Kobold",
     size: "Small",
     speed: 30,
-    abilityBonus: { kind: "fixed", bonuses: { dex: 2 } },
+    abilityBonus: { kind: "fixed", bonuses: { dex: 2, str: -2 } },
     languages: ["Common", "Draconic"],
     traits: [
       {
@@ -354,15 +366,15 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Grovel, Cower, and Beg",
-        description: "As an action on your turn, give allies advantage on attacks against enemies within 10 feet (once per short or long rest).",
+        description: "As an action on your turn, you can cower to distract foes; until your next turn, your allies gain advantage on attacks against enemies within 10 feet of you (once per short or long rest).",
       },
       {
         name: "Pack Tactics",
-        description: "You have advantage on attack rolls against a creature if at least one ally is within 5 feet of it.",
+        description: "You have advantage on an attack roll against a creature if at least one of your allies is within 5 feet of the creature and the ally isn't incapacitated.",
       },
       {
         name: "Sunlight Sensitivity",
-        description: "You have disadvantage on attack rolls and Perception checks that rely on sight in direct sunlight.",
+        description: "You have disadvantage on attack rolls and Wisdom (Perception) checks that rely on sight when you or your target is in direct sunlight.",
       },
     ],
   },
@@ -373,19 +385,23 @@ export const EXTENDED_RACES: PhbRace[] = [
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { con: 2, wis: 1 } },
     languages: ["Common", "Draconic"],
-    skillProficiencies: ["nature", "perception", "stealth", "survival"],
+    skillChoices: {
+      count: 2,
+      options: ["animalHandling", "nature", "perception", "stealth", "survival"],
+      prompt: "Two skill proficiencies",
+    },
     traits: [
       {
         name: "Bite",
-        description: "Your unarmed strike deals 1d6 + Str piercing damage.",
+        description: "Your fanged maw is a natural weapon (1d6 + Str piercing on a hit).",
       },
       {
         name: "Cunning Artisan",
-        description: "As part of a short rest, you can harvest bone and hide from a slain creature to craft a shield, club, javelin, or 1d4 blowgun darts.",
+        description: "As part of a short rest, you can harvest bone and hide from a slain beast to craft a shield, club, javelin, or 1d4 blowgun darts.",
       },
       {
         name: "Hold Breath",
-        description: "You can hold your breath for up to 15 minutes.",
+        description: "You can hold your breath for up to 15 minutes at a time.",
       },
       {
         name: "Natural Armor",
@@ -393,7 +409,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Hungry Jaws",
-        description: "As a bonus action, make a bite attack; if it hits, gain temporary HP equal to your Con mod (once per short or long rest).",
+        description: "As a bonus action, make a bite attack; if it hits, you gain temporary HP equal to your Con mod (minimum 1, once per short or long rest).",
       },
     ],
   },
@@ -404,7 +420,19 @@ export const EXTENDED_RACES: PhbRace[] = [
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { str: 2, con: 1 } },
     languages: ["Common", "Orc"],
-    skillProficiencies: [],
+    skillChoices: {
+      count: 2,
+      options: [
+        "animalHandling",
+        "insight",
+        "intimidation",
+        "medicine",
+        "nature",
+        "perception",
+        "survival",
+      ],
+      prompt: "Primal Intuition (two skills)",
+    },
     traits: [
       {
         name: "Darkvision",
@@ -412,7 +440,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Aggressive",
-        description: "As a bonus action, move up to your speed toward a hostile creature you can see.",
+        description: "As a bonus action, you can move up to your speed toward a hostile creature you can see.",
       },
       {
         name: "Powerful Build",
@@ -420,7 +448,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Primal Intuition",
-        description: "You gain proficiency in two skills of your choice from Animal Handling, Insight, Intimidation, Medicine, Nature, Perception, and Survival.",
+        description: "You gain proficiency in two skills from Animal Handling, Insight, Intimidation, Medicine, Nature, Perception, and Survival.",
       },
     ],
   },
@@ -438,7 +466,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Shifting",
-        description: "As a bonus action, shift for 1 minute to gain temporary HP and a subrace benefit (once per short or long rest).",
+        description: "As a bonus action, you shift for 1 minute to gain temporary HP and a subrace benefit (once per short or long rest).",
       },
     ],
     subraces: [
@@ -464,7 +492,7 @@ export const EXTENDED_RACES: PhbRace[] = [
         id: "wildhunt",
         name: "Wildhunt",
         abilityBonus: { wis: 2 },
-        extras: ["While shifted, you have advantage on Wisdom checks and no creature within 30 feet can make attack rolls with advantage against you."],
+        extras: ["While shifted, you have advantage on Wisdom checks and no creature within 30 feet can make attack rolls with advantage against you unless you are incapacitated."],
       },
     ],
   },
@@ -474,7 +502,7 @@ export const EXTENDED_RACES: PhbRace[] = [
     size: "Medium",
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { dex: 2, cha: 1 } },
-    languages: ["Common", "One language of your choice"],
+    languages: ["Common"],
     languageChoices: 1,
     skillProficiencies: ["perception", "stealth"],
     traits: [
@@ -528,7 +556,7 @@ export const EXTENDED_RACES: PhbRace[] = [
     size: "Medium",
     speed: 30,
     abilityBonus: { kind: "fixed", bonuses: { con: 2 } },
-    languages: ["Common", "One language of your choice"],
+    languages: ["Common"],
     languageChoices: 1,
     traits: [
       {
@@ -537,7 +565,7 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Sentry's Rest",
-        description: "When you take a long rest, you remain conscious and inactive for 6 hours.",
+        description: "When you take a long rest, you spend 6 hours in an inactive but conscious state.",
       },
       {
         name: "Integrated Protection",
@@ -546,22 +574,22 @@ export const EXTENDED_RACES: PhbRace[] = [
     ],
     subraces: [
       {
-        id: "juggernaut",
-        name: "Juggernaut (+1 Strength)",
+        id: "str",
+        name: "+1 Strength",
         abilityBonus: { str: 1 },
-        extras: ["Built for heavy combat and raw power."],
+        extras: ["One other ability score of your choice increases by 1 (Strength)."],
       },
       {
-        id: "skirmisher",
-        name: "Skirmisher (+1 Dexterity)",
+        id: "dex",
+        name: "+1 Dexterity",
         abilityBonus: { dex: 1 },
-        extras: ["Built for speed and agility."],
+        extras: ["One other ability score of your choice increases by 1 (Dexterity)."],
       },
       {
-        id: "envoy",
-        name: "Envoy (+1 Intelligence)",
+        id: "int",
+        name: "+1 Intelligence",
         abilityBonus: { int: 1 },
-        extras: ["Built for adaptability and integrated tool expertise."],
+        extras: ["One other ability score of your choice increases by 1 (Intelligence)."],
       },
     ],
   },

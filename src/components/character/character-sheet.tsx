@@ -176,6 +176,16 @@ export function CharacterSheet({
               Tool proficiencies: {data.toolProficiencies.join(", ")}
             </p>
           ) : null}
+          {data.weaponProficiencies.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Weapon proficiencies: {data.weaponProficiencies.join(", ")}
+            </p>
+          ) : null}
+          {data.armorProficiencies.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Armor proficiencies: {data.armorProficiencies.join(", ")}
+            </p>
+          ) : null}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Quick Stats</CardTitle>

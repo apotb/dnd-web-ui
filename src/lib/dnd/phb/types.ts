@@ -24,11 +24,28 @@ export interface PhbRace {
   weaponProficiencies?: string[];
   armorProficiencies?: string[];
   traits: { name: string; description: string }[];
+  /** Pick N martial weapons from the PHB martial weapon list. */
+  weaponChoices?: {
+    count: number;
+    prompt?: string;
+  };
+  /** Pick one skill or one tool (Githyanki Decadent Mastery). */
+  skillOrToolChoice?: {
+    prompt?: string;
+  };
+  /** Pick N skill proficiencies from options (or any skill if omitted). */
+  skillChoices?: {
+    count: number;
+    options?: SkillKey[];
+    prompt?: string;
+  };
   /** Sub-choice within race (e.g. draconic ancestry, gnome subrace). */
   subraces?: {
     id: string;
     name: string;
     abilityBonus?: Partial<Record<AbilityKey, number>>;
+    weaponProficiencies?: string[];
+    armorProficiencies?: string[];
     extras?: string[];
   }[];
 }
@@ -40,6 +57,23 @@ export interface PhbBackground {
   toolProficiencies?: string[];
   languageChoices?: number;
   fixedLanguages?: string[];
+  /** Pick N skills from options (or any skill if options omitted). */
+  skillChoices?: {
+    count: number;
+    options?: SkillKey[];
+    prompt?: string;
+  };
+  /** Pick exactly one tool type from the listed options. */
+  toolPick?: {
+    options: Array<"gaming set" | "artisan's tools" | "musical instrument">;
+    prompt?: string;
+  };
+  /** Pick N tool types (e.g. Urban Bounty Hunter). */
+  toolMultiPick?: {
+    count: number;
+    options: Array<"thieves' tools" | "gaming set" | "musical instrument">;
+    prompt?: string;
+  };
   equipment: string[];
   gold: number;
   feature: { name: string; description: string };

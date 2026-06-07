@@ -16,6 +16,13 @@ import { expandEquipmentItems } from "@/lib/dnd/phb/equipment";
 import { getFeat } from "@/lib/dnd/phb/feats";
 import { isValidPointBuy } from "@/lib/dnd/phb/point-buy";
 import { getRace, getRaceDisplayName } from "@/lib/dnd/phb/races";
+import {
+  getRaceAcBonus,
+  getRaceArmorProficiencies,
+  getRaceSpeed,
+  getRaceWeaponProficiencies,
+  usesLizardfolkNaturalArmor,
+} from "@/lib/dnd/phb/race-mechanics";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import type { CharacterCreatorState } from "./types";
 
@@ -128,8 +135,9 @@ function collectSkillProficiencies(state: CharacterCreatorState): Set<SkillKey> 
 
   race?.skillProficiencies?.forEach((s) => skills.add(s));
   background?.skillProficiencies.forEach((s) => skills.add(s));
+  state.backgroundSkillChoices.forEach((s) => skills.add(s));
   state.classSkills.forEach((s) => skills.add(s));
-  state.halfElfSkills.forEach((s) => skills.add(s));
+  state.raceSkillChoices.forEach((s) => skills.add(s));
 
   if (state.raceId === "human" && state.subraceId === "variant" && state.variantHumanSkill) {
     skills.add(state.variantHumanSkill);
@@ -169,17 +177,41 @@ function collectTools(state: CharacterCreatorState): string[] {
       state.backgroundExplorerTool
     ) {
       tools.add(state.backgroundExplorerTool);
-    } else if (!t.includes(" or ") && !t.endsWith(" set")) {
+    } else if (t === "vehicles (land)" || t === "vehicles (water)" || t === "thieves' tools" || t === "herbalism kit" || t === "disguise kit" || t === "forgery kit" || t === "navigator's tools") {
       tools.add(t);
-    } else if (t === "gaming set") {
-      // handled above
-    } else {
+    } else if (!t.includes(" or ")) {
       tools.add(t);
     }
   });
 
+  if (background?.toolPick && state.backgroundToolPick) {
+    if (state.backgroundToolPick === "gaming set" && state.backgroundGamingSet) {
+      tools.add(state.backgroundGamingSet);
+    } else if (state.backgroundToolPick === "artisan's tools" && state.backgroundArtisanTool) {
+      tools.add(state.backgroundArtisanTool);
+    } else if (
+      state.backgroundToolPick === "musical instrument" &&
+      state.backgroundMusicalInstrument
+    ) {
+      tools.add(state.backgroundMusicalInstrument);
+    }
+  }
+
+  if (background?.toolMultiPick) {
+    for (const pick of state.backgroundToolMulti) {
+      if (pick === "thieves' tools") tools.add("thieves' tools");
+      if (pick === "gaming set" && state.backgroundGamingSet) {
+        tools.add(state.backgroundGamingSet);
+      }
+      if (pick === "musical instrument" && state.backgroundMusicalInstrument) {
+        tools.add(state.backgroundMusicalInstrument);
+      }
+    }
+  }
+
   cls?.toolProficiencies?.forEach((t) => tools.add(t));
   if (state.monkTool) tools.add(state.monkTool);
+  if (state.raceToolChoice) tools.add(state.raceToolChoice);
 
   return [...tools];
 }
@@ -206,6 +238,7 @@ function resolveEquipmentNames(state: CharacterCreatorState): string[] {
 }
 
 function calculateAc(
+  state: CharacterCreatorState,
   classId: string,
   scores: CharacterData["abilityScores"],
   itemNames: string[]
@@ -215,7 +248,6 @@ function calculateAc(
   const wisMod = abilityModifier(scores.wis);
 
   let bestArmor: (typeof ARMOR_AC)[string] | null = null;
-  let armorName = "";
   let hasShield = false;
 
   for (const raw of itemNames) {
@@ -224,26 +256,27 @@ function calculateAc(
     const armor = ARMOR_AC[name];
     if (armor && (!bestArmor || armor.base > bestArmor.base)) {
       bestArmor = armor;
-      armorName = name;
     }
   }
 
+  let ac: number;
   if (bestArmor) {
     const dexBonus =
       bestArmor.maxDex === undefined
         ? dexMod
         : Math.min(dexMod, bestArmor.maxDex);
-    return bestArmor.base + dexBonus + (hasShield ? 2 : 0);
+    ac = bestArmor.base + dexBonus + (hasShield ? 2 : 0);
+  } else if (usesLizardfolkNaturalArmor(state, false)) {
+    ac = 13 + dexMod + (hasShield ? 2 : 0);
+  } else if (classId === "barbarian") {
+    ac = 10 + dexMod + conMod + (hasShield ? 2 : 0);
+  } else if (classId === "monk") {
+    ac = 10 + dexMod + wisMod;
+  } else {
+    ac = 10 + dexMod + (hasShield ? 2 : 0);
   }
 
-  if (classId === "barbarian") {
-    return 10 + dexMod + conMod + (hasShield ? 2 : 0);
-  }
-  if (classId === "monk") {
-    return 10 + dexMod + wisMod;
-  }
-
-  return 10 + dexMod + (hasShield ? 2 : 0);
+  return ac + getRaceAcBonus(state);
 }
 
 function buildFeatures(state: CharacterCreatorState): Feature[] {
@@ -338,6 +371,15 @@ function buildFeatures(state: CharacterCreatorState): Feature[] {
     }
   }
 
+  if (state.raceId === "warforged") {
+    features.push({
+      id: crypto.randomUUID(),
+      name: "Integrated Protection",
+      description: "+1 bonus to Armor Class (included in your AC).",
+      restReset: "none",
+    });
+  }
+
   return features;
 }
 
@@ -418,17 +460,14 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
 
   let gp = background?.gold ?? 0;
 
-  const speed =
-    state.raceId === "elf" && state.subraceId === "wood"
-      ? 35
-      : race?.speed ?? 30;
+  const speed = getRaceSpeed(state);
 
   let maxHp = (cls?.hitDie ?? 8) + conMod;
   if (state.raceId === "dwarf" && state.subraceId === "hill") {
     maxHp += 1;
   }
 
-  const ac = calculateAc(state.classId, scores, itemNames);
+  const ac = calculateAc(state, state.classId, scores, itemNames);
 
   const skillSet = collectSkillProficiencies(state);
   const skills: CharacterData["skills"] = {};
@@ -464,6 +503,8 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
     skills,
     languages: collectLanguages(state),
     toolProficiencies: collectTools(state),
+    weaponProficiencies: getRaceWeaponProficiencies(state),
+    armorProficiencies: getRaceArmorProficiencies(state),
     combat: {
       ac,
       maxHp,
@@ -516,6 +557,43 @@ export function validateCreatorState(state: CharacterCreatorState): string[] {
   if (!state.raceId) errors.push("Race is required.");
   if (!state.backgroundId) errors.push("Background is required.");
 
+  const background = getBackground(state.backgroundId);
+  if (background?.skillChoices) {
+    if (state.backgroundSkillChoices.length !== background.skillChoices.count) {
+      errors.push(
+        `${background.name} requires ${background.skillChoices.count} skill choice(s).`
+      );
+    }
+  }
+  if (background?.toolPick && !state.backgroundToolPick) {
+    errors.push(`${background.name} requires a tool choice.`);
+  }
+  if (background?.toolPick?.options.includes("gaming set") && state.backgroundToolPick === "gaming set" && !state.backgroundGamingSet) {
+    errors.push(`${background.name} requires a gaming set choice.`);
+  }
+  if (background?.toolPick?.options.includes("artisan's tools") && state.backgroundToolPick === "artisan's tools" && !state.backgroundArtisanTool) {
+    errors.push(`${background.name} requires an artisan's tool choice.`);
+  }
+  if (background?.toolPick?.options.includes("musical instrument") && state.backgroundToolPick === "musical instrument" && !state.backgroundMusicalInstrument) {
+    errors.push(`${background.name} requires a musical instrument choice.`);
+  }
+  if (background?.toolMultiPick) {
+    if (state.backgroundToolMulti.length !== background.toolMultiPick.count) {
+      errors.push(
+        `${background.name} requires ${background.toolMultiPick.count} tool choices.`
+      );
+    }
+    if (state.backgroundToolMulti.includes("gaming set") && !state.backgroundGamingSet) {
+      errors.push(`${background.name} requires a gaming set choice.`);
+    }
+    if (state.backgroundToolMulti.includes("musical instrument") && !state.backgroundMusicalInstrument) {
+      errors.push(`${background.name} requires a musical instrument choice.`);
+    }
+  }
+  if (background?.toolProficiencies?.includes("gaming set") && !state.backgroundGamingSet) {
+    errors.push(`${background.name} requires a gaming set choice.`);
+  }
+
   const race = getRace(state.raceId);
   if (race?.subraces?.length && !state.subraceId) {
     errors.push("Subrace is required.");
@@ -525,8 +603,31 @@ export function validateCreatorState(state: CharacterCreatorState): string[] {
     if (state.halfElfAbilityBonuses.length !== 2) {
       errors.push("Half-Elf requires two +1 ability score choices.");
     }
-    if (state.halfElfSkills.length !== 2) {
-      errors.push("Half-Elf requires two skill proficiencies.");
+  }
+
+  if (race?.skillChoices && !race.skillOrToolChoice) {
+    if (state.raceSkillChoices.length !== race.skillChoices.count) {
+      errors.push(
+        `${race.name} requires ${race.skillChoices.count} skill choice(s).`
+      );
+    }
+  }
+
+  if (race?.skillOrToolChoice) {
+    if (!state.raceSkillOrTool) {
+      errors.push(`${race.name} requires a skill or tool choice.`);
+    } else if (state.raceSkillOrTool === "skill" && state.raceSkillChoices.length !== 1) {
+      errors.push(`${race.name} requires one skill choice.`);
+    } else if (state.raceSkillOrTool === "tool" && !state.raceToolChoice) {
+      errors.push(`${race.name} requires one tool choice.`);
+    }
+  }
+
+  if (race?.weaponChoices) {
+    if (state.raceWeaponChoices.length !== race.weaponChoices.count) {
+      errors.push(
+        `${race.name} requires ${race.weaponChoices.count} weapon choice(s).`
+      );
     }
   }
 

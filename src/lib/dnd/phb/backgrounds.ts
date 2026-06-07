@@ -1,4 +1,5 @@
 import type { PhbBackground } from "./types";
+import { EXTENDED_BACKGROUNDS } from "./extended-backgrounds";
 
 export const PHB_BACKGROUNDS: PhbBackground[] = [
   {
@@ -210,9 +211,11 @@ export const TOA_BACKGROUNDS: PhbBackground[] = [
   },
 ];
 
-export const ALL_BACKGROUNDS: PhbBackground[] = [...PHB_BACKGROUNDS, ...TOA_BACKGROUNDS].sort(
-  (a, b) => a.name.localeCompare(b.name)
-);
+export const ALL_BACKGROUNDS: PhbBackground[] = [
+  ...PHB_BACKGROUNDS,
+  ...TOA_BACKGROUNDS,
+  ...EXTENDED_BACKGROUNDS,
+].sort((a, b) => a.name.localeCompare(b.name));
 
 export function getBackground(id: string): PhbBackground | undefined {
   return ALL_BACKGROUNDS.find((b) => b.id === id);
