@@ -10,7 +10,7 @@ export default async function CreateCharacterPage({
   return (
     <div>
       <h2 className="page-title">Create Character</h2>
-      <p className="retro-muted creator-intro">
+      <p className="retro-note">
         Build a 1st-level PHB character with point buy. Download JSON when finished — your DM
         can import it from the Characters tab.
       </p>

@@ -10,7 +10,7 @@ const courier = Courier_Prime({
 });
 
 export const metadata: Metadata = {
-  title: "Campaign Table",
+  title: "dnd-web-ui",
   description: "Live D&D party sheet",
 };
 

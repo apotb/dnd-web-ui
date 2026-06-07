@@ -21,13 +21,15 @@ export function CharacterSheetsList({
 
   return (
     <div>
-      <div className="retro-header-row">
-        <h2 className="page-title">Characters</h2>
-        {isDm ? <CharacterImportButton campaignId={campaignId} /> : null}
-      </div>
+      <h2 className="page-title">Characters</h2>
+      {isDm ? (
+        <p className="retro-dm-actions">
+          <CharacterImportButton campaignId={campaignId} />
+        </p>
+      ) : null}
 
       {characters.length === 0 ? (
-        <p className="retro-muted">No characters yet.</p>
+        <p className="retro-note">No characters yet.</p>
       ) : (
         <div className="retro-stack">
           {characters.map((character) => (

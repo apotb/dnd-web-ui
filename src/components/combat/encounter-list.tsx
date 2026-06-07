@@ -70,7 +70,7 @@ export function EncounterList({
       )}
 
       {encounters.length === 0 ? (
-        <p className="retro-muted">No encounters yet.</p>
+        <p className="retro-note">No encounters yet.</p>
       ) : (
         <div className="nav-row-stack">
           {encounters.map((enc) => (

@@ -11,7 +11,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { campaignId } = await params;
   const access = await getCampaignAccess(campaignId);
-  if (!access) return { title: "Campaign Table" };
+  if (!access) return { title: "dnd-web-ui" };
 
   return { title: access.campaign.name };
 }

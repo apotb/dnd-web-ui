@@ -9,13 +9,14 @@ export function CampaignBackground() {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) {
-      setEnabled(stored === "true");
-    }
+    const initial = stored !== null ? stored === "true" : true;
+    setEnabled(initial);
+    document.documentElement.classList.toggle("campaign-bg-active", initial);
   }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(enabled));
+    document.documentElement.classList.toggle("campaign-bg-active", enabled);
   }, [enabled]);
 
   return (

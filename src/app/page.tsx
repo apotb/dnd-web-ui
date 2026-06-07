@@ -30,7 +30,7 @@ export default async function HomePage() {
   return (
     <RetroShell>
       <div className="retro-header-row">
-        <span className="retro-title">Campaign Table</span>
+        <span className="retro-title">dnd-web-ui</span>
         <DmLoginInline isDm={isDm} />
       </div>
 
