@@ -25,25 +25,8 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const isAuthRoute =
-    request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/auth");
-
-  if (!user && !isAuthRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
-
-  if (user && request.nextUrl.pathname === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/campaigns";
-    return NextResponse.redirect(url);
-  }
+  // Refresh session if present — no login required for viewing.
+  await supabase.auth.getUser();
 
   return supabaseResponse;
 }

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireCampaignContext } from "@/lib/auth/campaign-access";
+import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow, parseCombatantRow } from "@/lib/character/utils";
 import { createClient } from "@/lib/supabase/server";
 import { CombatTrackerDm } from "@/components/combat/combat-tracker-dm";
@@ -12,7 +12,7 @@ export default async function EncounterPage({
   params: Promise<{ campaignId: string; encounterId: string }>;
 }) {
   const { campaignId, encounterId } = await params;
-  const ctx = await requireCampaignContext(campaignId);
+  const access = await requireCampaignAccess(campaignId);
   const supabase = await createClient();
 
   const { data: encounter } = await supabase
@@ -38,14 +38,14 @@ export default async function EncounterPage({
   ]);
 
   const combatants = (combatantRows ?? []).map((row) =>
-    parseCombatantRow(row as EncounterCombatant, ctx.isDm)
+    parseCombatantRow(row as EncounterCombatant, access.isDm)
   );
 
   const characters = (characterRows ?? []).map((row) =>
-    parseCharacterRow(row as Character, ctx.isDm)
+    parseCharacterRow(row as Character, access.isDm)
   );
 
-  if (ctx.isDm) {
+  if (access.isDm) {
     return (
       <CombatTrackerDm
         encounter={encounter as Encounter}

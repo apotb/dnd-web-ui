@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireCampaignContext } from "@/lib/auth/campaign-access";
+import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { createClient } from "@/lib/supabase/server";
 import { CharacterEditor } from "@/components/character/character-editor";
@@ -12,7 +12,7 @@ export default async function CharacterDetailPage({
   params: Promise<{ campaignId: string; characterId: string }>;
 }) {
   const { campaignId, characterId } = await params;
-  const ctx = await requireCampaignContext(campaignId);
+  const access = await requireCampaignAccess(campaignId);
   const supabase = await createClient();
 
   const { data: row } = await supabase
@@ -24,9 +24,9 @@ export default async function CharacterDetailPage({
 
   if (!row) notFound();
 
-  const character = parseCharacterRow(row as Character, ctx.isDm);
+  const character = parseCharacterRow(row as Character, access.isDm);
 
-  if (ctx.isDm) {
+  if (access.isDm) {
     return (
       <CharacterEditor
         characterId={character.id}

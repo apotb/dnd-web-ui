@@ -1,4 +1,4 @@
-import { requireCampaignContext } from "@/lib/auth/campaign-access";
+import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { createClient } from "@/lib/supabase/server";
 import { CharacterListClient } from "@/components/character/character-list-client";
@@ -11,7 +11,7 @@ export default async function CharactersPage({
   params: Promise<{ campaignId: string }>;
 }) {
   const { campaignId } = await params;
-  const ctx = await requireCampaignContext(campaignId);
+  const access = await requireCampaignAccess(campaignId);
   const supabase = await createClient();
 
   const { data: rows } = await supabase
@@ -21,14 +21,14 @@ export default async function CharactersPage({
     .order("name");
 
   const characters = (rows ?? []).map((row) =>
-    parseCharacterRow(row as Character, ctx.isDm)
+    parseCharacterRow(row as Character, access.isDm)
   );
 
   return (
     <CharacterListClient
       campaignId={campaignId}
       initialCharacters={characters}
-      isDm={ctx.isDm}
+      isDm={access.isDm}
     />
   );
 }

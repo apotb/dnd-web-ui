@@ -1,20 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Courier_Prime } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const courier = Courier_Prime({
+  weight: ["400", "700"],
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  variable: "--font-retro",
 });
 
 export const metadata: Metadata = {
-  title: "D&D Campaign Manager",
-  description: "Character sheets and combat tracking for your D&D campaign",
+  title: "Campaign Table",
+  description: "Live D&D party sheet",
 };
 
 export default function RootLayout({
@@ -23,13 +19,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
-    >
-      <body className="min-h-full flex flex-col bg-background">
-        {children}
-      </body>
+    <html lang="en" className={`${courier.variable} h-full`}>
+      <body className="retro-body">{children}</body>
     </html>
   );
 }

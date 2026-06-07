@@ -1,4 +1,4 @@
-import { requireCampaignContext } from "@/lib/auth/campaign-access";
+import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { createClient } from "@/lib/supabase/server";
 import { EncounterList } from "@/components/combat/encounter-list";
 import type { Encounter } from "@/lib/types/database";
@@ -9,7 +9,7 @@ export default async function CombatPage({
   params: Promise<{ campaignId: string }>;
 }) {
   const { campaignId } = await params;
-  const ctx = await requireCampaignContext(campaignId);
+  const access = await requireCampaignAccess(campaignId);
   const supabase = await createClient();
 
   const { data: encounters } = await supabase
@@ -22,7 +22,7 @@ export default async function CombatPage({
     <EncounterList
       campaignId={campaignId}
       encounters={(encounters ?? []) as Encounter[]}
-      isDm={ctx.isDm}
+      isDm={access.isDm}
     />
   );
 }

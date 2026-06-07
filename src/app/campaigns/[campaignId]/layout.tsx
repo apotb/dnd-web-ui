@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
-import { requireCampaignContext } from "@/lib/auth/campaign-access";
+import { getCampaignAccess } from "@/lib/auth/campaign-access";
 import { CampaignNav } from "@/components/layout/campaign-nav";
+import { RetroShell } from "@/components/layout/retro-shell";
 
 export default async function CampaignLayout({
   children,
@@ -10,18 +11,18 @@ export default async function CampaignLayout({
   params: Promise<{ campaignId: string }>;
 }) {
   const { campaignId } = await params;
-  const ctx = await requireCampaignContext(campaignId);
+  const access = await getCampaignAccess(campaignId);
 
-  if (!ctx) notFound();
+  if (!access) notFound();
 
   return (
-    <>
+    <RetroShell>
       <CampaignNav
         campaignId={campaignId}
-        campaignName={ctx.campaign.name}
-        isDm={ctx.isDm}
+        campaignName={access.campaign.name}
+        isDm={access.isDm}
       />
-      <main className="mx-auto w-full max-w-6xl flex-1 p-4">{children}</main>
-    </>
+      {children}
+    </RetroShell>
   );
 }

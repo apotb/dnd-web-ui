@@ -1,130 +1,308 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+/* Candy Box–style base — keep outside @layer so Tailwind doesn't override */
+html {
+  background: #c0c0c0;
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+body.retro-body {
+  min-height: 100vh;
+  margin: 0;
+  background: #c0c0c0;
+  color: #000;
+  font-family: var(--font-retro), "Courier New", Courier, monospace;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+body.retro-body a {
+  color: #0000cc;
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-  html {
-    @apply font-sans;
-  }
+body.retro-body a:visited {
+  color: #551a8b;
+}
+
+/* Centered column like Candy Box */
+.retro-shell {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.retro-spacer {
+  height: 16px;
+}
+
+.retro-spacer-lg {
+  height: 28px;
+}
+
+.retro-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.retro-header-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  height: 26px;
+  position: relative;
+}
+
+.retro-header-row .retro-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  line-height: 26px;
+}
+
+.retro-header-aside {
+  position: relative;
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 26px;
+}
+
+.retro-inline-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: #0000cc;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 26px;
+  height: 26px;
+}
+
+.retro-inline-login-wrap {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  height: 26px;
+}
+
+.retro-inline-login {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+}
+
+.retro-inline-btn {
+  background: #f4f4f4;
+  border: 1px solid #000;
+  padding: 0 7px;
+  height: 22px;
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.retro-inline-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.retro-inline-input {
+  width: 110px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid #000;
+  background: #fff;
+  font: inherit;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+
+.retro-header-aside-open {
+  min-width: 158px;
+}
+
+.retro-inline-error-link {
+  color: #800000;
+  text-align: right;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retro-subtitle {
+  margin: 0;
+  font-weight: 700;
+}
+
+.retro-text {
+  margin: 0 0 14px;
+}
+
+.retro-text:last-child {
+  margin-bottom: 0;
+}
+
+.retro-muted {
+  color: #333;
+}
+
+/* Bordered content box */
+.retro-box {
+  background: #fff;
+  border: 1px solid #000;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.retro-box-title {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Candy Box menu buttons — stacked bordered rectangles */
+.candy-btn {
+  display: block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  background: #f4f4f4;
+  border: 1px solid #000;
+  color: #000;
+  font: inherit;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.candy-btn:last-child {
+  margin-bottom: 0;
+}
+
+.candy-btn:hover {
+  background: #e8e8e8;
+}
+
+.candy-btn:active {
+  background: #ddd;
+}
+
+.candy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.candy-btn-active {
+  background: #ddd;
+  font-weight: 700;
+}
+
+.candy-btn-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.candy-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.candy-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.candy-label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.candy-input {
+  display: block;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  border: 1px solid #000;
+  background: #fff;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.candy-error {
+  color: #800000;
+  margin: 0 0 12px;
+}
+
+.retro-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+}
+
+.retro-table th,
+.retro-table td {
+  border: 1px solid #000;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.retro-table-compact td {
+  width: 25%;
+}
+
+.retro-member-box {
+  background: #f8f8f8;
+  border: 1px solid #888;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.retro-member-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.retro-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.retro-plain-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.retro-plain-list li {
+  margin-bottom: 8px;
+}
+
+.retro-edit-link {
+  margin: 0 0 12px;
+}
+
+.retro-status {
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  background: #e8e8e8;
+  border: 1px solid #666;
 }

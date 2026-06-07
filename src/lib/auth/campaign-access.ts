@@ -1,16 +1,17 @@
-import { redirect, notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { CampaignContext, CampaignRole } from "@/lib/types/database";
+import type { Campaign, CampaignRole } from "@/lib/types/database";
 
-export async function getCampaignContext(
+export interface CampaignAccess {
+  campaign: Campaign;
+  isDm: boolean;
+  role: CampaignRole | null;
+}
+
+export async function getCampaignAccess(
   campaignId: string
-): Promise<CampaignContext | null> {
+): Promise<CampaignAccess | null> {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
 
   const { data: campaign } = await supabase
     .from("campaigns")
@@ -20,34 +21,53 @@ export async function getCampaignContext(
 
   if (!campaign) return null;
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { campaign, isDm: false, role: null };
+  }
+
   const { data: membership } = await supabase
     .from("campaign_members")
     .select("role")
     .eq("campaign_id", campaignId)
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
-  if (!membership) return null;
-
-  const role = membership.role as CampaignRole;
+  const role = (membership?.role as CampaignRole) ?? null;
 
   return {
     campaign,
-    role,
     isDm: role === "dm",
+    role,
   };
 }
 
-export async function requireCampaignContext(
+export async function requireCampaignAccess(
   campaignId: string
-): Promise<CampaignContext> {
-  const ctx = await getCampaignContext(campaignId);
-  if (!ctx) notFound();
-  return ctx;
+): Promise<CampaignAccess> {
+  const access = await getCampaignAccess(campaignId);
+  if (!access) notFound();
+  return access;
 }
 
-export async function requireDm(campaignId: string): Promise<CampaignContext> {
-  const ctx = await requireCampaignContext(campaignId);
-  if (!ctx.isDm) redirect(`/campaigns/${campaignId}`);
-  return ctx;
+export async function requireDm(campaignId: string): Promise<CampaignAccess> {
+  const access = await requireCampaignAccess(campaignId);
+  if (!access.isDm) redirect(`/campaigns/${campaignId}`);
+  return access;
+}
+
+export async function getIsDmLoggedIn(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const dmEmail = process.env.DM_EMAIL?.trim().toLowerCase();
+  if (dmEmail && user.email?.toLowerCase() !== dmEmail) return false;
+
+  return true;
 }
