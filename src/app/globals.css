@@ -89,6 +89,7 @@
 /* Candy Box–style base — keep outside @layer so Tailwind doesn't override */
 html {
   background: #c0c0c0;
+  scrollbar-gutter: stable;
 }
 
 body.retro-body {
@@ -194,7 +195,7 @@ html.campaign-bg-active .retro-muted {
 
 /* Centered column like Candy Box */
 .retro-shell {
-  max-width: 640px;
+  max-width: 720px;
   margin: 0 auto;
   padding: 24px 20px 48px;
 }
@@ -507,18 +508,62 @@ html.campaign-bg-active .retro-muted {
   width: 25%;
 }
 
+.retro-member-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .retro-member-box {
   background: #f8f8f8;
   border: 1px solid #888;
-  padding: 12px;
-  margin-bottom: 14px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .retro-member-header {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 4px;
+}
+
+.retro-member-header strong {
+  font-size: 13px;
+}
+
+.retro-member-meta {
+  color: #333;
+  font-size: 11px;
+}
+
+.retro-member-line {
+  margin: 0 0 3px;
+}
+
+.retro-member-line-nowrap {
+  white-space: nowrap;
+}
+
+.retro-member-abilities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px 6px;
+  margin: 0 0 3px;
+  font-size: 11px;
+  letter-spacing: -0.01em;
+}
+
+.retro-member-abilities span {
+  white-space: nowrap;
+}
+
+.retro-member-link {
+  margin: 4px 0 0;
+  font-size: 11px;
 }
 
 .retro-stack {

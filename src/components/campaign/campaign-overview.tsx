@@ -8,7 +8,7 @@ import {
   formatModifier,
   getAbilityModifiers,
 } from "@/lib/dnd/calculations";
-import { getTopSkills } from "@/lib/dnd/party-summary";
+import { getTopSkills, skillShortLabel } from "@/lib/dnd/party-summary";
 import type { PartyData } from "@/lib/schemas/party";
 
 interface CampaignOverviewProps {
@@ -31,19 +31,12 @@ export function CampaignOverview({
       <h2 className="page-title">Overview</h2>
 
       <div className="retro-stack">
-        <PartyInventory
-          campaignId={campaignId}
-          initialPartyData={initialPartyData}
-          characters={characters}
-          isDm={isDm}
-        />
-
         <section className="retro-box">
           <p className="retro-box-title">Party Members</p>
           {characters.length === 0 ? (
             <p className="retro-muted">No characters yet.</p>
           ) : (
-            <div className="retro-stack">
+            <div className="retro-member-grid">
               {characters.map((character) => (
                 <PartyMemberSummary
                   key={character.id}
@@ -55,6 +48,13 @@ export function CampaignOverview({
             </div>
           )}
         </section>
+
+        <PartyInventory
+          campaignId={campaignId}
+          initialPartyData={initialPartyData}
+          characters={characters}
+          isDm={isDm}
+        />
       </div>
     </div>
   );
@@ -73,82 +73,55 @@ function PartyMemberSummary({
   const mods = getAbilityModifiers(data.abilityScores);
   const topSkills = getTopSkills(character, 3);
   const { combat, basicInfo } = data;
+  const classLabel =
+    basicInfo.classes.length > 0
+      ? basicInfo.classes.join("/")
+      : basicInfo.class ?? "";
+  const abilityKeys = ["str", "dex", "con", "int", "wis", "cha"] as const;
 
   return (
     <div className="retro-member-box">
       <div className="retro-member-header">
         <strong>{character.name}</strong>
-        <span className="retro-muted">
+        <span className="retro-member-meta">
           Lv {basicInfo.level}
-          {basicInfo.classes.length > 0
-            ? ` ${basicInfo.classes.join("/")}`
-            : basicInfo.class
-              ? ` ${basicInfo.class}`
-              : ""}
+          {classLabel ? ` ${classLabel}` : ""}
         </span>
       </div>
-      <table className="retro-table retro-table-compact">
-        <tbody>
-          <tr>
-            <td>HP</td>
-            <td>
-              {combat.currentHp}/{combat.maxHp}
-              {combat.tempHp > 0 ? ` (+${combat.tempHp} temp)` : ""}
-            </td>
-            <td>AC</td>
-            <td>{combat.ac}</td>
-          </tr>
-          <tr>
-            <td>Speed</td>
-            <td>{combat.speed} ft</td>
-            <td>Init</td>
-            <td>{formatModifier(combat.initiativeBonus + mods.dex)}</td>
-          </tr>
-          <tr>
-            <td>STR</td>
-            <td>
-              {data.abilityScores.str} ({formatModifier(mods.str)})
-            </td>
-            <td>DEX</td>
-            <td>
-              {data.abilityScores.dex} ({formatModifier(mods.dex)})
-            </td>
-          </tr>
-          <tr>
-            <td>CON</td>
-            <td>
-              {data.abilityScores.con} ({formatModifier(mods.con)})
-            </td>
-            <td>INT</td>
-            <td>
-              {data.abilityScores.int} ({formatModifier(mods.int)})
-            </td>
-          </tr>
-          <tr>
-            <td>WIS</td>
-            <td>
-              {data.abilityScores.wis} ({formatModifier(mods.wis)})
-            </td>
-            <td>CHA</td>
-            <td>
-              {data.abilityScores.cha} ({formatModifier(mods.cha)})
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p>
-        <strong>Top skills:</strong>{" "}
-        {topSkills.map((s) => `${s.label} ${formatModifier(s.total)}`).join(" · ")}
+      <p className="retro-member-line retro-member-line-nowrap">
+        HP {combat.currentHp}/{combat.maxHp}
+        {combat.tempHp > 0 ? ` (+${combat.tempHp})` : ""}
+        {" · "}AC {combat.ac}
+        {" · "}
+        {combat.speed}ft
+        {" · "}Init {formatModifier(combat.initiativeBonus + mods.dex)}
+      </p>
+      <div className="retro-member-abilities">
+        {abilityKeys.map((key) => (
+          <span key={key}>
+            {key.toUpperCase()} {data.abilityScores[key]}
+            ({formatModifier(mods[key])})
+          </span>
+        ))}
+      </div>
+      <p className="retro-member-line retro-member-line-nowrap">
+        <strong>Skills:</strong>{" "}
+        {topSkills
+          .map(
+            (s) =>
+              `${skillShortLabel(s.label)} ${formatModifier(s.total)}`
+          )
+          .join(" · ")}
       </p>
       {combat.conditions.length > 0 && (
-        <p>
-          <strong>Conditions:</strong> {combat.conditions.join(", ")}
+        <p className="retro-member-line">
+          <strong>Cond:</strong> {combat.conditions.join(", ")}
         </p>
       )}
       {isDm && (
-        <p>
+        <p className="retro-member-link">
           <Link href={`/campaigns/${campaignId}/characters/${character.id}`}>
-            edit sheet →
+            edit →
           </Link>
         </p>
       )}

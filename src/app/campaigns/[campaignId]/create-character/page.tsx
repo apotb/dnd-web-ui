@@ -9,7 +9,7 @@ export default async function CreateCharacterPage({
 
   return (
     <div>
-      <h2 className="page-title">Create Character</h2>
+      <h2 className="page-title">New Character</h2>
       <div className="retro-note creator-intro">
         <p>
           For whatever reason you determine, your character has decided to come to the distant

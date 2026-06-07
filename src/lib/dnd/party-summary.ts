@@ -3,6 +3,10 @@ import type { SkillKey } from "@/lib/schemas/character";
 import type { PartyAnimal, PartyData } from "@/lib/schemas/party";
 import type { ParsedCharacter } from "@/lib/character/utils";
 
+export function skillShortLabel(label: string): string {
+  return label.replace(/\s/g, "").slice(0, 5);
+}
+
 export function getTopSkills(
   character: ParsedCharacter,
   count = 3

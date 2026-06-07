@@ -54,7 +54,7 @@ export function CampaignNav({
           href={`${base}/create-character`}
           className={`candy-btn${onCreate ? " candy-btn-active" : ""}`}
         >
-          Create Character
+          New Character
         </Link>
       </nav>
     </>
