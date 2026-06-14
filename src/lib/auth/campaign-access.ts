@@ -8,6 +8,9 @@ export interface CampaignAccess {
   isDm: boolean;
   role: CampaignRole | null;
   user: User | null;
+  ownedCharacter: { id: string; name: string } | null;
+  /** DM or player who has claimed a character in this campaign. */
+  canUseNotebook: boolean;
 }
 
 export interface CharacterAccess extends CampaignAccess {
@@ -59,7 +62,14 @@ export async function getCampaignAccess(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { campaign, isDm: false, role: null, user: null };
+    return {
+      campaign,
+      isDm: false,
+      role: null,
+      user: null,
+      ownedCharacter: null,
+      canUseNotebook: false,
+    };
   }
 
   const { data: membership } = await supabase
@@ -70,12 +80,18 @@ export async function getCampaignAccess(
     .maybeSingle();
 
   const role = (membership?.role as CampaignRole) ?? null;
+  const ownedCharacter = await getUserOwnedCharacterInCampaign(
+    campaignId,
+    user.id
+  );
 
   return {
     campaign,
     isDm: role === "dm",
     role,
     user,
+    ownedCharacter,
+    canUseNotebook: role !== null || ownedCharacter !== null,
   };
 }
 

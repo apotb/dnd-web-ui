@@ -17,7 +17,7 @@ export default async function CampaignNotebookPage({
         <CampaignNotebookTab
           campaignId={campaignId}
           userId={access.user?.id ?? null}
-          isCampaignMember={access.role !== null}
+          canUseNotebook={access.canUseNotebook}
         />
       </section>
     </>

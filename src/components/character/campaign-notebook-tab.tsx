@@ -7,13 +7,13 @@ import { createClient } from "@/lib/supabase/client";
 interface CampaignNotebookTabProps {
   campaignId: string;
   userId: string | null;
-  isCampaignMember: boolean;
+  canUseNotebook: boolean;
 }
 
 export function CampaignNotebookTab({
   campaignId,
   userId,
-  isCampaignMember,
+  canUseNotebook,
 }: CampaignNotebookTabProps) {
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function CampaignNotebookTab({
   const dirty = savedContent !== null && content !== savedContent;
 
   useEffect(() => {
-    if (!userId || !isCampaignMember) return;
+    if (!userId || !canUseNotebook) return;
 
     const key = `${campaignId}:${userId}`;
     if (loadedFor.current === key) return;
@@ -61,10 +61,10 @@ export function CampaignNotebookTab({
     return () => {
       cancelled = true;
     };
-  }, [campaignId, userId, isCampaignMember]);
+  }, [campaignId, userId, canUseNotebook]);
 
   const save = useCallback(async () => {
-    if (!userId || !isCampaignMember || loading) return;
+    if (!userId || !canUseNotebook || loading) return;
 
     setSaving(true);
     setSaveError(null);
@@ -88,7 +88,7 @@ export function CampaignNotebookTab({
     }
 
     setSaving(false);
-  }, [campaignId, content, isCampaignMember, loading, userId]);
+  }, [campaignId, content, canUseNotebook, loading, userId]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -156,10 +156,10 @@ export function CampaignNotebookTab({
     );
   }
 
-  if (!isCampaignMember) {
+  if (!canUseNotebook) {
     return (
       <p className="text-sm text-muted-foreground">
-        You are not a member of this campaign.
+        Claim a character in this campaign to use your notebook.
       </p>
     );
   }
