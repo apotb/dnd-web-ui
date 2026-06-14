@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AbilityKey, SkillKey } from "@/lib/schemas/character";
-import { SKILL_LABELS } from "@/lib/dnd/calculations";
+import {
+  ABILITY_LABELS,
+  SKILL_LABELS,
+  abilityModifier,
+  formatModifier,
+} from "@/lib/dnd/calculations";
 import { ABILITY_KEYS, isValidPointBuy } from "@/lib/dnd/phb/point-buy";
 import {
   buildCharacterExport,
@@ -12,6 +17,7 @@ import {
 } from "@/lib/dnd/character-builder/build-character";
 import {
   ALIGNMENTS,
+  CREATOR_STEPS,
   createInitialCreatorState,
   getVisibleSteps,
   type CharacterCreatorState,
@@ -19,7 +25,6 @@ import {
 } from "@/lib/dnd/character-builder/types";
 import {
   ARTISAN_TOOLS,
-  ALL_BACKGROUNDS,
   EXPLORER_TOOLS,
   GAMING_SETS,
   MUSICAL_INSTRUMENTS,
@@ -30,24 +35,23 @@ import {
   FAVORED_ENEMIES,
   FAVORED_TERRAINS,
   FIGHTING_STYLES,
-  getClass,
-  PHB_CLASSES,
 } from "@/lib/dnd/phb/classes";
-import { PHB_FEATS } from "@/lib/dnd/phb/feats";
 import { MARTIAL_WEAPONS } from "@/lib/dnd/phb/martial-weapons";
-import { getRace, ALL_RACES } from "@/lib/dnd/phb/races";
 import { getRaceGrantLines } from "@/lib/dnd/phb/race-grants";
 import { GENERAL_TOOLS } from "@/lib/dnd/phb/tools";
-import {
-  getCantripsForList,
-  getLevel1SpellsForList,
-  getSpell,
-} from "@/lib/dnd/phb/spells";
+import type { CreatorCatalog } from "@/lib/content/catalog";
 import { characterExportSchema } from "@/lib/schemas/character";
 import { AbilityScorePanel } from "./ability-score-panel";
+import {
+  EquipmentSubPicker,
+  getEquipmentPlaceholderFilter,
+} from "./equipment-sub-picker";
+import { IntroContent } from "./creator-intro-modal";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface CharacterCreatorProps {
   campaignId: string;
+  catalog: CreatorCatalog;
 }
 
 function toggleInList<T>(list: T[], item: T, max?: number): T[] {
@@ -56,17 +60,23 @@ function toggleInList<T>(list: T[], item: T, max?: number): T[] {
   return [...list, item];
 }
 
-export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
+export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps) {
   const [state, setState] = useState<CharacterCreatorState>(createInitialCreatorState);
+  // Guard against states initialized before equipmentSubChoices was added
+  const subChoices: Record<string, string> = state.equipmentSubChoices ?? {};
   const [stepIndex, setStepIndex] = useState(0);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [visitedSteps, setVisitedSteps] = useState<Set<CreatorStep>>(
+    () => new Set<CreatorStep>(["identity"])
+  );
+  const [blurbOpen, setBlurbOpen] = useState(false);
 
   const visibleSteps = useMemo(() => getVisibleSteps(state), [state]);
   const currentStep = visibleSteps[stepIndex] ?? "identity";
 
-  const selectedRace = getRace(state.raceId);
-  const selectedBackground = ALL_BACKGROUNDS.find((b) => b.id === state.backgroundId);
-  const selectedClass = getClass(state.classId);
+  const selectedRace = catalog.races.find((r) => r.id === state.raceId);
+  const selectedBackground = catalog.backgrounds.find((b) => b.id === state.backgroundId);
+  const selectedClass = catalog.classes.find((c) => c.id === state.classId);
 
   const raceGrantLines = useMemo(() => {
     if (!selectedRace) return [];
@@ -85,7 +95,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
   }, [selectedRace, state]);
 
   const racialPreview = useMemo(() => {
-    const bonuses = computeRacialBonuses(state);
+    const bonuses = computeRacialBonuses(state, catalog);
     return Object.fromEntries(
       ABILITY_KEYS.map((key) => [
         key,
@@ -100,7 +110,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
       AbilityKey,
       { base: number; racial: number; other: number; sources: { label: string; value: number }[] }
     >;
-  }, [state]);
+  }, [state, catalog]);
 
   function update(partial: Partial<CharacterCreatorState>) {
     setState((prev) => ({ ...prev, ...partial }));
@@ -268,6 +278,22 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
             if (state.equipmentChoiceIndices[i] === undefined) {
               return "Make all equipment choices.";
             }
+            const optIdx = state.equipmentChoiceIndices[i]!;
+            const option = selectedClass.equipmentChoices[i].options[optIdx];
+            if (option) {
+              for (let j = 0; j < option.items.length; j++) {
+                if (getEquipmentPlaceholderFilter(option.items[j]) &&
+                    !subChoices[`c${i}_${j}`]) {
+                  return "Select a specific item for every open-ended choice.";
+                }
+              }
+            }
+          }
+          for (let i = 0; i < selectedClass.fixedEquipment.length; i++) {
+            if (getEquipmentPlaceholderFilter(selectedClass.fixedEquipment[i]) &&
+                !subChoices[`f${i}`]) {
+              return "Select a specific item for every open-ended choice.";
+            }
           }
         }
         return null;
@@ -282,7 +308,15 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
       setStepError(err);
       return;
     }
-    setStepIndex((i) => Math.min(i + 1, visibleSteps.length - 1));
+    const nextIdx = Math.min(stepIndex + 1, visibleSteps.length - 1);
+    const nextId = visibleSteps[nextIdx];
+    setStepIndex(nextIdx);
+    setVisitedSteps((prev) => {
+      if (prev.has(nextId)) return prev;
+      const next = new Set(prev);
+      next.add(nextId);
+      return next;
+    });
   }
 
   function prevStep() {
@@ -291,12 +325,12 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
   }
 
   function downloadJson() {
-    const errors = validateCreatorState(state);
+    const errors = validateCreatorState(state, catalog);
     if (errors.length) {
       setStepError(errors[0] ?? "Fix validation errors before exporting.");
       return;
     }
-    const payload = characterExportSchema.parse(buildCharacterExport(state));
+    const payload = characterExportSchema.parse(buildCharacterExport(state, catalog));
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
     });
@@ -309,9 +343,9 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
   }
 
   const grantedSkills = useMemo(() => {
-    const skills = getClassSkillExclusions(state);
+    const skills = getClassSkillExclusions(state, catalog);
     return skills.map((s) => SKILL_LABELS[s]);
-  }, [state]);
+  }, [state, catalog]);
 
   const raceSkillExclusions = useMemo(
     () => selectedRace?.skillProficiencies ?? [],
@@ -335,14 +369,14 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
   }, [selectedRace, selectedBackground, state]);
 
   const classSkillExclusions = useMemo(
-    () => getClassSkillExclusions(state),
-    [state]
+    () => getClassSkillExclusions(state, catalog),
+    [state, catalog]
   );
 
   useEffect(() => {
     if (currentStep !== "skills") return;
     setState((prev) => {
-      const excluded = getClassSkillExclusions(prev);
+      const excluded = getClassSkillExclusions(prev, catalog);
       const pruned = prev.classSkills.filter((s) => !excluded.includes(s));
       if (pruned.length === prev.classSkills.length) return prev;
       return { ...prev, classSkills: pruned };
@@ -352,18 +386,26 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
   return (
     <div className="creator-wrap">
       <nav className="creator-steps">
-        {visibleSteps.map((step, i) => (
-          <button
-            key={step}
-            type="button"
-            className={`candy-btn candy-btn-sm${i === stepIndex ? " candy-btn-active" : ""}`}
-            onClick={() => {
-              if (i <= stepIndex) setStepIndex(i);
-            }}
-          >
-            {step.charAt(0).toUpperCase() + step.slice(1)}
-          </button>
-        ))}
+        {visibleSteps.map((step, i) => {
+          const visited = visitedSteps.has(step);
+          const label = CREATOR_STEPS.find((s) => s.id === step)?.label ?? step;
+          return (
+            <button
+              key={step}
+              type="button"
+              className={`candy-btn candy-btn-sm${i === stepIndex ? " candy-btn-active" : ""}`}
+              disabled={!visited}
+              onClick={() => {
+                if (visited) {
+                  setStepIndex(i);
+                  setStepError(null);
+                }
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </nav>
 
       {stepError ? <p className="creator-error">{stepError}</p> : null}
@@ -426,7 +468,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 }
               >
                 <option value="">— choose —</option>
-                {ALL_RACES.map((r) => (
+                {catalog.races.map((r) => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
               </select>
@@ -617,7 +659,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                     onChange={(e) => update({ variantHumanFeat: e.target.value })}
                   >
                     <option value="">— choose —</option>
-                    {PHB_FEATS.map((f) => (
+                    {catalog.feats.map((f) => (
                       <option key={f.id} value={f.id}>{f.name}</option>
                     ))}
                   </select>
@@ -660,7 +702,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 }
               >
                 <option value="">— choose —</option>
-                {ALL_BACKGROUNDS.map((b) => (
+                {catalog.backgrounds.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
@@ -878,6 +920,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 spellIds: [],
                 wizardSpellbookIds: [],
                 equipmentChoiceIndices: [],
+                equipmentSubChoices: {},
                 fightingStyle: "",
                 favoredEnemy: "",
                 favoredTerrain: "",
@@ -885,7 +928,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
             }
           >
             <option value="">— choose —</option>
-            {PHB_CLASSES.map((c) => (
+            {catalog.classes.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
@@ -1020,7 +1063,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
       {currentStep === "spells" && selectedClass?.spellcasting ? (
         <section className="retro-box creator-section">
           <h3 className="retro-box-title">Spells</h3>
-          <SpellStep state={state} update={update} classId={state.classId} racialPreview={racialPreview} />
+          <SpellStep state={state} update={update} classId={state.classId} racialPreview={racialPreview} catalog={catalog} />
         </section>
       ) : null}
 
@@ -1028,31 +1071,83 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
         <section className="retro-box creator-section">
           <h3 className="retro-box-title">Starting Equipment</h3>
           {selectedClass ? (
-            selectedClass.equipmentChoices.map((choice, index) => (
-              <div key={choice.prompt} className="creator-equip-choice">
-                <p className="candy-label">{choice.prompt}</p>
-                <div className="creator-chip-row">
-                  {choice.options.map((opt, optIndex) => (
-                    <button
-                      key={opt.label}
-                      type="button"
-                      className={`candy-btn candy-btn-sm${
-                        (state.equipmentChoiceIndices[index] ?? -1) === optIndex
-                          ? " candy-btn-active"
-                          : ""
-                      }`}
-                      onClick={() => {
-                        const next = [...state.equipmentChoiceIndices];
-                        next[index] = optIndex;
-                        update({ equipmentChoiceIndices: next });
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))
+            <>
+              {selectedClass.equipmentChoices.map((choice, groupIdx) => {
+                const selectedOptIdx = state.equipmentChoiceIndices[groupIdx] ?? -1;
+                const selectedOpt = choice.options[selectedOptIdx] ?? null;
+                return (
+                  <div key={choice.prompt} className="creator-equip-choice">
+                    <p className="candy-label">{choice.prompt}</p>
+                    <div className="creator-chip-row">
+                      {choice.options.map((opt, optIdx) => (
+                        <button
+                          key={opt.label}
+                          type="button"
+                          className={`candy-btn candy-btn-sm${
+                            selectedOptIdx === optIdx ? " candy-btn-active" : ""
+                          }`}
+                          onClick={() => {
+                            const next = [...state.equipmentChoiceIndices];
+                            next[groupIdx] = optIdx;
+                            // Clear sub-choices for this group when option changes
+                            const newSub = { ...subChoices };
+                            choice.options.forEach((o) =>
+                              o.items.forEach((_, ii) => {
+                                delete newSub[`c${groupIdx}_${ii}`];
+                              })
+                            );
+                            update({ equipmentChoiceIndices: next, equipmentSubChoices: newSub });
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedOpt?.items.map((itemName, itemIdx) => {
+                      const filter = getEquipmentPlaceholderFilter(itemName);
+                      if (!filter) return null;
+                      const subKey = `c${groupIdx}_${itemIdx}`;
+                      return (
+                        <EquipmentSubPicker
+                          key={subKey}
+                          filter={filter}
+                          value={subChoices[subKey] ?? null}
+                          onSelect={(name) =>
+                            update({
+                              equipmentSubChoices: {
+                                ...subChoices,
+                                [subKey]: name,
+                              },
+                            })
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {selectedClass.fixedEquipment.map((itemName, idx) => {
+                const filter = getEquipmentPlaceholderFilter(itemName);
+                if (!filter) return null;
+                const subKey = `f${idx}`;
+                return (
+                  <EquipmentSubPicker
+                    key={subKey}
+                    filter={filter}
+                    value={subChoices[subKey] ?? null}
+                    onSelect={(name) =>
+                      update({
+                        equipmentSubChoices: {
+                          ...subChoices,
+                          [subKey]: name,
+                        },
+                      })
+                    }
+                  />
+                );
+              })}
+            </>
           ) : null}
 
           {selectedBackground ? (
@@ -1067,7 +1162,7 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
         <section className="retro-box creator-section">
           <h3 className="retro-box-title">Review &amp; Download</h3>
           {(() => {
-            const errors = validateCreatorState(state);
+            const errors = validateCreatorState(state, catalog);
             if (errors.length) {
               return (
                 <ul className="creator-error-list">
@@ -1077,19 +1172,149 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
                 </ul>
               );
             }
-            const preview = buildCharacterExport(state);
+            const preview = buildCharacterExport(state, catalog);
+            const d = preview.data;
+
+            const proficientSkills = (Object.entries(d.skills) as [SkillKey, { proficient: boolean }][])
+              .filter(([, v]) => v.proficient)
+              .map(([k]) => SKILL_LABELS[k])
+              .sort();
+
+            const cantrips = d.spells.known.filter((s) => s.level === 0).map((s) => s.name);
+            const spellsKnown = d.spells.known.filter((s) => s.level > 0).map((s) => s.name);
+            const spellsPrepared = d.spells.prepared.filter((s) => s.level > 0).map((s) => s.name);
+            const spellbookSpells = d.spells.known.filter((s) => s.notes?.startsWith("Spellbook")).map((s) => s.name);
+
+            const itemList = d.inventory.items
+              .map((i) => (i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name))
+              .join(", ");
+
+            const subraceName = selectedRace?.subraces?.find(
+              (sr) => sr.id === state.subraceId
+            )?.name;
+            const speciesLabel = subraceName
+              ? `${selectedRace?.name} (${subraceName})`
+              : selectedRace?.name ?? "—";
+
+            const subclassName = selectedClass?.subclasses?.find(
+              (sc) => sc.id === state.subclassId
+            )?.name;
+
             return (
               <>
-                <p className="creator-summary">
-                  {preview.name} · {preview.data.basicInfo.species} ·{" "}
-                  {preview.data.basicInfo.classes.join(", ")} · Level 1
-                </p>
-                <p className="retro-muted">
-                  HP {preview.data.combat.maxHp} · AC {preview.data.combat.ac} · Speed{" "}
-                  {preview.data.combat.speed} ft · {preview.data.inventory.currency.gp} gp
-                </p>
+                {/* Identity */}
+                <div className="creator-review-section">
+                  <p className="candy-label" style={{ marginBottom: 4 }}>Identity</p>
+                  <div className="creator-review-grid">
+                    <span>Name</span><span>{d.basicInfo.name || "—"}</span>
+                    <span>Player</span><span>{d.basicInfo.playerName || "—"}</span>
+                    <span>Alignment</span><span>{d.basicInfo.alignment || "—"}</span>
+                  </div>
+                </div>
+
+                {/* Origin */}
+                <div className="creator-review-section">
+                  <p className="candy-label" style={{ marginBottom: 4 }}>Origin</p>
+                  <div className="creator-review-grid">
+                    <span>Species</span><span>{speciesLabel}</span>
+                    <span>Background</span><span>{selectedBackground?.name ?? "—"}</span>
+                  </div>
+                </div>
+
+                {/* Class */}
+                <div className="creator-review-section">
+                  <p className="candy-label" style={{ marginBottom: 4 }}>Class</p>
+                  <div className="creator-review-grid">
+                    <span>Class</span>
+                    <span>{selectedClass?.name ?? "—"}</span>
+                    {subclassName ? (
+                      <>
+                        <span>Subclass</span>
+                        <span>{subclassName}</span>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Ability Scores */}
+                <div className="creator-review-section">
+                  <p className="candy-label" style={{ marginBottom: 4 }}>Ability Scores</p>
+                  <div className="creator-review-scores">
+                    {ABILITY_KEYS.map((key) => {
+                      const score = d.abilityScores[key];
+                      const mod = abilityModifier(score);
+                      return (
+                        <div key={key} className="creator-review-score-cell">
+                          <span className="creator-review-score-label">{ABILITY_LABELS[key]}</span>
+                          <span className="creator-review-score-value">{score}</span>
+                          <span className="creator-review-score-mod">{formatModifier(mod)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Combat */}
+                <div className="creator-review-section">
+                  <p className="candy-label" style={{ marginBottom: 4 }}>Combat</p>
+                  <p className="creator-review-line">
+                    HP {d.combat.maxHp}
+                    {" · "}AC {d.combat.ac}
+                    {" · "}Speed {d.combat.speed} ft
+                    {" · "}Initiative {formatModifier(d.combat.initiativeBonus + abilityModifier(d.abilityScores.dex))}
+                  </p>
+                </div>
+
+                {/* Skills */}
+                {proficientSkills.length > 0 && (
+                  <div className="creator-review-section">
+                    <p className="candy-label" style={{ marginBottom: 4 }}>Skill Proficiencies</p>
+                    <p className="creator-review-line">{proficientSkills.join(", ")}</p>
+                  </div>
+                )}
+
+                {/* Spells */}
+                {(cantrips.length > 0 || spellsKnown.length > 0 || spellsPrepared.length > 0 || spellbookSpells.length > 0) && (
+                  <div className="creator-review-section">
+                    <p className="candy-label" style={{ marginBottom: 4 }}>Spells</p>
+                    <div className="creator-review-grid">
+                      {cantrips.length > 0 && (
+                        <>
+                          <span>Cantrips</span>
+                          <span>{cantrips.join(", ")}</span>
+                        </>
+                      )}
+                      {spellbookSpells.length > 0 && (
+                        <>
+                          <span>Spellbook</span>
+                          <span>{spellbookSpells.join(", ")}</span>
+                        </>
+                      )}
+                      {spellsPrepared.length > 0 && (
+                        <>
+                          <span>Prepared</span>
+                          <span>{spellsPrepared.join(", ")}</span>
+                        </>
+                      )}
+                      {spellsKnown.filter((s) => !spellsPrepared.includes(s)).length > 0 && (
+                        <>
+                          <span>Known</span>
+                          <span>{spellsKnown.filter((s) => !spellsPrepared.includes(s)).join(", ")}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Equipment */}
+                <div className="creator-review-section">
+                  <p className="candy-label" style={{ marginBottom: 4 }}>Equipment</p>
+                  <p className="creator-review-line">{itemList || "—"}</p>
+                  <p className="creator-review-line retro-muted">{d.inventory.currency.gp} gp</p>
+                </div>
+
                 <button type="button" className="candy-btn" onClick={downloadJson}>
-                  Download character JSON
+                  Download character .json
                 </button>
                 <p className="retro-muted">
                   DM can import this file from the Characters tab.
@@ -1109,12 +1334,21 @@ export function CharacterCreator({ campaignId }: CharacterCreatorProps) {
         >
           ← Back
         </button>
+        <button
+          type="button"
+          className="candy-btn"
+          onClick={() => setBlurbOpen(true)}
+        >
+          Show blurb
+        </button>
         {currentStep !== "review" ? (
           <button type="button" className="candy-btn" onClick={nextStep}>
             Next →
           </button>
         ) : null}
       </div>
+
+      {blurbOpen && <IntroContent onDismiss={() => setBlurbOpen(false)} />}
     </div>
   );
 }
@@ -1182,18 +1416,24 @@ function SpellStep({
   update,
   classId,
   racialPreview,
+  catalog,
 }: {
   state: CharacterCreatorState;
   update: (p: Partial<CharacterCreatorState>) => void;
   classId: string;
   racialPreview: Record<AbilityKey, { racial: number }>;
+  catalog: CreatorCatalog;
 }) {
-  const cls = getClass(classId);
+  const cls = catalog.classes.find((c) => c.id === classId);
   const sc = cls?.spellcasting;
   if (!sc) return null;
 
-  const cantrips = getCantripsForList(sc.spellListId);
-  const level1 = getLevel1SpellsForList(sc.spellListId);
+  const cantrips = catalog.spells.filter(
+    (s) => s.level === 0 && s.classes.includes(sc.spellListId)
+  );
+  const level1 = catalog.spells.filter(
+    (s) => s.level === 1 && s.classes.includes(sc.spellListId)
+  );
 
   const preparedCount = sc.preparedCaster
     ? Math.max(
@@ -1222,19 +1462,19 @@ function SpellStep({
       <p className="candy-label">Cantrips</p>
       <div className="creator-spell-grid">
         {cantrips.map((spell) => (
-          <button
-            key={spell.id}
-            type="button"
-            className={`candy-btn candy-btn-sm${state.cantripIds.includes(spell.id) ? " candy-btn-active" : ""}`}
-            title={spell.description}
-            onClick={() =>
-              update({
-                cantripIds: toggleInList(state.cantripIds, spell.id, sc.cantripsKnown),
-              })
-            }
-          >
-            {spell.name}
-          </button>
+          <Tooltip key={spell.id} content={spell.description}>
+            <button
+              type="button"
+              className={`candy-btn candy-btn-sm${state.cantripIds.includes(spell.id) ? " candy-btn-active" : ""}`}
+              onClick={() =>
+                update({
+                  cantripIds: toggleInList(state.cantripIds, spell.id, sc.cantripsKnown),
+                })
+              }
+            >
+              {spell.name}
+            </button>
+          </Tooltip>
         ))}
       </div>
 
@@ -1243,29 +1483,29 @@ function SpellStep({
           <p className="candy-label">Spellbook (6 spells)</p>
           <div className="creator-spell-grid">
             {level1.map((spell) => (
-              <button
-                key={spell.id}
-                type="button"
-                className={`candy-btn candy-btn-sm${state.wizardSpellbookIds.includes(spell.id) ? " candy-btn-active" : ""}`}
-                title={spell.description}
-                onClick={() =>
-                  update({
-                    wizardSpellbookIds: toggleInList(
-                      state.wizardSpellbookIds,
-                      spell.id,
-                      sc.spellbookAtLevel1
-                    ),
-                  })
-                }
-              >
-                {spell.name}
-              </button>
+              <Tooltip key={spell.id} content={spell.description}>
+                <button
+                  type="button"
+                  className={`candy-btn candy-btn-sm${state.wizardSpellbookIds.includes(spell.id) ? " candy-btn-active" : ""}`}
+                  onClick={() =>
+                    update({
+                      wizardSpellbookIds: toggleInList(
+                        state.wizardSpellbookIds,
+                        spell.id,
+                        sc.spellbookAtLevel1
+                      ),
+                    })
+                  }
+                >
+                  {spell.name}
+                </button>
+              </Tooltip>
             ))}
           </div>
           <p className="candy-label">Prepared today</p>
           <div className="creator-spell-grid">
             {state.wizardSpellbookIds.map((id) => {
-              const spell = getSpell(id);
+              const spell = catalog.spells.find((s) => s.id === id);
               if (!spell) return null;
               return (
                 <button
@@ -1291,20 +1531,20 @@ function SpellStep({
           </p>
           <div className="creator-spell-grid">
             {level1.map((spell) => (
-              <button
-                key={spell.id}
-                type="button"
-                className={`candy-btn candy-btn-sm${state.spellIds.includes(spell.id) ? " candy-btn-active" : ""}`}
-                title={spell.description}
-                onClick={() =>
-                  update({
-                    spellIds: toggleInList(state.spellIds, spell.id, preparedCount),
-                  })
-                }
-              >
-                {spell.name}
-                {spell.ritual ? " ◆" : ""}
-              </button>
+              <Tooltip key={spell.id} content={spell.description}>
+                <button
+                  type="button"
+                  className={`candy-btn candy-btn-sm${state.spellIds.includes(spell.id) ? " candy-btn-active" : ""}`}
+                  onClick={() =>
+                    update({
+                      spellIds: toggleInList(state.spellIds, spell.id, preparedCount),
+                    })
+                  }
+                >
+                  {spell.name}
+                  {spell.ritual ? " ◆" : ""}
+                </button>
+              </Tooltip>
             ))}
           </div>
         </>

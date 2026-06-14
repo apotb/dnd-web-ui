@@ -25,7 +25,41 @@ import {
   usesTortleNaturalArmor,
 } from "@/lib/dnd/phb/race-mechanics";
 import { getSpell } from "@/lib/dnd/phb/spells";
+import type { CreatorCatalog } from "@/lib/content/catalog";
 import type { CharacterCreatorState } from "./types";
+
+// ── Catalog-aware lookup helpers ──────────────────────────────────────────────
+// Each falls back to the static PHB TypeScript data when no catalog is provided.
+
+function resolveRace(id: string, catalog?: CreatorCatalog) {
+  return (catalog?.races ?? []).find((r) => r.id === id) ?? getRace(id);
+}
+
+function resolveClass(id: string, catalog?: CreatorCatalog) {
+  return (catalog?.classes ?? []).find((c) => c.id === id) ?? getClass(id);
+}
+
+function resolveBackground(id: string, catalog?: CreatorCatalog) {
+  return (catalog?.backgrounds ?? []).find((b) => b.id === id) ?? getBackground(id);
+}
+
+function resolveFeat(id: string, catalog?: CreatorCatalog) {
+  return (catalog?.feats ?? []).find((f) => f.id === id) ?? getFeat(id);
+}
+
+function resolveSpell(id: string, catalog?: CreatorCatalog) {
+  return (catalog?.spells ?? []).find((s) => s.id === id) ?? getSpell(id);
+}
+
+function resolveRaceDisplayName(raceId: string, subraceId: string | undefined, catalog?: CreatorCatalog): string {
+  const race = resolveRace(raceId, catalog);
+  if (!race) return raceId;
+  if (subraceId) {
+    const sub = race.subraces?.find((s) => s.id === subraceId);
+    if (sub) return `${race.name} (${sub.name})`;
+  }
+  return race.name;
+}
 
 const ARMOR_AC: Record<string, { base: number; maxDex?: number; stealthDisadvantage?: boolean }> = {
   "padded armor": { base: 11, maxDex: 999, stealthDisadvantage: true },
@@ -66,12 +100,12 @@ function addBonus(
   bonuses[key].sources.push({ label, value });
 }
 
-export function computeRacialBonuses(state: CharacterCreatorState) {
+export function computeRacialBonuses(state: CharacterCreatorState, catalog?: CreatorCatalog) {
   const bonuses = emptyBonuses();
-  const race = getRace(state.raceId);
+  const race = resolveRace(state.raceId, catalog);
   if (!race) return bonuses;
 
-  const label = getRaceDisplayName(state.raceId, state.subraceId);
+  const label = resolveRaceDisplayName(state.raceId, state.subraceId, catalog);
 
   if (race.id === "human" && state.subraceId === "variant") {
     for (const key of state.variantHumanAbilityBonuses) {
@@ -107,8 +141,8 @@ export function computeRacialBonuses(state: CharacterCreatorState) {
   return bonuses;
 }
 
-export function computeFinalScores(state: CharacterCreatorState) {
-  const racial = computeRacialBonuses(state);
+export function computeFinalScores(state: CharacterCreatorState, catalog?: CreatorCatalog) {
+  const racial = computeRacialBonuses(state, catalog);
   const scores = { ...state.baseScores };
   const breakdown: AbilityScoreBreakdown = {} as AbilityScoreBreakdown;
 
@@ -120,7 +154,7 @@ export function computeFinalScores(state: CharacterCreatorState) {
       racial: racialTotal,
       other: 0,
       sources: [
-        { label: "Point buy", value: state.baseScores[key] },
+        { label: "Base", value: state.baseScores[key] },
         ...racial[key].sources,
       ],
     };
@@ -129,10 +163,10 @@ export function computeFinalScores(state: CharacterCreatorState) {
   return { scores, breakdown };
 }
 
-export function collectSkillProficiencies(state: CharacterCreatorState): Set<SkillKey> {
+export function collectSkillProficiencies(state: CharacterCreatorState, catalog?: CreatorCatalog): Set<SkillKey> {
   const skills = new Set<SkillKey>();
-  const race = getRace(state.raceId);
-  const background = getBackground(state.backgroundId);
+  const race = resolveRace(state.raceId, catalog);
+  const background = resolveBackground(state.backgroundId, catalog);
 
   race?.skillProficiencies?.forEach((s) => skills.add(s));
   background?.skillProficiencies.forEach((s) => skills.add(s));
@@ -148,16 +182,16 @@ export function collectSkillProficiencies(state: CharacterCreatorState): Set<Ski
 }
 
 /** Skills granted before class skill picks (for filtering the class skills menu). */
-export function getClassSkillExclusions(state: CharacterCreatorState): SkillKey[] {
-  const skills = collectSkillProficiencies(state);
+export function getClassSkillExclusions(state: CharacterCreatorState, catalog?: CreatorCatalog): SkillKey[] {
+  const skills = collectSkillProficiencies(state, catalog);
   state.classSkills.forEach((s) => skills.delete(s));
   return [...skills];
 }
 
-function collectLanguages(state: CharacterCreatorState): string[] {
+function collectLanguages(state: CharacterCreatorState, catalog?: CreatorCatalog): string[] {
   const langs = new Set<string>();
-  const race = getRace(state.raceId);
-  const background = getBackground(state.backgroundId);
+  const race = resolveRace(state.raceId, catalog);
+  const background = resolveBackground(state.backgroundId, catalog);
 
   race?.languages.forEach((l) => langs.add(l));
   race?.fixedLanguages?.forEach((l) => langs.add(l));
@@ -168,10 +202,10 @@ function collectLanguages(state: CharacterCreatorState): string[] {
   return [...langs];
 }
 
-function collectTools(state: CharacterCreatorState): string[] {
+function collectTools(state: CharacterCreatorState, catalog?: CreatorCatalog): string[] {
   const tools = new Set<string>();
-  const background = getBackground(state.backgroundId);
-  const cls = getClass(state.classId);
+  const background = resolveBackground(state.backgroundId, catalog);
+  const cls = resolveClass(state.classId, catalog);
 
   background?.toolProficiencies?.forEach((t) => {
     if (t === "artisan's tools" && state.backgroundArtisanTool) {
@@ -224,21 +258,28 @@ function collectTools(state: CharacterCreatorState): string[] {
   return [...tools];
 }
 
-function resolveEquipmentNames(state: CharacterCreatorState): string[] {
+function resolveEquipmentNames(state: CharacterCreatorState, catalog?: CreatorCatalog): string[] {
   const names: string[] = [];
-  const cls = getClass(state.classId);
-  const background = getBackground(state.backgroundId);
+  const cls = resolveClass(state.classId, catalog);
+  const background = resolveBackground(state.backgroundId, catalog);
+  const sub = state.equipmentSubChoices ?? {};
 
   if (background) {
     names.push(...background.equipment);
   }
 
   if (cls) {
-    names.push(...cls.fixedEquipment);
-    cls.equipmentChoices.forEach((choice, index) => {
-      const optionIndex = state.equipmentChoiceIndices[index] ?? 0;
+    cls.fixedEquipment.forEach((itemName, idx) => {
+      names.push(sub[`f${idx}`] ?? itemName);
+    });
+    cls.equipmentChoices.forEach((choice, groupIdx) => {
+      const optionIndex = state.equipmentChoiceIndices[groupIdx] ?? 0;
       const option = choice.options[optionIndex];
-      if (option) names.push(...option.items);
+      if (option) {
+        option.items.forEach((itemName, itemIdx) => {
+          names.push(sub[`c${groupIdx}_${itemIdx}`] ?? itemName);
+        });
+      }
     });
   }
 
@@ -289,11 +330,11 @@ function calculateAc(
   return ac + getRaceAcBonus(state);
 }
 
-function buildFeatures(state: CharacterCreatorState): Feature[] {
+function buildFeatures(state: CharacterCreatorState, catalog?: CreatorCatalog): Feature[] {
   const features: Feature[] = [];
-  const race = getRace(state.raceId);
-  const cls = getClass(state.classId);
-  const background = getBackground(state.backgroundId);
+  const race = resolveRace(state.raceId, catalog);
+  const cls = resolveClass(state.classId, catalog);
+  const background = resolveBackground(state.backgroundId, catalog);
   const sub = cls?.subclasses.find((s) => s.id === state.subclassId);
 
   race?.traits.forEach((t) =>
@@ -370,7 +411,7 @@ function buildFeatures(state: CharacterCreatorState): Feature[] {
   }
 
   if (state.variantHumanFeat) {
-    const feat = getFeat(state.variantHumanFeat);
+    const feat = resolveFeat(state.variantHumanFeat, catalog);
     if (feat) {
       features.push({
         id: crypto.randomUUID(),
@@ -393,15 +434,15 @@ function buildFeatures(state: CharacterCreatorState): Feature[] {
   return features;
 }
 
-function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilityScores"]) {
-  const cls = getClass(state.classId);
+function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilityScores"], catalog?: CreatorCatalog) {
+  const cls = resolveClass(state.classId, catalog);
   if (!cls?.spellcasting) {
     return { spellcastingAbility: undefined, known: [], prepared: [], slots: {} };
   }
 
   const ability = cls.spellcasting.ability;
   const cantrips = state.cantripIds
-    .map((id) => getSpell(id))
+    .map((id) => resolveSpell(id, catalog))
     .filter(Boolean)
     .map((s) => ({
       id: crypto.randomUUID(),
@@ -412,7 +453,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
     }));
 
   const level1 = state.spellIds
-    .map((id) => getSpell(id))
+    .map((id) => resolveSpell(id, catalog))
     .filter(Boolean)
     .map((s) => ({
       id: crypto.randomUUID(),
@@ -423,7 +464,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
     }));
 
   const spellbook = state.wizardSpellbookIds
-    .map((id) => getSpell(id))
+    .map((id) => resolveSpell(id, catalog))
     .filter(Boolean)
     .map((s) => ({
       id: crypto.randomUUID(),
@@ -457,15 +498,15 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
   };
 }
 
-export function buildCharacterExport(state: CharacterCreatorState): CharacterExport {
-  const race = getRace(state.raceId);
-  const background = getBackground(state.backgroundId);
-  const cls = getClass(state.classId);
-  const { scores, breakdown } = computeFinalScores(state);
+export function buildCharacterExport(state: CharacterCreatorState, catalog?: CreatorCatalog): CharacterExport {
+  const race = resolveRace(state.raceId, catalog);
+  const background = resolveBackground(state.backgroundId, catalog);
+  const cls = resolveClass(state.classId, catalog);
+  const { scores, breakdown } = computeFinalScores(state, catalog);
   const conMod = abilityModifier(scores.con);
   const prof = proficiencyBonus(1);
 
-  const itemNames = resolveEquipmentNames(state);
+  const itemNames = resolveEquipmentNames(state, catalog);
   const expanded = expandEquipmentItems(itemNames);
 
   let gp = background?.gold ?? 0;
@@ -479,7 +520,7 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
 
   const ac = calculateAc(state, state.classId, scores, itemNames);
 
-  const skillSet = collectSkillProficiencies(state);
+  const skillSet = collectSkillProficiencies(state, catalog);
   const skills: CharacterData["skills"] = {};
   for (const key of Object.keys(skillSet) as SkillKey[]) {
     skills[key] = { proficient: true, expertise: false };
@@ -497,10 +538,11 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
       name: state.name,
       playerName: state.playerName,
       level: 1,
+      xp: 0,
       classes: cls ? [cls.name] : [],
       class: cls?.name,
       subclass: subclass?.name ?? "",
-      species: getRaceDisplayName(state.raceId, state.subraceId),
+      species: resolveRaceDisplayName(state.raceId, state.subraceId, catalog),
       background: background?.name ?? "",
       alignment: state.alignment,
       portrait: "",
@@ -511,8 +553,8 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
     abilityScoreBreakdown: breakdown,
     savingThrows,
     skills,
-    languages: collectLanguages(state),
-    toolProficiencies: collectTools(state),
+    languages: collectLanguages(state, catalog),
+    toolProficiencies: collectTools(state, catalog),
     weaponProficiencies: getRaceWeaponProficiencies(state),
     armorProficiencies: getRaceArmorProficiencies(state),
     combat: {
@@ -529,26 +571,35 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
       concentration: { active: false, spell: "" },
     },
     attacks: [],
-    spells: buildSpells(state, scores),
+    spells: buildSpells(state, scores, catalog),
     inventory: {
       currency: { cp: 0, sp: 0, ep: 0, gp, pp: 0 },
-      items: expanded.map((item) => ({
-        id: crypto.randomUUID(),
-        name: item.name,
-        quantity: item.quantity,
-        weightLb: item.weightLb,
-        equipped:
-          item.name.toLowerCase().includes("armor") ||
-          item.name.toLowerCase() === "shield" ||
-          ["longsword", "rapier", "shortsword", "greataxe", "mace", "quarterstaff", "dagger"].some(
-            (w) => item.name.toLowerCase().includes(w)
-          ),
-        magicItem: false,
-        notes: "",
-      })),
+      items: expanded.map((item) => {
+        const slug = item.name
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, "")
+          .replace(/\s+/g, "-");
+        const isWeapon = ["longsword", "rapier", "shortsword", "greataxe", "mace", "quarterstaff", "dagger"].some(
+          (w) => item.name.toLowerCase().includes(w)
+        );
+        return {
+          id: crypto.randomUUID(),
+          itemId: slug || undefined,
+          name: item.name,
+          quantity: item.quantity,
+          weightLb: item.weightLb,
+          equipped:
+            item.name.toLowerCase().includes("armor") ||
+            item.name.toLowerCase() === "shield" ||
+            isWeapon,
+          attuned: false,
+          magicItem: false,
+          notes: "",
+        };
+      }),
       notes: "",
     },
-    features: buildFeatures(state),
+    features: buildFeatures(state, catalog),
   };
 
   return {
@@ -559,7 +610,7 @@ export function buildCharacterExport(state: CharacterCreatorState): CharacterExp
   };
 }
 
-export function validateCreatorState(state: CharacterCreatorState): string[] {
+export function validateCreatorState(state: CharacterCreatorState, catalog?: CreatorCatalog): string[] {
   const errors: string[] = [];
 
   if (!state.name.trim()) errors.push("Character name is required.");
@@ -567,7 +618,7 @@ export function validateCreatorState(state: CharacterCreatorState): string[] {
   if (!state.raceId) errors.push("Race is required.");
   if (!state.backgroundId) errors.push("Background is required.");
 
-  const background = getBackground(state.backgroundId);
+  const background = resolveBackground(state.backgroundId, catalog);
   if (background?.skillChoices) {
     if (state.backgroundSkillChoices.length !== background.skillChoices.count) {
       errors.push(
@@ -604,7 +655,7 @@ export function validateCreatorState(state: CharacterCreatorState): string[] {
     errors.push(`${background.name} requires a gaming set choice.`);
   }
 
-  const race = getRace(state.raceId);
+  const race = resolveRace(state.raceId, catalog);
   if (race?.subraces?.length && !state.subraceId) {
     errors.push("Subrace is required.");
   }
@@ -651,7 +702,7 @@ export function validateCreatorState(state: CharacterCreatorState): string[] {
 
   if (!state.classId) errors.push("Class is required.");
 
-  const cls = getClass(state.classId);
+  const cls = resolveClass(state.classId, catalog);
   if (cls && classRequiresSubclassAtLevel1(state.classId) && !state.subclassId) {
     errors.push("Subclass is required at 1st level for this class.");
   }

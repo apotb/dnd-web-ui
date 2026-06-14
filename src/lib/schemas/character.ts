@@ -51,7 +51,10 @@ export const damageTypeSchema = z.string().min(1);
 export const basicInfoSchema = z.object({
   name: z.string().default(""),
   playerName: z.string().default(""),
+  /** Kept for backward-compat / export; derived from xp at runtime. */
   level: z.number().int().min(1).max(30).default(1),
+  /** Total XP. Level is computed from this; level field is legacy. */
+  xp: z.number().int().min(0).default(0),
   classes: z.array(z.string()).default([]),
   class: z.string().optional(), // legacy single-class field
   subclass: z.string().default(""),
@@ -147,10 +150,13 @@ export const spellsSchema = z.object({
 
 export const inventoryItemSchema = z.object({
   id: z.string().default(() => crypto.randomUUID()),
+  /** References items.slug in the catalog. Absent = custom (non-catalogued) item. */
+  itemId: z.string().optional(),
   name: z.string().default(""),
   quantity: z.number().int().min(0).default(1),
   weightLb: z.number().min(0).optional(),
   equipped: z.boolean().default(false),
+  attuned: z.boolean().default(false),
   magicItem: z.boolean().default(false),
   notes: z.string().default(""),
 });
@@ -219,6 +225,7 @@ export const characterDataSchema = z.object({
 });
 
 export type AbilityKey = z.infer<typeof abilityKeySchema>;
+export type InventoryItem = z.infer<typeof inventoryItemSchema>;
 export type SkillKey = z.infer<typeof skillKeySchema>;
 export type BasicInfo = z.infer<typeof basicInfoSchema>;
 export type AbilityScores = z.infer<typeof abilityScoresSchema>;

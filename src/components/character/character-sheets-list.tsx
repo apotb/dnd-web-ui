@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
 import { CharacterSheet } from "@/components/character/character-sheet";
 import { CharacterImportButton } from "@/components/character/character-import-button";
@@ -45,6 +46,8 @@ export function CharacterSheetsList({
   isDm,
   userId,
 }: CharacterSheetsListProps) {
+  const pathname = usePathname();
+  const createCharacterHref = pathname.replace(/\/characters.*$/, "/create-character");
   const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
   const sortedCharacters = useMemo(
     () => [...characters].sort((a, b) => a.name.localeCompare(b.name)),
@@ -91,7 +94,7 @@ export function CharacterSheetsList({
   }
 
   const userOwnedCharacter = useMemo(
-    () => sortedCharacters.find((c) => c.owner_user_id === userId) ?? null,
+    () => (userId ? sortedCharacters.find((c) => c.owner_user_id === userId) : null) ?? null,
     [sortedCharacters, userId]
   );
 
@@ -110,31 +113,23 @@ export function CharacterSheetsList({
   return (
     <div>
       <h2 className="page-title">Characters</h2>
-      {isDm ? (
-        <p className="retro-dm-actions">
-          <CharacterImportButton campaignId={campaignId} />
-        </p>
-      ) : null}
 
       {sortedCharacters.length === 0 ? (
         <p className="retro-note">No characters yet.</p>
       ) : (
         <>
-          <select
-            id="character-select"
-            className="candy-input character-select"
-            value={selectedId}
-            onChange={(e) => selectCharacter(e.target.value)}
-          >
-            <option value="">Select character</option>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
             {sortedCharacters.map((character) => (
-              <option key={character.id} value={character.id}>
+              <button
+                key={character.id}
+                className={`candy-btn${character.id === selectedId ? " candy-btn-active" : ""}`}
+                style={{ flex: "0 1 auto" }}
+                onClick={() => selectCharacter(character.id === selectedId ? "" : character.id)}
+              >
                 {character.name}
-                {character.player_name ? ` · ${character.player_name}` : ""}
-                {character.owner_user_id === userId ? " · yours" : ""}
-              </option>
+              </button>
             ))}
-          </select>
+          </div>
 
           {selectedCharacter ? (
             <>
@@ -149,25 +144,24 @@ export function CharacterSheetsList({
                 />
               ) : null}
               <section className="retro-box character-sheet-wrap">
-                {selectedCanEdit ? (
-                  <p className="retro-edit-link">
-                    <Link
-                      href={`/campaigns/${campaignId}/characters/${selectedCharacter.id}`}
-                    >
-                      [ edit {selectedCharacter.name} ]
-                    </Link>
-                  </p>
-                ) : null}
                 <CharacterSheet
                   data={selectedCharacter.data}
                   isDm={false}
                   editable={false}
+                  editHref={selectedCanEdit ? `/campaigns/${campaignId}/characters/${selectedCharacter.id}` : undefined}
                 />
               </section>
             </>
           ) : null}
         </>
       )}
+
+      <div style={{ display: "flex", flexDirection: "row", gap: "8px", flexWrap: "wrap", marginTop: "16px" }}>
+        <Link href={createCharacterHref} className="candy-btn" style={{ flex: "0 1 auto" }}>
+          Create character
+        </Link>
+        {isDm && <CharacterImportButton campaignId={campaignId} />}
+      </div>
     </div>
   );
 }

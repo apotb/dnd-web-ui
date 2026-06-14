@@ -1,4 +1,5 @@
 import type { AbilityKey } from "@/lib/schemas/character";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   ABILITY_FULL_LABELS,
   ABILITY_LABELS,
@@ -42,13 +43,14 @@ export function AbilityScorePanel({
           const total = baseScores[key] + racial;
           const mod = abilityModifier(total);
           const sources = [
-            { label: "Point buy", value: baseScores[key] },
+            { label: "Base", value: baseScores[key] },
             ...(racialPreview[key]?.sources ?? []),
           ];
           const title = sources.map((s) => `${s.label}: ${s.value >= 0 ? "+" : ""}${s.value}`).join("\n");
 
           return (
-            <div key={key} className="creator-ability-cell retro-box" title={title}>
+            <Tooltip key={key} content={readOnly ? title : null}>
+            <div className="creator-ability-cell retro-box">
               <p className="creator-ability-label">{ABILITY_LABELS[key]}</p>
               <p className="creator-ability-name">{ABILITY_FULL_LABELS[key]}</p>
               {readOnly ? (
@@ -79,6 +81,7 @@ export function AbilityScorePanel({
                 <p className="creator-ability-racial">includes {racial > 0 ? "+" : ""}{racial} racial</p>
               ) : null}
             </div>
+            </Tooltip>
           );
         })}
       </div>

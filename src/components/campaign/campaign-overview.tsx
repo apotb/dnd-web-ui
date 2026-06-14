@@ -82,7 +82,18 @@ function PartyMemberSummary({
   return (
     <div className="retro-member-box">
       <div className="retro-member-header">
-        <strong>{character.name}</strong>
+        <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+          <strong>{character.name}</strong>
+          {isDm && (
+            <Link
+              href={`/campaigns/${campaignId}/characters/${character.id}`}
+              className="retro-inline-link"
+              style={{ fontWeight: "normal", fontSize: "11px" }}
+            >
+              edit
+            </Link>
+          )}
+        </div>
         <span className="retro-member-meta">
           Lv {basicInfo.level}
           {classLabel ? ` ${classLabel}` : ""}
@@ -116,13 +127,6 @@ function PartyMemberSummary({
       {combat.conditions.length > 0 && (
         <p className="retro-member-line">
           <strong>Cond:</strong> {combat.conditions.join(", ")}
-        </p>
-      )}
-      {isDm && (
-        <p className="retro-member-link">
-          <Link href={`/campaigns/${campaignId}/characters/${character.id}`}>
-            edit →
-          </Link>
         </p>
       )}
     </div>

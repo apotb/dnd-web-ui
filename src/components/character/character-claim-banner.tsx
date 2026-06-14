@@ -88,18 +88,5 @@ export function CharacterClaimBanner({
     );
   }
 
-  if (!isLoggedIn) {
-    return (
-      <section className="retro-box character-claim-banner">
-        <p>
-          <Link href={`/login?next=/campaigns/${campaignId}/characters/${characterId}`}>
-            Log in
-          </Link>{" "}
-          to claim and edit a character.
-        </p>
-      </section>
-    );
-  }
-
   return null;
 }

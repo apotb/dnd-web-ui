@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,12 +34,19 @@ import {
   getSpellAttackBonus,
   getSpellSaveDc,
 } from "@/lib/dnd/calculations";
+import { levelFromXp, xpProgress } from "@/lib/dnd/xp";
+import type { Item } from "@/lib/schemas/item";
+import { categoryLabel, getWeaponProperties, RARITY_COLOR, rarityLabel } from "@/lib/schemas/item";
+import { ItemPicker } from "@/components/items/item-picker";
+import { getItemsBySlugsClient } from "@/lib/items/catalog-client";
+import { getAllAttacks, type DerivedAttack } from "@/lib/dnd/attacks";
 
 interface CharacterSheetProps {
   data: CharacterData;
   isDm: boolean;
   editable?: boolean;
   onChange?: (data: CharacterData) => void;
+  editHref?: string;
 }
 
 function Field({
@@ -73,6 +83,7 @@ export function CharacterSheet({
   isDm,
   editable = false,
   onChange,
+  editHref,
 }: CharacterSheetProps) {
   const update = (patch: Partial<CharacterData>) => {
     onChange?.({ ...data, ...patch });
@@ -94,16 +105,42 @@ export function CharacterSheet({
 
   const mods = getAbilityModifiers(data.abilityScores);
   const profBonus = getProficiencyBonus(data);
+  const level = levelFromXp(data.basicInfo.xp ?? 0);
+  const xp = data.basicInfo.xp ?? 0;
+  const xpBar = xpProgress(xp);
+
+  // Load catalog items for equipped weapons (for attack derivation)
+  const [catalogItems, setCatalogItems] = useState<Record<string, Item>>({});
+  const [itemPickerOpen, setItemPickerOpen] = useState(false);
+  // Index of the inventory slot being swapped; null = adding a new item
+  const swapItemIndexRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const slugs = data.inventory.items
+      .filter((i) => i.itemId)
+      .map((i) => i.itemId!);
+    if (!slugs.length) { setCatalogItems({}); return; }
+    getItemsBySlugsClient(slugs).then(setCatalogItems);
+  }, [data.inventory.items]);
+
+  const derivedAttacks = getAllAttacks(data, catalogItems);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">
-            {data.basicInfo.name || "Unnamed Character"}
-          </h1>
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold">
+              {data.basicInfo.name || "Unnamed Character"}
+            </h1>
+            {editHref && (
+              <Link href={editHref} className="retro-inline-link text-sm">
+                edit
+              </Link>
+            )}
+          </div>
           <p className="text-muted-foreground">
-            Level {data.basicInfo.level}
+            Level {level}
             {(data.basicInfo.classes.length > 0 || data.basicInfo.class) && (
               <>
                 {" "}
@@ -137,34 +174,74 @@ export function CharacterSheet({
             <Field
               label="Species"
               value={data.basicInfo.species}
-              editable={editable}
+              editable={isDm && editable}
               onChange={(v) => updateBasic({ species: v })}
             />
             <Field
               label="Background"
               value={data.basicInfo.background}
-              editable={editable}
+              editable={isDm && editable}
               onChange={(v) => updateBasic({ background: v })}
             />
             <Field
               label="Alignment"
               value={data.basicInfo.alignment}
-              editable={editable}
+              editable={isDm && editable}
               onChange={(v) => updateBasic({ alignment: v })}
             />
             <Field
               label="Subclass"
               value={data.basicInfo.subclass}
-              editable={editable}
+              editable={isDm && editable}
               onChange={(v) => updateBasic({ subclass: v })}
             />
             <Field
-              label="Level"
-              value={data.basicInfo.level}
-              editable={editable}
-              type="number"
-              onChange={(v) => updateBasic({ level: parseInt(v) || 1 })}
+              label="PLACEHOLDER"
+              value="PLACEHOLDER"
+              editable={false}
             />
+            {/* Level + XP inline */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Level</Label>
+              {isDm && editable ? (
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium w-6 shrink-0">{level}</p>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={xp}
+                    className="max-w-36"
+                    onChange={(e) => {
+                      const v = Math.max(0, parseInt(e.target.value) || 0);
+                      updateBasic({ xp: v, level: levelFromXp(v) });
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {xpBar.nextLevelXp !== null
+                      ? `${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} XP to lvl ${level + 1}`
+                      : "Max level"}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium w-6 shrink-0">{level}</p>
+                  <div className="flex-1 space-y-0.5">
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full bg-foreground rounded-full transition-all"
+                        style={{ width: `${xpBar.pct}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {xp.toLocaleString()} XP
+                      {xpBar.nextLevelXp !== null
+                        ? ` · ${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} to lvl ${level + 1}`
+                        : " · Max level"}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           {data.languages.length > 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -224,9 +301,8 @@ export function CharacterSheet({
                         }
                       />
                     ) : (
-                      <p
-                        className="text-2xl font-bold"
-                        title={
+                      <Tooltip
+                        content={
                           data.abilityScoreBreakdown?.[key]
                             ? data.abilityScoreBreakdown[key].sources
                                 .map(
@@ -234,11 +310,13 @@ export function CharacterSheet({
                                     `${s.label}: ${s.value >= 0 ? "+" : ""}${s.value}`
                                 )
                                 .join("\n")
-                            : undefined
+                            : null
                         }
                       >
-                        {data.abilityScores[key]}
-                      </p>
+                        <p className="text-2xl font-bold">
+                          {data.abilityScores[key]}
+                        </p>
+                      </Tooltip>
                     )}
                   </div>
                   <div className="text-right">
@@ -539,24 +617,54 @@ export function CharacterSheet({
                     })
                   }
                 >
-                  Add Attack
+                  Add Special Attack
                 </Button>
               )}
             </CardHeader>
             <CardContent className="space-y-3">
-              {data.attacks.length === 0 && (
-                <p className="text-sm text-muted-foreground">No attacks.</p>
+              {derivedAttacks.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No attacks. Equip a weapon or add a special attack above.
+                </p>
               )}
-              {data.attacks.map((attack, i) => (
+              {derivedAttacks.map((attack) => {
+                if (attack.source !== "manual") {
+                  return (
+                    <div key={attack.id} className="rounded-md border p-3 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm">{attack.name}</p>
+                          <Badge variant="outline" className="text-xs">
+                            {attack.source === "weapon" ? "Weapon" : "Cantrip"}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {formatModifier(attack.attackBonus)} to hit ·{" "}
+                          {attack.damageDice} {attack.damageType}
+                          {attack.range && ` · ${attack.range}`}
+                        </p>
+                        {attack.notes && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{attack.notes}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Manual attack — editable
+                const i = data.attacks.findIndex((a) => a.id === attack.id);
+                if (i === -1) return null;
+                const manualAttack = data.attacks[i];
+                return (
                 <div key={attack.id} className="rounded-md border p-3 space-y-2">
                   {editable ? (
                     <>
                       <Input
                         placeholder="Name"
-                        value={attack.name}
+                        value={manualAttack.name}
                         onChange={(e) => {
                           const attacks = [...data.attacks];
-                          attacks[i] = { ...attack, name: e.target.value };
+                          attacks[i] = { ...manualAttack, name: e.target.value };
                           update({ attacks });
                         }}
                       />
@@ -564,11 +672,11 @@ export function CharacterSheet({
                         <Input
                           type="number"
                           placeholder="Attack bonus"
-                          value={attack.attackBonus}
+                          value={manualAttack.attackBonus}
                           onChange={(e) => {
                             const attacks = [...data.attacks];
                             attacks[i] = {
-                              ...attack,
+                              ...manualAttack,
                               attackBonus: parseInt(e.target.value) || 0,
                             };
                             update({ attacks });
@@ -576,11 +684,11 @@ export function CharacterSheet({
                         />
                         <Input
                           placeholder="Damage (e.g. 1d8+3)"
-                          value={attack.damageDice}
+                          value={manualAttack.damageDice}
                           onChange={(e) => {
                             const attacks = [...data.attacks];
                             attacks[i] = {
-                              ...attack,
+                              ...manualAttack,
                               damageDice: e.target.value,
                             };
                             update({ attacks });
@@ -588,11 +696,11 @@ export function CharacterSheet({
                         />
                         <Input
                           placeholder="Damage type"
-                          value={attack.damageType}
+                          value={manualAttack.damageType}
                           onChange={(e) => {
                             const attacks = [...data.attacks];
                             attacks[i] = {
-                              ...attack,
+                              ...manualAttack,
                               damageType: e.target.value,
                             };
                             update({ attacks });
@@ -604,7 +712,7 @@ export function CharacterSheet({
                         variant="destructive"
                         onClick={() =>
                           update({
-                            attacks: data.attacks.filter((a) => a.id !== attack.id),
+                            attacks: data.attacks.filter((a) => a.id !== manualAttack.id),
                           })
                         }
                       >
@@ -613,16 +721,20 @@ export function CharacterSheet({
                     </>
                   ) : (
                     <div>
-                      <p className="font-medium">{attack.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">{manualAttack.name}</p>
+                        <Badge variant="outline" className="text-xs">Special</Badge>
+                      </div>
                       <p className="text-sm text-muted-foreground">
-                        {formatModifier(attack.attackBonus)} to hit ·{" "}
-                        {attack.damageDice} {attack.damageType}
-                        {attack.range && ` · ${attack.range}`}
+                        {formatModifier(manualAttack.attackBonus)} to hit ·{" "}
+                        {manualAttack.damageDice} {manualAttack.damageType}
+                        {manualAttack.range && ` · ${manualAttack.range}`}
                       </p>
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
 
@@ -747,126 +859,218 @@ export function CharacterSheet({
               <CardTitle className="text-base">Personal Inventory</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-          <div>
-            <p className="mb-2 text-sm font-medium">Currency</p>
-            <div className="grid grid-cols-5 gap-2">
-              {(["cp", "sp", "ep", "gp", "pp"] as const).map((coin) => (
-                <Field
-                  key={coin}
-                  label={coin.toUpperCase()}
-                  value={data.inventory.currency[coin]}
-                  editable={editable}
-                  type="number"
-                  onChange={(v) =>
-                    update({
-                      inventory: {
-                        ...data.inventory,
-                        currency: {
-                          ...data.inventory.currency,
-                          [coin]: parseInt(v) || 0,
-                        },
-                      },
-                    })
-                  }
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-2 flex flex-row items-center justify-between">
-              <p className="text-sm font-medium">Items</p>
-              {editable && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    update({
-                      inventory: {
-                        ...data.inventory,
-                        items: [
-                          ...data.inventory.items,
-                          {
-                            id: crypto.randomUUID(),
-                            name: "",
-                            quantity: 1,
-                            equipped: false,
-                            magicItem: false,
-                            notes: "",
+              <div>
+                <p className="mb-2 text-sm font-medium">Currency</p>
+                <div className="grid grid-cols-5 gap-2">
+                  {(["cp", "sp", "ep", "gp", "pp"] as const).map((coin) => (
+                    <Field
+                      key={coin}
+                      label={coin.toUpperCase()}
+                      value={data.inventory.currency[coin]}
+                      editable={editable}
+                      type="number"
+                      onChange={(v) =>
+                        update({
+                          inventory: {
+                            ...data.inventory,
+                            currency: {
+                              ...data.inventory.currency,
+                              [coin]: parseInt(v) || 0,
+                            },
                           },
-                        ],
-                      },
-                    })
-                  }
-                >
-                  Add Item
-                </Button>
-              )}
-            </div>
-            <div className="space-y-2">
-              {data.inventory.items.map((item, i) => (
-                <div
-                  key={item.id}
-                  className="flex flex-wrap items-center gap-2 border-b py-2"
-                >
-                  {editable ? (
-                    <>
-                      <Input
-                        className="flex-1"
-                        value={item.name}
-                        onChange={(e) => {
-                          const items = [...data.inventory.items];
-                          items[i] = { ...item, name: e.target.value };
-                          update({ inventory: { ...data.inventory, items } });
-                        }}
-                      />
-                      <Input
-                        type="number"
-                        className="w-16"
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const items = [...data.inventory.items];
-                          items[i] = {
-                            ...item,
-                            quantity: parseInt(e.target.value) || 0,
-                          };
-                          update({ inventory: { ...data.inventory, items } });
-                        }}
-                      />
-                      <Checkbox
-                        checked={item.equipped}
-                        onCheckedChange={(checked) => {
-                          const items = [...data.inventory.items];
-                          items[i] = { ...item, equipped: !!checked };
-                          update({ inventory: { ...data.inventory, items } });
-                        }}
-                      />
-                      <span className="text-xs">Equipped</span>
-                      <Checkbox
-                        checked={item.magicItem}
-                        onCheckedChange={(checked) => {
-                          const items = [...data.inventory.items];
-                          items[i] = { ...item, magicItem: !!checked };
-                          update({ inventory: { ...data.inventory, items } });
-                        }}
-                      />
-                      <span className="text-xs">Magic</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>
-                        {item.name} ×{item.quantity}
-                      </span>
-                      {item.equipped && <Badge>Equipped</Badge>}
-                      {item.magicItem && <Badge variant="secondary">Magic</Badge>}
-                    </>
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex flex-row items-center justify-between">
+                  <p className="text-sm font-medium">Items</p>
+                  {editable && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setItemPickerOpen(true)}
+                    >
+                      + Add Item
+                    </Button>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="space-y-2">
+                  {data.inventory.items.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {editable ? 'Click "+ Add Item" to pick from the catalog.' : "No items."}
+                    </p>
+                  )}
+                  {data.inventory.items.map((item, i) => {
+                    const catalogItem = item.itemId ? catalogItems[item.itemId] : null;
+                    const displayName = catalogItem?.name ?? (item.name || "Unknown item");
+                    const isMagic = item.magicItem || (catalogItem?.is_magic ?? false);
+                    const wp = catalogItem ? getWeaponProperties(catalogItem) : null;
+                    const detail = wp
+                      ? `${wp.damage} ${wp.damageType} · ${wp.weaponCategory} ${wp.weaponRange}`
+                      : catalogItem?.category && catalogItem.category !== "other"
+                      ? categoryLabel(catalogItem.category as Parameters<typeof categoryLabel>[0])
+                      : null;
+
+                    return (
+                      <div key={item.id} className="rounded-md border p-2.5 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Item name — button in edit mode to swap via picker */}
+                          {editable ? (
+                            <button
+                              type="button"
+                              className="flex-1 text-left px-2.5 py-1.5 rounded-md border text-sm font-medium hover:bg-accent transition-colors min-w-0"
+                              onClick={() => {
+                                swapItemIndexRef.current = i;
+                                setItemPickerOpen(true);
+                              }}
+                            >
+                              <span className="block truncate">{displayName}</span>
+                              {!item.itemId && (
+                                <span className="text-xs text-muted-foreground font-normal">
+                                  Custom — click to link to catalog
+                                </span>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="font-medium text-sm">{displayName}</span>
+                          )}
+
+                          {/* Quantity */}
+                          {editable ? (
+                            <Input
+                              type="number"
+                              className="w-16 h-8 text-sm shrink-0"
+                              value={item.quantity}
+                              min={0}
+                              onChange={(e) => {
+                                const items = [...data.inventory.items];
+                                items[i] = { ...item, quantity: parseInt(e.target.value) || 0 };
+                                update({ inventory: { ...data.inventory, items } });
+                              }}
+                            />
+                          ) : (
+                            item.quantity !== 1 && (
+                              <span className="text-sm text-muted-foreground">×{item.quantity}</span>
+                            )
+                          )}
+
+                          {/* Badges */}
+                          {item.equipped && <Badge className="text-xs shrink-0">Equipped</Badge>}
+                          {isMagic && (
+                            <Badge
+                              variant="secondary"
+                              className={`text-xs shrink-0 ${RARITY_COLOR[(catalogItem?.rarity ?? "common") as keyof typeof RARITY_COLOR]}`}
+                            >
+                              {catalogItem?.rarity && catalogItem.rarity !== "common"
+                                ? rarityLabel(catalogItem.rarity as Parameters<typeof rarityLabel>[0])
+                                : "Magic"}
+                            </Badge>
+                          )}
+                          {catalogItem?.requires_attunement && item.attuned && (
+                            <Badge variant="outline" className="text-xs shrink-0">Attuned</Badge>
+                          )}
+                        </div>
+
+                        {detail && (
+                          <p className="text-xs text-muted-foreground">{detail}</p>
+                        )}
+
+                        {editable && (
+                          <div className="flex flex-wrap items-center gap-3 pt-1">
+                            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                              <Checkbox
+                                checked={item.equipped}
+                                onCheckedChange={(checked) => {
+                                  const items = [...data.inventory.items];
+                                  items[i] = { ...item, equipped: !!checked };
+                                  update({ inventory: { ...data.inventory, items } });
+                                }}
+                              />
+                              Equipped
+                            </label>
+                            {catalogItem?.requires_attunement && (
+                              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                                <Checkbox
+                                  checked={item.attuned ?? false}
+                                  onCheckedChange={(checked) => {
+                                    const items = [...data.inventory.items];
+                                    items[i] = { ...item, attuned: !!checked };
+                                    update({ inventory: { ...data.inventory, items } });
+                                  }}
+                                />
+                                Attuned
+                              </label>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-xs text-destructive hover:text-destructive ml-auto"
+                              onClick={() =>
+                                update({
+                                  inventory: {
+                                    ...data.inventory,
+                                    items: data.inventory.items.filter((_, j) => j !== i),
+                                  },
+                                })
+                              }
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </CardContent>
           </Card>
+
+          <ItemPicker
+            open={itemPickerOpen}
+            onClose={() => {
+              setItemPickerOpen(false);
+              swapItemIndexRef.current = null;
+            }}
+            onSelect={(catalogItem) => {
+              const swapIndex = swapItemIndexRef.current;
+              swapItemIndexRef.current = null;
+
+              if (swapIndex !== null) {
+                // Swap an existing slot to a different catalog item
+                const items = [...data.inventory.items];
+                items[swapIndex] = {
+                  ...items[swapIndex],
+                  itemId: catalogItem.slug,
+                  name: catalogItem.name,
+                  magicItem: catalogItem.is_magic,
+                };
+                update({ inventory: { ...data.inventory, items } });
+              } else {
+                // Add a brand new item
+                const newItem = {
+                  id: crypto.randomUUID(),
+                  itemId: catalogItem.slug,
+                  name: catalogItem.name,
+                  quantity: 1,
+                  equipped: false,
+                  attuned: false,
+                  magicItem: catalogItem.is_magic,
+                  notes: "",
+                };
+                update({
+                  inventory: {
+                    ...data.inventory,
+                    items: [...data.inventory.items, newItem],
+                  },
+                });
+              }
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="features" className="space-y-4">

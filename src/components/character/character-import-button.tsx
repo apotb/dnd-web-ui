@@ -64,7 +64,8 @@ export function CharacterImportButton({ campaignId }: CharacterImportButtonProps
       {error ? (
         <button
           type="button"
-          className="retro-inline-link retro-inline-error-link"
+          className="candy-btn"
+          style={{ color: "red", flex: "0 1 auto" }}
           onClick={() => setError(null)}
         >
           {error}
@@ -72,7 +73,8 @@ export function CharacterImportButton({ campaignId }: CharacterImportButtonProps
       ) : (
         <button
           type="button"
-          className="retro-inline-link"
+          className="candy-btn"
+          style={{ flex: "0 1 auto" }}
           disabled={loading}
           onClick={() => inputRef.current?.click()}
         >

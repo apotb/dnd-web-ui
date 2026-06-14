@@ -58,7 +58,7 @@ export function JsonImportExport({
   }
 
   return (
-    <div className="sheet-json-actions">
+    <>
       <input
         ref={inputRef}
         type="file"
@@ -71,7 +71,7 @@ export function JsonImportExport({
         }}
       />
       <button type="button" className="candy-btn candy-btn-sm" onClick={handleExport}>
-        Export JSON
+        Export .json
       </button>
       {importError ? (
         <button
@@ -91,6 +91,6 @@ export function JsonImportExport({
           {importing ? "Importing…" : "Import .json"}
         </button>
       )}
-    </div>
+    </>
   );
 }

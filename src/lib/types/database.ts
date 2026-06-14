@@ -13,6 +13,7 @@ export interface Campaign {
   name: string;
   created_by: string;
   party_data: Json;
+  is_main: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +48,24 @@ export interface Encounter {
   updated_at: string;
 }
 
+export interface Item {
+  id: string;
+  slug: string;
+  name: string;
+  category: string;
+  subcategory: string | null;
+  source: string;
+  rarity: string;
+  weight_lb: number | null;
+  cost_gp: number | null;
+  description: string;
+  properties: Json;
+  requires_attunement: boolean;
+  is_magic: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EncounterCombatant {
   id: string;
   encounter_id: string;
@@ -69,6 +88,7 @@ export type Database = {
           name: string;
           created_by: string;
           party_data?: Json;
+          is_main?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -100,6 +120,28 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Character>;
+        Relationships: [];
+      };
+      items: {
+        Row: Item;
+        Insert: {
+          id?: string;
+          slug: string;
+          name: string;
+          category?: string;
+          subcategory?: string | null;
+          source?: string;
+          rarity?: string;
+          weight_lb?: number | null;
+          cost_gp?: number | null;
+          description?: string;
+          properties?: Json;
+          requires_attunement?: boolean;
+          is_magic?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Item>;
         Relationships: [];
       };
       encounters: {

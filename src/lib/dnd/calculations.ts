@@ -1,4 +1,5 @@
 import type { AbilityKey, CharacterData, SkillKey } from "@/lib/schemas/character";
+import { levelFromXp } from "@/lib/dnd/xp";
 
 /** Standard D&D 5e skill → ability mapping. */
 export const SKILL_ABILITY_MAP: Record<SkillKey, AbilityKey> = {
@@ -74,7 +75,8 @@ export function proficiencyBonus(level: number): number {
 }
 
 export function getProficiencyBonus(data: CharacterData): number {
-  return data.proficiencyBonusOverride ?? proficiencyBonus(data.basicInfo.level);
+  const level = levelFromXp(data.basicInfo.xp ?? 0);
+  return data.proficiencyBonusOverride ?? proficiencyBonus(level);
 }
 
 export function getAbilityModifiers(scores: CharacterData["abilityScores"]) {

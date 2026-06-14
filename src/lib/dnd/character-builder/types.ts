@@ -51,6 +51,8 @@ export interface CharacterCreatorState {
   spellIds: string[];
   wizardSpellbookIds: string[];
   equipmentChoiceIndices: number[];
+  /** key: "c{groupIdx}_{itemIdx}" for choices, "f{itemIdx}" for fixed equipment */
+  equipmentSubChoices: Record<string, string>;
   useStartingGold: boolean;
   rolledGold: number | null;
 }
@@ -92,6 +94,7 @@ export function createInitialCreatorState(): CharacterCreatorState {
     spellIds: [],
     wizardSpellbookIds: [],
     equipmentChoiceIndices: [],
+    equipmentSubChoices: {},
     useStartingGold: false,
     rolledGold: null,
   };

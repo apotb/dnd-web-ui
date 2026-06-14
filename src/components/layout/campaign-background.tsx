@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Tooltip } from "@/components/ui/tooltip";
 
 const STORAGE_KEY = "campaign-background-enabled";
 
@@ -29,16 +30,17 @@ export function CampaignBackground() {
         <div className="campaign-bg-scrim" />
       </div>
 
-      <button
-        type="button"
-        className="campaign-bg-toggle"
-        onClick={() => setEnabled((value) => !value)}
-        aria-pressed={enabled}
-        aria-label={enabled ? "Hide background" : "Show background"}
-        title={enabled ? "Hide background" : "Show background"}
-      >
-        {enabled ? "◧ BG" : "◻ BG"}
-      </button>
+      <Tooltip content={enabled ? "Hide background" : "Show background"}>
+        <button
+          type="button"
+          className="campaign-bg-toggle"
+          onClick={() => setEnabled((value) => !value)}
+          aria-pressed={enabled}
+          aria-label={enabled ? "Hide background" : "Show background"}
+        >
+          {enabled ? "◧ BG" : "◻ BG"}
+        </button>
+      </Tooltip>
     </>
   );
 }
