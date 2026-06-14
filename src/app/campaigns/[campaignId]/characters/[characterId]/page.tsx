@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getCharacterAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
+import { fetchCatalogClasses } from "@/lib/content/catalog";
 import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
 import { CharacterEditor } from "@/components/character/character-editor";
 import { CharacterSheet } from "@/components/character/character-sheet";
@@ -16,6 +17,7 @@ export default async function CharacterDetailPage({
   if (!access) notFound();
 
   const character = parseCharacterRow(access.character, access.isDm);
+  const classes = await fetchCatalogClasses();
 
   if (access.canEdit) {
     return (
@@ -25,6 +27,7 @@ export default async function CharacterDetailPage({
         initialName={character.name}
         initialPlayerName={character.player_name}
         initialData={character.data}
+        classes={classes}
         canDelete={access.isDm}
         showDmNotes={access.isDm}
         showEditingNote={access.isOwner && !access.isDm}
@@ -42,7 +45,12 @@ export default async function CharacterDetailPage({
         canClaim={access.canClaim}
         isOwner={false}
       />
-      <CharacterSheet data={character.data} isDm={false} editable={false} />
+      <CharacterSheet
+        data={character.data}
+        isDm={false}
+        editable={false}
+        classes={classes}
+      />
     </>
   );
 }

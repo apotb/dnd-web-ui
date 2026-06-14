@@ -23,8 +23,17 @@ import {
 import {
   ITEM_CATEGORIES,
   ITEM_RARITIES,
+  WEAPON_PROPERTIES,
   categoryLabel,
   rarityLabel,
+  weaponCategoryLabel,
+  weaponRangeLabel,
+  armorTypeLabel,
+  subcategoryLabel,
+  subcategoryOptionsForCategory,
+  getWeaponProperties,
+  getArmorProperties,
+  getShieldProperties,
   RARITY_COLOR,
   type Item,
   type ItemCategory,
@@ -47,12 +56,108 @@ const EMPTY_FORM = {
   weight_lb: "",
   cost_gp: "",
   description: "",
-  properties: "{}",
   requires_attunement: false,
   is_magic: false,
+  showAdvancedJson: false,
+  advancedProperties: "{}",
+};
+
+const EMPTY_WEAPON_STATS = {
+  damage: "",
+  damageType: "",
+  versatileDamage: "",
+  weaponCategory: "simple" as "simple" | "martial",
+  weaponRange: "melee" as "melee" | "ranged",
+  weaponProperties: [] as string[],
+};
+
+const EMPTY_ARMOR_STATS = {
+  armorType: "light" as "light" | "medium" | "heavy",
+  armorClass: "11",
+  dexBonus: true,
+  maxDexBonus: "",
+  strengthRequirement: "0",
+  stealthDisadvantage: false,
 };
 
 type FormState = typeof EMPTY_FORM;
+
+function buildProperties(
+  category: ItemCategory,
+  weaponStats: typeof EMPTY_WEAPON_STATS,
+  armorStats: typeof EMPTY_ARMOR_STATS,
+  shieldAc: string,
+  advancedJson: string,
+  useAdvanced: boolean
+): Record<string, unknown> {
+  if (useAdvanced) {
+    return JSON.parse(advancedJson || "{}") as Record<string, unknown>;
+  }
+  if (category === "weapon") {
+    return {
+      damage: weaponStats.damage,
+      damageType: weaponStats.damageType,
+      ...(weaponStats.versatileDamage
+        ? { versatileDamage: weaponStats.versatileDamage }
+        : {}),
+      weaponCategory: weaponStats.weaponCategory,
+      weaponRange: weaponStats.weaponRange,
+      weaponProperties: weaponStats.weaponProperties,
+    };
+  }
+  if (category === "armor") {
+    return {
+      armorType: armorStats.armorType,
+      armorClass: parseInt(armorStats.armorClass, 10) || 11,
+      dexBonus: armorStats.dexBonus,
+      maxDexBonus: armorStats.maxDexBonus
+        ? parseInt(armorStats.maxDexBonus, 10)
+        : null,
+      strengthRequirement: parseInt(armorStats.strengthRequirement, 10) || 0,
+      stealthDisadvantage: armorStats.stealthDisadvantage,
+    };
+  }
+  if (category === "shield") {
+    return { armorClass: parseInt(shieldAc, 10) || 2 };
+  }
+  return {};
+}
+
+function loadStatsFromItem(
+  item: Item,
+  setWeaponStats: (v: typeof EMPTY_WEAPON_STATS) => void,
+  setArmorStats: (v: typeof EMPTY_ARMOR_STATS) => void,
+  setShieldAc: (v: string) => void
+) {
+  if (item.category === "weapon") {
+    const w = getWeaponProperties(item);
+    if (w) {
+      setWeaponStats({
+        damage: w.damage ?? "",
+        damageType: w.damageType ?? "",
+        versatileDamage: w.versatileDamage ?? "",
+        weaponCategory: w.weaponCategory ?? "simple",
+        weaponRange: w.weaponRange ?? "melee",
+        weaponProperties: w.weaponProperties ?? [],
+      });
+    }
+  } else if (item.category === "armor") {
+    const a = getArmorProperties(item);
+    if (a) {
+      setArmorStats({
+        armorType: a.armorType ?? "light",
+        armorClass: String(a.armorClass ?? 11),
+        dexBonus: a.dexBonus ?? true,
+        maxDexBonus: a.maxDexBonus != null ? String(a.maxDexBonus) : "",
+        strengthRequirement: String(a.strengthRequirement ?? 0),
+        stealthDisadvantage: a.stealthDisadvantage ?? false,
+      });
+    }
+  } else if (item.category === "shield") {
+    const s = getShieldProperties(item);
+    setShieldAc(String(s?.armorClass ?? 2));
+  }
+}
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -65,12 +170,23 @@ export function ItemManager({ initialItems, onSave, onDelete }: ItemManagerProps
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [weaponStats, setWeaponStats] = useState(EMPTY_WEAPON_STATS);
+  const [armorStats, setArmorStats] = useState(EMPTY_ARMOR_STATS);
+  const [shieldAc, setShieldAc] = useState("2");
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const subcategoryOptions = subcategoryOptionsForCategory(form.category);
+  const selectedSubcategoryHint = subcategoryOptions.find(
+    (o) => o.value === form.subcategory
+  )?.hint;
 
   function openCreate() {
     setEditItem(null);
     setForm(EMPTY_FORM);
+    setWeaponStats(EMPTY_WEAPON_STATS);
+    setArmorStats(EMPTY_ARMOR_STATS);
+    setShieldAc("2");
     setFormError(null);
     setDialogOpen(true);
   }
@@ -87,20 +203,32 @@ export function ItemManager({ initialItems, onSave, onDelete }: ItemManagerProps
       weight_lb: item.weight_lb != null ? String(item.weight_lb) : "",
       cost_gp: item.cost_gp != null ? String(item.cost_gp) : "",
       description: item.description,
-      properties: JSON.stringify(item.properties, null, 2),
       requires_attunement: item.requires_attunement,
       is_magic: item.is_magic,
+      showAdvancedJson: false,
+      advancedProperties: JSON.stringify(item.properties, null, 2),
     });
+    setWeaponStats(EMPTY_WEAPON_STATS);
+    setArmorStats(EMPTY_ARMOR_STATS);
+    setShieldAc("2");
+    loadStatsFromItem(item, setWeaponStats, setArmorStats, setShieldAc);
     setFormError(null);
     setDialogOpen(true);
   }
 
   function handleSave() {
-    let props: Record<string, unknown> = {};
+    let props: Record<string, unknown>;
     try {
-      props = JSON.parse(form.properties || "{}");
+      props = buildProperties(
+        form.category,
+        weaponStats,
+        armorStats,
+        shieldAc,
+        form.advancedProperties,
+        form.showAdvancedJson
+      );
     } catch {
-      setFormError("Properties must be valid JSON.");
+      setFormError("Advanced properties must be valid JSON.");
       return;
     }
 
@@ -212,6 +340,9 @@ export function ItemManager({ initialItems, onSave, onDelete }: ItemManagerProps
               </div>
               <div className="text-xs text-muted-foreground">
                 {categoryLabel(item.category as ItemCategory)}
+                {item.subcategory
+                  ? ` · ${subcategoryLabel(item.subcategory)}`
+                  : ""}
                 {item.source !== "SRD" && ` · ${item.source}`}
                 <span className="ml-1 opacity-50">{item.slug}</span>
               </div>
@@ -264,7 +395,7 @@ export function ItemManager({ initialItems, onSave, onDelete }: ItemManagerProps
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Category *</Label>
-                <Select value={form.category} onValueChange={(v) => v && setForm((f) => ({ ...f, category: v as ItemCategory }))}>
+                <Select value={form.category} onValueChange={(v) => v && setForm((f) => ({ ...f, category: v as ItemCategory, subcategory: "" }))}>
                   <SelectTrigger><SelectValue>{categoryLabel(form.category)}</SelectValue></SelectTrigger>
                   <SelectContent>
                     {ITEM_CATEGORIES.map((cat) => (
@@ -275,11 +406,54 @@ export function ItemManager({ initialItems, onSave, onDelete }: ItemManagerProps
               </div>
               <div className="space-y-1.5">
                 <Label>Subcategory</Label>
-                <Input
-                  value={form.subcategory}
-                  onChange={(e) => setForm((f) => ({ ...f, subcategory: e.target.value }))}
-                  placeholder="e.g. martial_melee, light_armor"
-                />
+                {subcategoryOptions.length > 0 ? (
+                  <>
+                    <Select
+                      value={form.subcategory || "__none__"}
+                      onValueChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          subcategory: v === "__none__" ? "" : (v ?? ""),
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue>
+                          {form.subcategory
+                            ? subcategoryLabel(form.subcategory)
+                            : "None"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {subcategoryOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedSubcategoryHint ??
+                        (form.category === "tool"
+                          ? "Character creation pickers group tools by subcategory (e.g. Artisan's tools, Musical instrument)."
+                          : "Used to filter items in character creation and combat rules.")}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Input
+                      value={form.subcategory}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, subcategory: e.target.value }))
+                      }
+                      placeholder="Optional"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      No preset subcategories for this category.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -327,14 +501,265 @@ export function ItemManager({ initialItems, onSave, onDelete }: ItemManagerProps
               <Textarea rows={3} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Properties (JSON)</Label>
-              <p className="text-xs text-muted-foreground">
-                Weapon: {`{"damage":"1d8","damageType":"slashing","weaponCategory":"martial","weaponRange":"melee","weaponProperties":["versatile"]}`}
-                <br />
-                Armor: {`{"armorType":"medium","armorClass":14,"dexBonus":true,"maxDexBonus":2,"strengthRequirement":0,"stealthDisadvantage":false}`}
+            {/* Structured stats (weapons / armor / shield) */}
+            {form.category === "weapon" && !form.showAdvancedJson ? (
+              <div className="space-y-3 retro-note" style={{ padding: "12px" }}>
+                <p className="text-sm font-medium">Weapon stats</p>
+                <p className="text-xs text-muted-foreground">
+                  Used for attack rolls and the equipment picker. Most gear and tools do not need extra stats.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Damage dice</Label>
+                    <Input
+                      value={weaponStats.damage}
+                      placeholder="1d8"
+                      onChange={(e) =>
+                        setWeaponStats((s) => ({ ...s, damage: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Damage type</Label>
+                    <Input
+                      value={weaponStats.damageType}
+                      placeholder="slashing"
+                      onChange={(e) =>
+                        setWeaponStats((s) => ({ ...s, damageType: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Weapon category</Label>
+                    <Select
+                      value={weaponStats.weaponCategory}
+                      onValueChange={(v) =>
+                        v &&
+                        setWeaponStats((s) => ({
+                          ...s,
+                          weaponCategory: v as "simple" | "martial",
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue>{weaponCategoryLabel(weaponStats.weaponCategory)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="simple">Simple</SelectItem>
+                        <SelectItem value="martial">Martial</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Range</Label>
+                    <Select
+                      value={weaponStats.weaponRange}
+                      onValueChange={(v) =>
+                        v &&
+                        setWeaponStats((s) => ({
+                          ...s,
+                          weaponRange: v as "melee" | "ranged",
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue>{weaponRangeLabel(weaponStats.weaponRange)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="melee">Melee</SelectItem>
+                        <SelectItem value="ranged">Ranged</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5 col-span-2">
+                    <Label>Versatile damage (optional)</Label>
+                    <Input
+                      value={weaponStats.versatileDamage}
+                      placeholder="1d10"
+                      onChange={(e) =>
+                        setWeaponStats((s) => ({
+                          ...s,
+                          versatileDamage: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Properties</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {WEAPON_PROPERTIES.map((prop) => (
+                      <label
+                        key={prop}
+                        className="flex items-center gap-1.5 text-xs cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={weaponStats.weaponProperties.includes(prop)}
+                          onChange={(e) =>
+                            setWeaponStats((s) => ({
+                              ...s,
+                              weaponProperties: e.target.checked
+                                ? [...s.weaponProperties, prop]
+                                : s.weaponProperties.filter((p) => p !== prop),
+                            }))
+                          }
+                          className="h-3.5 w-3.5"
+                        />
+                        {prop}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {form.category === "armor" && !form.showAdvancedJson ? (
+              <div className="space-y-3 retro-note" style={{ padding: "12px" }}>
+                <p className="text-sm font-medium">Armor stats</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Armor type</Label>
+                    <Select
+                      value={armorStats.armorType}
+                      onValueChange={(v) =>
+                        v &&
+                        setArmorStats((s) => ({
+                          ...s,
+                          armorType: v as "light" | "medium" | "heavy",
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue>{armorTypeLabel(armorStats.armorType)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="light">Light</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="heavy">Heavy</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Base AC</Label>
+                    <Input
+                      type="number"
+                      value={armorStats.armorClass}
+                      onChange={(e) =>
+                        setArmorStats((s) => ({ ...s, armorClass: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Max DEX bonus</Label>
+                    <Input
+                      type="number"
+                      value={armorStats.maxDexBonus}
+                      placeholder="blank = unlimited"
+                      onChange={(e) =>
+                        setArmorStats((s) => ({ ...s, maxDexBonus: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>STR requirement</Label>
+                    <Input
+                      type="number"
+                      value={armorStats.strengthRequirement}
+                      onChange={(e) =>
+                        setArmorStats((s) => ({
+                          ...s,
+                          strengthRequirement: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={armorStats.dexBonus}
+                      onChange={(e) =>
+                        setArmorStats((s) => ({ ...s, dexBonus: e.target.checked }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    DEX bonus to AC
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={armorStats.stealthDisadvantage}
+                      onChange={(e) =>
+                        setArmorStats((s) => ({
+                          ...s,
+                          stealthDisadvantage: e.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    Stealth disadvantage
+                  </label>
+                </div>
+              </div>
+            ) : null}
+
+            {form.category === "shield" && !form.showAdvancedJson ? (
+              <div className="space-y-3 retro-note" style={{ padding: "12px" }}>
+                <p className="text-sm font-medium">Shield stats</p>
+                <div className="space-y-1.5 max-w-xs">
+                  <Label>AC bonus</Label>
+                  <Input
+                    type="number"
+                    value={shieldAc}
+                    onChange={(e) => setShieldAc(e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {!["weapon", "armor", "shield"].includes(form.category) &&
+            !form.showAdvancedJson ? (
+              <p className="retro-note text-xs">
+                No extra stats needed for{" "}
+                {categoryLabel(form.category).toLowerCase()} items — weight, cost,
+                and subcategory (for tools) are enough. Set{" "}
+                <strong>Category → Tool</strong> and{" "}
+                <strong>Subcategory → Artisan&apos;s tools</strong> (for example)
+                so the item appears in character creation pickers.
               </p>
-              <Textarea rows={5} className="font-mono text-xs" value={form.properties} onChange={(e) => setForm((f) => ({ ...f, properties: e.target.value }))} />
+            ) : null}
+
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.showAdvancedJson}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, showAdvancedJson: e.target.checked }))
+                  }
+                  className="h-4 w-4"
+                />
+                Edit raw JSON (advanced)
+              </label>
+              {form.showAdvancedJson ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Raw stats stored in the database. Overrides the form fields
+                    above when saved. Leave as <code>{"{}"}</code> for simple
+                    items with no mechanical stats.
+                  </p>
+                  <Textarea
+                    rows={5}
+                    className="font-mono text-xs"
+                    value={form.advancedProperties}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, advancedProperties: e.target.value }))
+                    }
+                  />
+                </>
+              ) : null}
             </div>
 
             {formError && <p className="text-sm text-destructive">{formError}</p>}

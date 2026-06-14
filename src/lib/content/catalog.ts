@@ -8,17 +8,19 @@
 
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import type {
-  PhbRace,
+  PhbSpecies,
   PhbBackground,
   PhbClass,
   PhbSpell,
   PhbFeat,
 } from "@/lib/dnd/phb/types";
-import { ALL_RACES } from "@/lib/dnd/phb/races";
+import { ALL_SPECIES, normalizePhbSpecies } from "@/lib/dnd/phb/species";
 import { ALL_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import { PHB_SPELLS, SPELL_LISTS } from "@/lib/dnd/phb/spells";
 import { PHB_FEATS } from "@/lib/dnd/phb/feats";
+import { ALL_LANGUAGES } from "@/lib/dnd/phb/languages";
+import type { Language } from "@/lib/schemas/language";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,18 +31,24 @@ export interface CatalogSpell extends PhbSpell {
 
 /** Full catalog passed to CharacterCreator and build-character functions. */
 export interface CreatorCatalog {
-  races: PhbRace[];
+  species: PhbSpecies[];
   classes: PhbClass[];
   backgrounds: PhbBackground[];
   spells: CatalogSpell[];
   feats: PhbFeat[];
+  languages: Language[];
 }
 
 // ── DB row → domain type helpers ─────────────────────────────────────────────
 
-function rowToRace(row: Record<string, unknown>): PhbRace | null {
+function rowToSpecies(row: Record<string, unknown>): PhbSpecies | null {
   try {
-    return { ...(row.data as PhbRace), id: row.slug as string, name: row.name as string };
+    const raw = row.data as PhbSpecies & { subraces?: PhbSpecies["subspecies"] };
+    return normalizePhbSpecies({
+      ...raw,
+      id: row.slug as string,
+      name: row.name as string,
+    });
   } catch {
     return null;
   }
@@ -96,6 +104,36 @@ function rowToFeat(row: Record<string, unknown>): PhbFeat | null {
   }
 }
 
+function rowToLanguage(row: Record<string, unknown>): Language | null {
+  try {
+    return {
+      id: row.id as string,
+      slug: row.slug as string,
+      name: row.name as string,
+      script: (row.script as string | null) ?? null,
+      is_standard: row.is_standard as boolean,
+      source: row.source as string,
+      description: (row.description as string) ?? "",
+      created_at: row.created_at as string | undefined,
+      updated_at: row.updated_at as string | undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function phbLanguageFallback(): Language[] {
+  return ALL_LANGUAGES.map((l) => ({
+    id: l.slug,
+    slug: l.slug,
+    name: l.name,
+    script: l.script ?? null,
+    is_standard: l.isStandard,
+    source: l.source,
+    description: l.description ?? "",
+  }));
+}
+
 // ── Derive classes array from SPELL_LISTS (for built-in spells) ───────────────
 
 function buildSpellClassesMap(): Map<string, string[]> {
@@ -117,11 +155,11 @@ function toCatalogSpell(s: PhbSpell): CatalogSpell {
 
 // ── Fetch functions ───────────────────────────────────────────────────────────
 
-export async function fetchCatalogRaces(): Promise<PhbRace[]> {
+export async function fetchCatalogSpecies(): Promise<PhbSpecies[]> {
   const supabase = await createServerClient();
   const { data } = await supabase.from("species").select("*").order("name");
-  const rows = (data ?? []).map(rowToRace).filter(Boolean) as PhbRace[];
-  return rows.length > 0 ? rows : ALL_RACES;
+  const rows = (data ?? []).map(rowToSpecies).filter(Boolean) as PhbSpecies[];
+  return rows.length > 0 ? rows : ALL_SPECIES;
 }
 
 export async function fetchCatalogClasses(): Promise<PhbClass[]> {
@@ -152,23 +190,31 @@ export async function fetchCatalogFeats(): Promise<PhbFeat[]> {
   return rows.length > 0 ? rows : PHB_FEATS;
 }
 
+export async function fetchCatalogLanguages(): Promise<Language[]> {
+  const supabase = await createServerClient();
+  const { data } = await supabase.from("languages").select("*").order("name");
+  const rows = (data ?? []).map(rowToLanguage).filter(Boolean) as Language[];
+  return rows.length > 0 ? rows : phbLanguageFallback();
+}
+
 /** Fetch the full catalog in one parallel call. */
 export async function fetchCatalog(): Promise<CreatorCatalog> {
-  const [races, classes, backgrounds, spells, feats] = await Promise.all([
-    fetchCatalogRaces(),
+  const [species, classes, backgrounds, spells, feats, languages] = await Promise.all([
+    fetchCatalogSpecies(),
     fetchCatalogClasses(),
     fetchCatalogBackgrounds(),
     fetchCatalogSpells(),
     fetchCatalogFeats(),
+    fetchCatalogLanguages(),
   ]);
-  return { races, classes, backgrounds, spells, feats };
+  return { species, classes, backgrounds, spells, feats, languages };
 }
 
 // ── Seed server actions (DM only — called from admin pages) ──────────────────
 
 export async function seedSpecies(): Promise<{ seeded: number; error?: string }> {
   const supabase = await createServerClient();
-  const rows = ALL_RACES.map((r) => ({
+  const rows = ALL_SPECIES.map((r) => ({
     slug: r.id,
     name: r.name,
     source: "PHB",
@@ -241,6 +287,26 @@ export async function seedFeats(): Promise<{ seeded: number; error?: string }> {
   const { error } = await supabase.from("feats").upsert(rows, { onConflict: "slug" });
   if (error) return { seeded: 0, error: error.message };
   return { seeded: rows.length };
+}
+
+export async function seedLanguages(): Promise<{ seeded: number; error?: string }> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc("seed_default_languages");
+  if (error) {
+    // Fallback for databases that have not applied migration 013 yet.
+    const rows = ALL_LANGUAGES.map((l) => ({
+      slug: l.slug,
+      name: l.name,
+      script: l.script ?? null,
+      is_standard: l.isStandard,
+      source: l.source,
+      description: l.description ?? "",
+    }));
+    const fallback = await supabase.from("languages").upsert(rows, { onConflict: "slug" });
+    if (fallback.error) return { seeded: 0, error: fallback.error.message };
+    return { seeded: rows.length };
+  }
+  return { seeded: typeof data === "number" ? data : ALL_LANGUAGES.length };
 }
 
 // ── Single-record CRUD (for admin UI) ─────────────────────────────────────────
@@ -319,5 +385,34 @@ export async function upsertFeatEntry(slug: string, name: string, description: s
 export async function deleteFeatEntry(slug: string): Promise<{ error?: string }> {
   const supabase = await createServerClient();
   const { error } = await supabase.from("feats").delete().eq("slug", slug);
+  return { error: error?.message };
+}
+
+export async function upsertLanguageEntry(
+  slug: string,
+  name: string,
+  script: string | null,
+  isStandard: boolean,
+  source: string,
+  description: string
+): Promise<{ error?: string }> {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("languages").upsert(
+    {
+      slug,
+      name,
+      script,
+      is_standard: isStandard,
+      source,
+      description,
+    },
+    { onConflict: "slug" }
+  );
+  return { error: error?.message };
+}
+
+export async function deleteLanguageEntry(slug: string): Promise<{ error?: string }> {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("languages").delete().eq("slug", slug);
   return { error: error?.message };
 }

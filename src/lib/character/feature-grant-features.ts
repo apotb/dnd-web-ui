@@ -1,0 +1,346 @@
+import type { CharacterData, SkillKey } from "@/lib/schemas/character";
+import type { BackgroundChoices } from "@/lib/schemas/character";
+import {
+  buildChoiceDescription,
+  choicePlaceholder,
+  type ChoiceOption,
+  type ConfigurableGrantedFeature,
+  type FeatureCatalogs,
+  type FeatureSource,
+} from "@/lib/character/feature-choices";
+import {
+  findBackgroundByName,
+  findSpeciesByDisplayName,
+} from "@/lib/content/catalog-tooltip";
+import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
+import { PHB_SPECIES } from "@/lib/dnd/phb/species";
+import type { PhbBackground, PhbSpecies } from "@/lib/dnd/phb/types";
+
+export type GrantEditorKind =
+  | "select"
+  | "skills"
+  | "skill"
+  | "skill-or-tool"
+  | "weapons"
+  | "tool"
+  | "cantrip"
+  | "magic-initiate"
+  | "tool-pick"
+  | "tool-multi"
+  | "humanoid-species";
+
+export interface GrantEditorConfig {
+  kind: GrantEditorKind;
+  /** Where the choice lives on CharacterData. */
+  storage:
+    | { area: "featureChoices"; key: string }
+    | { area: "speciesChoices"; key: string }
+    | { area: "backgroundChoices"; key: string };
+  max?: number;
+  skillOptions?: SkillKey[];
+  spellListId?: string;
+  toolPickOptions?: Array<
+    | Exclude<BackgroundChoices["backgroundToolPick"], "">
+    | BackgroundChoices["backgroundToolMulti"][number]
+  >;
+  weaponChoiceFilter?: PhbSpecies["weaponChoices"];
+}
+
+type BackgroundToolMultiOption = BackgroundChoices["backgroundToolMulti"][number];
+
+export interface GrantConfigurableFeature extends ConfigurableGrantedFeature {
+  grantEditor: GrantEditorConfig;
+}
+
+function resolveCatalogs(catalogs: FeatureCatalogs = {}) {
+  return {
+    species: catalogs.species?.length ? catalogs.species : PHB_SPECIES,
+    backgrounds: catalogs.backgrounds?.length ? catalogs.backgrounds : PHB_BACKGROUNDS,
+  };
+}
+
+function makeGrantFeature(
+  source: FeatureSource,
+  name: string,
+  rulesDescription: string,
+  displayDescription: string,
+  choiceKey: ConfigurableGrantedFeature["choiceKey"],
+  choiceValue: string,
+  choiceOptions: ChoiceOption[],
+  grantEditor: GrantEditorConfig
+): GrantConfigurableFeature {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return {
+    id: `grant:${source}:${slug}`,
+    name,
+    description: displayDescription,
+    restReset: "none",
+    source,
+    locked: false,
+    choiceKey,
+    choiceValue,
+    choiceOptions,
+    grantEditor,
+  };
+}
+
+function summarizeSkills(skills: SkillKey[], rules: string): string {
+  if (!skills.length) return rules;
+  return buildChoiceDescription(rules, skills.join(", "));
+}
+
+/** Configurable features tied to species/background/feats that grant spells, skills, or proficiencies. */
+export function deriveGrantConfigurableFeatures(
+  data: CharacterData,
+  catalogs: FeatureCatalogs = {}
+): GrantConfigurableFeature[] {
+  const { species: speciesList, backgrounds } = resolveCatalogs(catalogs);
+  const features: GrantConfigurableFeature[] = [];
+  const speciesMatch = findSpeciesByDisplayName(data.basicInfo.species, speciesList);
+  const species = speciesMatch?.species;
+  const subspecies = speciesMatch?.subspecies;
+  const background = findBackgroundByName(data.basicInfo.background, backgrounds);
+  const speciesChoices = data.speciesChoices ?? {};
+  const backgroundChoices = data.backgroundChoices ?? {};
+  const featureChoices = data.featureChoices ?? {};
+
+  if (species?.skillChoices && !species.skillOrToolChoice) {
+    const rules =
+      species.skillChoices.prompt ??
+      `Choose ${species.skillChoices.count} skill proficiency${species.skillChoices.count === 1 ? "" : "ies"}.`;
+    const featureName =
+      species.id === "half-elf"
+        ? "Skill Versatility"
+        : (species.skillChoices.prompt ?? "Skill Choices");
+    features.push(
+      makeGrantFeature(
+        "species",
+        featureName,
+        rules,
+        summarizeSkills(speciesChoices.speciesSkillChoices, rules),
+        "fightingStyle",
+        "",
+        [],
+        {
+          kind: "skills",
+          storage: { area: "speciesChoices", key: "speciesSkillChoices" },
+          max: species.skillChoices.count,
+          skillOptions: species.skillChoices.options,
+        }
+      )
+    );
+  }
+
+  if (species?.skillOrToolChoice) {
+    const rules =
+      species.skillOrToolChoice.prompt ?? "Choose one skill or one tool.";
+    features.push(
+      makeGrantFeature(
+        "species",
+        species.skillOrToolChoice.prompt ?? "Skill or Tool",
+        rules,
+        speciesChoices.speciesSkillOrTool === "tool"
+          ? buildChoiceDescription(rules, speciesChoices.speciesToolChoice || null)
+          : summarizeSkills(speciesChoices.speciesSkillChoices, rules),
+        "fightingStyle",
+        speciesChoices.speciesSkillOrTool,
+        [
+          { value: "skill", label: "Skill" },
+          { value: "tool", label: "Tool" },
+        ],
+        {
+          kind: "skill-or-tool",
+          storage: { area: "speciesChoices", key: "speciesSkillOrTool" },
+        }
+      )
+    );
+  }
+
+  if (species?.weaponChoices) {
+    const rules =
+      species.weaponChoices.prompt ??
+      `Choose ${species.weaponChoices.count} weapon proficiencies.`;
+    features.push(
+      makeGrantFeature(
+        "species",
+        "Martial Training",
+        rules,
+        buildChoiceDescription(
+          rules,
+          speciesChoices.speciesWeaponChoices.length
+            ? speciesChoices.speciesWeaponChoices.join(", ")
+            : null
+        ),
+        "fightingStyle",
+        "",
+        [],
+        {
+          kind: "weapons",
+          storage: { area: "speciesChoices", key: "speciesWeaponChoices" },
+          max: species.weaponChoices.count,
+          weaponChoiceFilter: species.weaponChoices,
+        }
+      )
+    );
+  }
+
+  if (species?.id === "elf" && subspecies?.id === "high") {
+    const rules =
+      "Cantrip: You know one wizard cantrip (Intelligence is your spellcasting ability).";
+    features.push(
+      makeGrantFeature(
+        "species",
+        "High Elf Cantrip",
+        rules,
+        buildChoiceDescription(rules, speciesChoices.speciesCantripId || null),
+        "fightingStyle",
+        speciesChoices.speciesCantripId,
+        [],
+        {
+          kind: "cantrip",
+          storage: { area: "speciesChoices", key: "speciesCantripId" },
+          spellListId: "wizard",
+        }
+      )
+    );
+  }
+
+  if (species?.id === "human" && subspecies?.id === "variant") {
+    const rules = "One skill proficiency of your choice.";
+    features.push(
+      makeGrantFeature(
+        "species",
+        "Variant Human Skill",
+        rules,
+        buildChoiceDescription(rules, speciesChoices.variantHumanSkill || null),
+        "fightingStyle",
+        speciesChoices.variantHumanSkill,
+        [],
+        {
+          kind: "skill",
+          storage: { area: "speciesChoices", key: "variantHumanSkill" },
+        }
+      )
+    );
+  }
+
+  if (background?.skillChoices) {
+    const rules =
+      background.skillChoices.prompt ??
+      `Choose ${background.skillChoices.count} skill proficiency${background.skillChoices.count === 1 ? "" : "ies"}.`;
+    features.push(
+      makeGrantFeature(
+        "background",
+        background.skillChoices.prompt ?? "Background Skills",
+        rules,
+        summarizeSkills(backgroundChoices.backgroundSkillChoices, rules),
+        "fightingStyle",
+        "",
+        [],
+        {
+          kind: "skills",
+          storage: { area: "backgroundChoices", key: "backgroundSkillChoices" },
+          max: background.skillChoices.count,
+          skillOptions: background.skillChoices.options,
+        }
+      )
+    );
+  }
+
+  if (background?.toolPick) {
+    const rules = background.toolPick.prompt ?? "Choose a tool proficiency.";
+    features.push(
+      makeGrantFeature(
+        "background",
+        "Tool Proficiency",
+        rules,
+        buildChoiceDescription(rules, backgroundChoices.backgroundToolPick || null),
+        "fightingStyle",
+        backgroundChoices.backgroundToolPick,
+        background.toolPick.options.map((o) => ({ value: o, label: o })),
+        {
+          kind: "tool-pick",
+          storage: { area: "backgroundChoices", key: "backgroundToolPick" },
+          toolPickOptions: background.toolPick.options,
+        }
+      )
+    );
+  }
+
+  if (background?.toolMultiPick) {
+    const rules =
+      background.toolMultiPick.prompt ??
+      `Choose ${background.toolMultiPick.count} tool proficiencies.`;
+    features.push(
+      makeGrantFeature(
+        "background",
+        "Tool Proficiencies",
+        rules,
+        buildChoiceDescription(
+          rules,
+          backgroundChoices.backgroundToolMulti.length
+            ? backgroundChoices.backgroundToolMulti.join(", ")
+            : null
+        ),
+        "fightingStyle",
+        "",
+        background.toolMultiPick.options.map((o) => ({ value: o, label: o })),
+        {
+          kind: "tool-multi",
+          storage: { area: "backgroundChoices", key: "backgroundToolMulti" },
+          max: background.toolMultiPick.count,
+          toolPickOptions: background.toolMultiPick.options,
+        }
+      )
+    );
+  }
+
+  if (featureChoices.variantHumanFeat === "magic-initiate") {
+    const feat = getFeat("magic-initiate");
+    const rules =
+      feat?.description ??
+      "Learn two cantrips and one 1st-level spell from cleric, druid, or wizard list.";
+    features.push(
+      makeGrantFeature(
+        "species",
+        "Magic Initiate",
+        rules,
+        rules,
+        "variantHumanFeat",
+        featureChoices.magicInitiateClass,
+        [
+          { value: "cleric", label: "Cleric" },
+          { value: "druid", label: "Druid" },
+          { value: "wizard", label: "Wizard" },
+        ],
+        { kind: "magic-initiate", storage: { area: "featureChoices", key: "magicInitiateClass" } }
+      )
+    );
+  }
+
+  void choicePlaceholder;
+  return features;
+}
+
+import { getFeat } from "@/lib/dnd/phb/feats";
+
+export function isGrantConfigurableFeature(
+  feature: { locked?: boolean; grantEditor?: GrantEditorConfig }
+): feature is GrantConfigurableFeature {
+  return feature.locked === false && !!(feature as GrantConfigurableFeature).grantEditor;
+}
+
+export function isReplacedByGrantFeature(
+  locked: { name: string; source: FeatureSource },
+  grantFeatures: GrantConfigurableFeature[]
+): boolean {
+  const replacements: Record<string, string[]> = {
+    "Martial Training": ["Martial Training"],
+    "Decadent Mastery": ["Decadent Mastery", "Skill or Tool"],
+    "Skill Versatility": ["Skill Versatility", "Changeling Instincts (two skills)"],
+  };
+  const names = replacements[locked.name] ?? [locked.name];
+  return grantFeatures.some(
+    (g) => g.source === locked.source && names.some((n) => g.name.includes(n) || n.includes(g.name))
+  );
+}

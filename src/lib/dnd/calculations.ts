@@ -1,4 +1,6 @@
 import type { AbilityKey, CharacterData, SkillKey } from "@/lib/schemas/character";
+import { isClassSavingThrowProficient } from "@/lib/character/class-derivation";
+import type { PhbClass } from "@/lib/dnd/phb/types";
 import { levelFromXp } from "@/lib/dnd/xp";
 
 /** Standard D&D 5e skill → ability mapping. */
@@ -92,15 +94,20 @@ export function getAbilityModifiers(scores: CharacterData["abilityScores"]) {
 
 export function getSavingThrowTotal(
   data: CharacterData,
-  ability: AbilityKey
+  ability: AbilityKey,
+  catalogClasses?: PhbClass[]
 ): number {
   const mods = getAbilityModifiers(data.abilityScores);
   const prof = getProficiencyBonus(data);
-  const proficient = data.savingThrows[ability]?.proficient ?? false;
+  const proficient = isClassSavingThrowProficient(data, ability, catalogClasses);
   return mods[ability] + (proficient ? prof : 0);
 }
 
-export function getSkillTotal(data: CharacterData, skill: SkillKey): number {
+export function getSkillTotal(
+  data: CharacterData,
+  skill: SkillKey,
+  options?: { grantedSkills?: ReadonlySet<SkillKey> }
+): number {
   const skillData = data.skills[skill];
   if (skillData?.override !== undefined) return skillData.override;
 
@@ -109,7 +116,9 @@ export function getSkillTotal(data: CharacterData, skill: SkillKey): number {
   const prof = getProficiencyBonus(data);
   let total = mods[ability];
 
-  if (skillData?.proficient) total += prof;
+  const proficient =
+    skillData?.proficient || options?.grantedSkills?.has(skill) || false;
+  if (proficient) total += prof;
   if (skillData?.expertise) total += prof;
 
   return total;

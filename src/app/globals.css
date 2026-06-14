@@ -117,17 +117,28 @@ body.retro-body a.candy-btn:visited {
   color: #000;
 }
 
+body.retro-body a.retro-back-link,
+body.retro-body a.retro-back-link:link,
+body.retro-body a.retro-back-link:visited,
+body.retro-body a.retro-back-link:hover,
+body.retro-body a.retro-back-link:active {
+  color: #000 !important;
+}
+
 .campaign-bg {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
-.campaign-bg-hidden {
+html[data-campaign-bg="off"] .campaign-bg {
   opacity: 0;
   visibility: hidden;
+}
+
+html[data-campaign-bg-transitions] .campaign-bg {
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .campaign-bg-image {
@@ -714,7 +725,9 @@ html.campaign-bg-active .retro-back-link {
   flex-wrap: wrap;
   gap: 6px;
   width: 100%;
-  height: auto;
+  height: auto !important;
+  min-height: unset;
+  overflow: visible;
   padding: 0;
   background: transparent;
   border-radius: 0;

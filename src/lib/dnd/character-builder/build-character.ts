@@ -3,7 +3,6 @@ import type {
   AbilityScoreBreakdown,
   CharacterData,
   CharacterExport,
-  Feature,
   SkillKey,
 } from "@/lib/schemas/character";
 import { abilityModifier, proficiencyBonus } from "@/lib/dnd/calculations";
@@ -14,25 +13,31 @@ import {
 } from "@/lib/dnd/phb/classes";
 import { expandEquipmentItems } from "@/lib/dnd/phb/equipment";
 import { getFeat } from "@/lib/dnd/phb/feats";
+import { TWO_HUMANOID_SPECIES_OPTION } from "@/lib/dnd/phb/favored-enemy-humanoids";
 import { isValidPointBuy } from "@/lib/dnd/phb/point-buy";
-import { getRace, getRaceDisplayName } from "@/lib/dnd/phb/races";
+import { getSpecies, getSpeciesDisplayName } from "@/lib/dnd/phb/species";
 import {
-  getRaceAcBonus,
-  getRaceArmorProficiencies,
-  getRaceSpeed,
-  getRaceWeaponProficiencies,
+  getSpeciesAcBonus,
+  getSpeciesArmorProficiencies,
+  getSpeciesSpeed,
+  getSpeciesWeaponProficiencies,
   usesLizardfolkNaturalArmor,
   usesTortleNaturalArmor,
-} from "@/lib/dnd/phb/race-mechanics";
+} from "@/lib/dnd/phb/species-mechanics";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import type { CreatorCatalog } from "@/lib/content/catalog";
+import {
+  buildLanguageLookup,
+  collectLanguageNames,
+} from "@/lib/languages/resolve";
 import type { CharacterCreatorState } from "./types";
+import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
 
 // ── Catalog-aware lookup helpers ──────────────────────────────────────────────
 // Each falls back to the static PHB TypeScript data when no catalog is provided.
 
-function resolveRace(id: string, catalog?: CreatorCatalog) {
-  return (catalog?.races ?? []).find((r) => r.id === id) ?? getRace(id);
+function resolveSpecies(id: string, catalog?: CreatorCatalog) {
+  return (catalog?.species ?? []).find((r) => r.id === id) ?? getSpecies(id);
 }
 
 function resolveClass(id: string, catalog?: CreatorCatalog) {
@@ -51,14 +56,14 @@ function resolveSpell(id: string, catalog?: CreatorCatalog) {
   return (catalog?.spells ?? []).find((s) => s.id === id) ?? getSpell(id);
 }
 
-function resolveRaceDisplayName(raceId: string, subraceId: string | undefined, catalog?: CreatorCatalog): string {
-  const race = resolveRace(raceId, catalog);
-  if (!race) return raceId;
-  if (subraceId) {
-    const sub = race.subraces?.find((s) => s.id === subraceId);
-    if (sub) return `${race.name} (${sub.name})`;
+function resolveSpeciesDisplayName(speciesId: string, subspeciesId: string | undefined, catalog?: CreatorCatalog): string {
+  const species = resolveSpecies(speciesId, catalog);
+  if (!species) return speciesId;
+  if (subspeciesId) {
+    const sub = species.subspecies?.find((s) => s.id === subspeciesId);
+    if (sub) return `${species.name} (${sub.name})`;
   }
-  return race.name;
+  return species.name;
 }
 
 const ARMOR_AC: Record<string, { base: number; maxDex?: number; stealthDisadvantage?: boolean }> = {
@@ -102,19 +107,19 @@ function addBonus(
 
 export function computeRacialBonuses(state: CharacterCreatorState, catalog?: CreatorCatalog) {
   const bonuses = emptyBonuses();
-  const race = resolveRace(state.raceId, catalog);
-  if (!race) return bonuses;
+  const species = resolveSpecies(state.speciesId, catalog);
+  if (!species) return bonuses;
 
-  const label = resolveRaceDisplayName(state.raceId, state.subraceId, catalog);
+  const label = resolveSpeciesDisplayName(state.speciesId, state.subspeciesId, catalog);
 
-  if (race.id === "human" && state.subraceId === "variant") {
+  if (species.id === "human" && state.subspeciesId === "variant") {
     for (const key of state.variantHumanAbilityBonuses) {
       addBonus(bonuses, key, 1, "Variant Human");
     }
     return bonuses;
   }
 
-  if (race.abilityBonus.kind === "half-elf") {
+  if (species.abilityBonus.kind === "half-elf") {
     addBonus(bonuses, "cha", 2, "Half-Elf");
     for (const key of state.halfElfAbilityBonuses) {
       addBonus(bonuses, key, 1, "Half-Elf");
@@ -122,11 +127,11 @@ export function computeRacialBonuses(state: CharacterCreatorState, catalog?: Cre
     return bonuses;
   }
 
-  if (race.abilityBonus.kind === "fixed") {
+  if (species.abilityBonus.kind === "fixed") {
     const merged: Partial<Record<AbilityKey, number>> = {
-      ...race.abilityBonus.bonuses,
+      ...species.abilityBonus.bonuses,
     };
-    const sub = race.subraces?.find((s) => s.id === state.subraceId);
+    const sub = species.subspecies?.find((s) => s.id === state.subspeciesId);
     if (sub?.abilityBonus) {
       for (const [key, value] of Object.entries(sub.abilityBonus)) {
         const k = key as AbilityKey;
@@ -165,16 +170,16 @@ export function computeFinalScores(state: CharacterCreatorState, catalog?: Creat
 
 export function collectSkillProficiencies(state: CharacterCreatorState, catalog?: CreatorCatalog): Set<SkillKey> {
   const skills = new Set<SkillKey>();
-  const race = resolveRace(state.raceId, catalog);
+  const species = resolveSpecies(state.speciesId, catalog);
   const background = resolveBackground(state.backgroundId, catalog);
 
-  race?.skillProficiencies?.forEach((s) => skills.add(s));
+  species?.skillProficiencies?.forEach((s) => skills.add(s));
   background?.skillProficiencies.forEach((s) => skills.add(s));
   state.backgroundSkillChoices.forEach((s) => skills.add(s));
   state.classSkills.forEach((s) => skills.add(s));
-  state.raceSkillChoices.forEach((s) => skills.add(s));
+  state.speciesSkillChoices.forEach((s) => skills.add(s));
 
-  if (state.raceId === "human" && state.subraceId === "variant" && state.variantHumanSkill) {
+  if (state.speciesId === "human" && state.subspeciesId === "variant" && state.variantHumanSkill) {
     skills.add(state.variantHumanSkill);
   }
 
@@ -189,37 +194,54 @@ export function getClassSkillExclusions(state: CharacterCreatorState, catalog?: 
 }
 
 function collectLanguages(state: CharacterCreatorState, catalog?: CreatorCatalog): string[] {
-  const langs = new Set<string>();
-  const race = resolveRace(state.raceId, catalog);
+  const lookup = buildLanguageLookup(
+    (catalog?.languages ?? []).map((l) => ({
+      ...l,
+      id: l.id || l.slug,
+    }))
+  );
+  const inputs: string[] = [];
+  const species = resolveSpecies(state.speciesId, catalog);
   const background = resolveBackground(state.backgroundId, catalog);
 
-  race?.languages.forEach((l) => langs.add(l));
-  race?.fixedLanguages?.forEach((l) => langs.add(l));
-  background?.fixedLanguages?.forEach((l) => langs.add(l));
-  state.raceLanguageChoices.forEach((l) => langs.add(l));
-  state.backgroundLanguageChoices.forEach((l) => langs.add(l));
+  species?.languages.forEach((l) => inputs.push(l));
+  species?.fixedLanguages?.forEach((l) => inputs.push(l));
+  background?.fixedLanguages?.forEach((l) => inputs.push(l));
+  state.speciesLanguageChoices.forEach((l) => inputs.push(l));
+  state.backgroundLanguageChoices.forEach((l) => inputs.push(l));
 
-  return [...langs];
+  return collectLanguageNames(inputs, lookup);
 }
 
-function collectTools(state: CharacterCreatorState, catalog?: CreatorCatalog): string[] {
+/** Resolve background tool placeholders (e.g. artisan's tools) to the player's specific picks. */
+export function resolveBackgroundToolProficiencies(
+  state: CharacterCreatorState,
+  catalog?: CreatorCatalog
+): string[] {
   const tools = new Set<string>();
   const background = resolveBackground(state.backgroundId, catalog);
-  const cls = resolveClass(state.classId, catalog);
 
   background?.toolProficiencies?.forEach((t) => {
-    if (t === "artisan's tools" && state.backgroundArtisanTool) {
-      tools.add(state.backgroundArtisanTool);
-    } else if (t === "gaming set" && state.backgroundGamingSet) {
-      tools.add(state.backgroundGamingSet);
-    } else if (t === "musical instrument" && state.backgroundMusicalInstrument) {
-      tools.add(state.backgroundMusicalInstrument);
+    if (t === "artisan's tools") {
+      tools.add(state.backgroundArtisanTool || "artisan's tools");
+    } else if (t === "gaming set") {
+      tools.add(state.backgroundGamingSet || "gaming set");
+    } else if (t === "musical instrument") {
+      tools.add(state.backgroundMusicalInstrument || "musical instrument");
     } else if (
       t === "cartographer's tools or navigator's tools" &&
       state.backgroundExplorerTool
     ) {
       tools.add(state.backgroundExplorerTool);
-    } else if (t === "vehicles (land)" || t === "vehicles (water)" || t === "thieves' tools" || t === "herbalism kit" || t === "disguise kit" || t === "forgery kit" || t === "navigator's tools") {
+    } else if (
+      t === "vehicles (land)" ||
+      t === "vehicles (water)" ||
+      t === "thieves' tools" ||
+      t === "herbalism kit" ||
+      t === "disguise kit" ||
+      t === "forgery kit" ||
+      t === "navigator's tools"
+    ) {
       tools.add(t);
     } else if (!t.includes(" or ")) {
       tools.add(t);
@@ -227,35 +249,88 @@ function collectTools(state: CharacterCreatorState, catalog?: CreatorCatalog): s
   });
 
   if (background?.toolPick && state.backgroundToolPick) {
-    if (state.backgroundToolPick === "gaming set" && state.backgroundGamingSet) {
-      tools.add(state.backgroundGamingSet);
-    } else if (state.backgroundToolPick === "artisan's tools" && state.backgroundArtisanTool) {
-      tools.add(state.backgroundArtisanTool);
-    } else if (
-      state.backgroundToolPick === "musical instrument" &&
-      state.backgroundMusicalInstrument
-    ) {
-      tools.add(state.backgroundMusicalInstrument);
+    if (state.backgroundToolPick === "gaming set") {
+      tools.add(state.backgroundGamingSet || "gaming set");
+    } else if (state.backgroundToolPick === "artisan's tools") {
+      tools.add(state.backgroundArtisanTool || "artisan's tools");
+    } else if (state.backgroundToolPick === "musical instrument") {
+      tools.add(state.backgroundMusicalInstrument || "musical instrument");
     }
   }
 
   if (background?.toolMultiPick) {
     for (const pick of state.backgroundToolMulti) {
       if (pick === "thieves' tools") tools.add("thieves' tools");
-      if (pick === "gaming set" && state.backgroundGamingSet) {
-        tools.add(state.backgroundGamingSet);
+      if (pick === "gaming set") {
+        tools.add(state.backgroundGamingSet || "gaming set");
       }
-      if (pick === "musical instrument" && state.backgroundMusicalInstrument) {
-        tools.add(state.backgroundMusicalInstrument);
+      if (pick === "musical instrument") {
+        tools.add(state.backgroundMusicalInstrument || "musical instrument");
       }
     }
   }
 
+  return [...tools];
+}
+
+/** Replace generic background equipment placeholders with specific player choices. */
+export function resolveBackgroundEquipmentItem(
+  itemName: string,
+  state: CharacterCreatorState
+): string {
+  const key = itemName.toLowerCase().trim();
+  if (key === "artisan's tools" || key === "artisans tools") {
+    return state.backgroundArtisanTool || itemName;
+  }
+  if (key === "musical instrument") {
+    return state.backgroundMusicalInstrument || itemName;
+  }
+  if (key === "gaming set") {
+    return state.backgroundGamingSet || itemName;
+  }
+  return itemName;
+}
+
+export function resolveBackgroundEquipment(
+  state: CharacterCreatorState,
+  catalog?: CreatorCatalog
+): string[] {
+  const background = resolveBackground(state.backgroundId, catalog);
+  if (!background) return [];
+  return background.equipment.map((item) =>
+    resolveBackgroundEquipmentItem(item, state)
+  );
+}
+
+function collectTools(state: CharacterCreatorState, catalog?: CreatorCatalog): string[] {
+  const tools = new Set(resolveBackgroundToolProficiencies(state, catalog));
+  const cls = resolveClass(state.classId, catalog);
+
   cls?.toolProficiencies?.forEach((t) => tools.add(t));
   if (state.monkTool) tools.add(state.monkTool);
-  if (state.raceToolChoice) tools.add(state.raceToolChoice);
+  if (state.speciesToolChoice) tools.add(state.speciesToolChoice);
 
   return [...tools];
+}
+
+function collectWeaponProficiencies(
+  state: CharacterCreatorState,
+  catalog?: CreatorCatalog
+): string[] {
+  const profs = new Set(getSpeciesWeaponProficiencies(state));
+  const cls = resolveClass(state.classId, catalog);
+  cls?.weaponProficiencies?.forEach((p) => profs.add(p));
+  return [...profs];
+}
+
+function collectArmorProficiencies(
+  state: CharacterCreatorState,
+  catalog?: CreatorCatalog
+): string[] {
+  const profs = new Set(getSpeciesArmorProficiencies(state));
+  const cls = resolveClass(state.classId, catalog);
+  cls?.armorProficiencies?.forEach((p) => profs.add(p));
+  return [...profs];
 }
 
 function resolveEquipmentNames(state: CharacterCreatorState, catalog?: CreatorCatalog): string[] {
@@ -265,7 +340,7 @@ function resolveEquipmentNames(state: CharacterCreatorState, catalog?: CreatorCa
   const sub = state.equipmentSubChoices ?? {};
 
   if (background) {
-    names.push(...background.equipment);
+    names.push(...resolveBackgroundEquipment(state, catalog));
   }
 
   if (cls) {
@@ -327,117 +402,19 @@ function calculateAc(
     ac = 10 + dexMod + (hasShield ? 2 : 0);
   }
 
-  return ac + getRaceAcBonus(state);
-}
-
-function buildFeatures(state: CharacterCreatorState, catalog?: CreatorCatalog): Feature[] {
-  const features: Feature[] = [];
-  const race = resolveRace(state.raceId, catalog);
-  const cls = resolveClass(state.classId, catalog);
-  const background = resolveBackground(state.backgroundId, catalog);
-  const sub = cls?.subclasses.find((s) => s.id === state.subclassId);
-
-  race?.traits.forEach((t) =>
-    features.push({
-      id: crypto.randomUUID(),
-      name: t.name,
-      description: t.description,
-      restReset: "none",
-    })
-  );
-
-  const subrace = race?.subraces?.find((s) => s.id === state.subraceId);
-  subrace?.extras?.forEach((text) =>
-    features.push({
-      id: crypto.randomUUID(),
-      name: subrace.name,
-      description: text,
-      restReset: "none",
-    })
-  );
-
-  cls?.features.forEach((f) =>
-    features.push({
-      id: crypto.randomUUID(),
-      name: f.name,
-      description: f.description,
-      restReset: "long",
-    })
-  );
-
-  sub?.features.forEach((f) =>
-    features.push({
-      id: crypto.randomUUID(),
-      name: f.name,
-      description: f.description,
-      restReset: "long",
-    })
-  );
-
-  if (background) {
-    features.push({
-      id: crypto.randomUUID(),
-      name: background.feature.name,
-      description: background.feature.description,
-      restReset: "none",
-    });
-  }
-
-  if (state.fightingStyle) {
-    features.push({
-      id: crypto.randomUUID(),
-      name: `Fighting Style: ${state.fightingStyle}`,
-      description: `${state.fightingStyle} fighting style.`,
-      restReset: "none",
-    });
-  }
-
-  if (state.favoredEnemy) {
-    features.push({
-      id: crypto.randomUUID(),
-      name: "Favored Enemy",
-      description: state.favoredEnemy,
-      restReset: "none",
-    });
-  }
-
-  if (state.favoredTerrain) {
-    features.push({
-      id: crypto.randomUUID(),
-      name: "Natural Explorer",
-      description: `Favored terrain: ${state.favoredTerrain}`,
-      restReset: "none",
-    });
-  }
-
-  if (state.variantHumanFeat) {
-    const feat = resolveFeat(state.variantHumanFeat, catalog);
-    if (feat) {
-      features.push({
-        id: crypto.randomUUID(),
-        name: feat.name,
-        description: feat.description,
-        restReset: "none",
-      });
-    }
-  }
-
-  if (state.raceId === "warforged") {
-    features.push({
-      id: crypto.randomUUID(),
-      name: "Integrated Protection",
-      description: "+1 bonus to Armor Class (included in your AC).",
-      restReset: "none",
-    });
-  }
-
-  return features;
+  return ac + getSpeciesAcBonus(state);
 }
 
 function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilityScores"], catalog?: CreatorCatalog) {
   const cls = resolveClass(state.classId, catalog);
   if (!cls?.spellcasting) {
-    return { spellcastingAbility: undefined, known: [], prepared: [], slots: {} };
+    return {
+      spellcastingHidden: false,
+      spellcastingAbility: undefined,
+      known: [],
+      prepared: [],
+      slots: {},
+    };
   }
 
   const ability = cls.spellcasting.ability;
@@ -446,6 +423,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
     .filter(Boolean)
     .map((s) => ({
       id: crypto.randomUUID(),
+      spellId: s!.id,
       name: s!.name,
       level: 0,
       prepared: true,
@@ -457,6 +435,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
     .filter(Boolean)
     .map((s) => ({
       id: crypto.randomUUID(),
+      spellId: s!.id,
       name: s!.name,
       level: 1,
       prepared: true,
@@ -468,6 +447,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
     .filter(Boolean)
     .map((s) => ({
       id: crypto.randomUUID(),
+      spellId: s!.id,
       name: s!.name,
       level: 1,
       prepared: false,
@@ -483,6 +463,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
 
   if (cls.spellcasting.preparedCaster) {
     return {
+      spellcastingHidden: false,
       spellcastingAbility: ability,
       known: state.classId === "wizard" ? [...cantrips, ...spellbook] : cantrips,
       prepared: [...cantrips, ...level1],
@@ -491,6 +472,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
   }
 
   return {
+    spellcastingHidden: false,
     spellcastingAbility: ability,
     known: [...cantrips, ...level1],
     prepared: [],
@@ -499,7 +481,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
 }
 
 export function buildCharacterExport(state: CharacterCreatorState, catalog?: CreatorCatalog): CharacterExport {
-  const race = resolveRace(state.raceId, catalog);
+  const species = resolveSpecies(state.speciesId, catalog);
   const background = resolveBackground(state.backgroundId, catalog);
   const cls = resolveClass(state.classId, catalog);
   const { scores, breakdown } = computeFinalScores(state, catalog);
@@ -511,10 +493,10 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
 
   let gp = background?.gold ?? 0;
 
-  const speed = getRaceSpeed(state);
+  const speed = getSpeciesSpeed(state);
 
   let maxHp = (cls?.hitDie ?? 8) + conMod;
-  if (state.raceId === "dwarf" && state.subraceId === "hill") {
+  if (state.speciesId === "dwarf" && state.subspeciesId === "hill") {
     maxHp += 1;
   }
 
@@ -533,6 +515,8 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
 
   const subclass = cls?.subclasses.find((s) => s.id === state.subclassId);
 
+  let mainWeaponAssigned = false;
+
   const data: CharacterData = {
     basicInfo: {
       name: state.name,
@@ -542,7 +526,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       classes: cls ? [cls.name] : [],
       class: cls?.name,
       subclass: subclass?.name ?? "",
-      species: resolveRaceDisplayName(state.raceId, state.subraceId, catalog),
+      species: resolveSpeciesDisplayName(state.speciesId, state.subspeciesId, catalog),
       background: background?.name ?? "",
       alignment: state.alignment,
       portrait: "",
@@ -554,9 +538,11 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
     savingThrows,
     skills,
     languages: collectLanguages(state, catalog),
+    speciesLanguageChoices: state.speciesLanguageChoices,
+    backgroundLanguageChoices: state.backgroundLanguageChoices,
     toolProficiencies: collectTools(state, catalog),
-    weaponProficiencies: getRaceWeaponProficiencies(state),
-    armorProficiencies: getRaceArmorProficiencies(state),
+    weaponProficiencies: collectWeaponProficiencies(state, catalog),
+    armorProficiencies: collectArmorProficiencies(state, catalog),
     combat: {
       ac,
       maxHp,
@@ -571,6 +557,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       concentration: { active: false, spell: "" },
     },
     attacks: [],
+    customActions: [],
     spells: buildSpells(state, scores, catalog),
     inventory: {
       currency: { cp: 0, sp: 0, ep: 0, gp, pp: 0 },
@@ -579,19 +566,40 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
           .toLowerCase()
           .replace(/[^a-z0-9\s-]/g, "")
           .replace(/\s+/g, "-");
-        const isWeapon = ["longsword", "rapier", "shortsword", "greataxe", "mace", "quarterstaff", "dagger"].some(
-          (w) => item.name.toLowerCase().includes(w)
-        );
+        const lower = item.name.toLowerCase();
+        const isArmor = lower.includes("armor") || lower.includes("armour");
+        const isShield = lower === "shield" || lower.endsWith(" shield");
+        const isWeapon =
+          !isArmor &&
+          !isShield &&
+          [
+            "axe",
+            "sword",
+            "bow",
+            "crossbow",
+            "dagger",
+            "mace",
+            "staff",
+            "spear",
+            "hammer",
+            "club",
+            "sling",
+            "dart",
+            "javelin",
+            "whip",
+            "lance",
+          ].some((w) => lower.includes(w));
+        const wieldMain = isWeapon && !mainWeaponAssigned;
+        if (wieldMain) mainWeaponAssigned = true;
         return {
           id: crypto.randomUUID(),
           itemId: slug || undefined,
           name: item.name,
           quantity: item.quantity,
           weightLb: item.weightLb,
-          equipped:
-            item.name.toLowerCase().includes("armor") ||
-            item.name.toLowerCase() === "shield" ||
-            isWeapon,
+          equipped: isArmor || isShield,
+          wieldMain,
+          wieldOff: false,
           attuned: false,
           magicItem: false,
           notes: "",
@@ -599,14 +607,50 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       }),
       notes: "",
     },
-    features: buildFeatures(state, catalog),
+    featureChoices: {
+      fightingStyle: state.fightingStyle,
+      favoredEnemy: state.favoredEnemy,
+      favoredHumanoidSpecies: state.favoredHumanoidSpecies,
+      favoredTerrain: state.favoredTerrain,
+      variantHumanFeat: state.variantHumanFeat,
+      magicInitiateClass: "",
+      magicInitiateCantripIds: [],
+      magicInitiateSpellId: "",
+    },
+    speciesChoices: {
+      halfElfAbilityBonuses: state.halfElfAbilityBonuses,
+      speciesSkillChoices: state.speciesSkillChoices,
+      speciesWeaponChoices: state.speciesWeaponChoices,
+      speciesToolChoice: state.speciesToolChoice,
+      speciesSkillOrTool: state.speciesSkillOrTool,
+      variantHumanAbilityBonuses: state.variantHumanAbilityBonuses,
+      variantHumanSkill: state.variantHumanSkill,
+      speciesCantripId: "",
+    },
+    backgroundChoices: {
+      backgroundSkillChoices: state.backgroundSkillChoices,
+      backgroundToolPick: state.backgroundToolPick,
+      backgroundToolMulti: state.backgroundToolMulti,
+      backgroundArtisanTool: state.backgroundArtisanTool,
+      backgroundGamingSet: state.backgroundGamingSet,
+      backgroundMusicalInstrument: state.backgroundMusicalInstrument,
+      backgroundExplorerTool: state.backgroundExplorerTool,
+    },
+    classSkillChoices: state.classSkills,
+    features: [],
   };
+
+  const syncedData = syncFeatureGrants(data, {
+    species: catalog?.species,
+    classes: catalog?.classes,
+    backgrounds: catalog?.backgrounds,
+  });
 
   return {
     version: 1,
     name: state.name,
     playerName: state.playerName,
-    data,
+    data: syncedData,
   };
 }
 
@@ -615,7 +659,7 @@ export function validateCreatorState(state: CharacterCreatorState, catalog?: Cre
 
   if (!state.name.trim()) errors.push("Character name is required.");
   if (!state.alignment) errors.push("Alignment is required.");
-  if (!state.raceId) errors.push("Race is required.");
+  if (!state.speciesId) errors.push("Species is required.");
   if (!state.backgroundId) errors.push("Background is required.");
 
   const background = resolveBackground(state.backgroundId, catalog);
@@ -655,44 +699,44 @@ export function validateCreatorState(state: CharacterCreatorState, catalog?: Cre
     errors.push(`${background.name} requires a gaming set choice.`);
   }
 
-  const race = resolveRace(state.raceId, catalog);
-  if (race?.subraces?.length && !state.subraceId) {
-    errors.push("Subrace is required.");
+  const species = resolveSpecies(state.speciesId, catalog);
+  if (species?.subspecies?.length && !state.subspeciesId) {
+    errors.push("Subspecies is required.");
   }
 
-  if (race?.id === "half-elf") {
+  if (species?.id === "half-elf") {
     if (state.halfElfAbilityBonuses.length !== 2) {
       errors.push("Half-Elf requires two +1 ability score choices.");
     }
   }
 
-  if (race?.skillChoices && !race.skillOrToolChoice) {
-    if (state.raceSkillChoices.length !== race.skillChoices.count) {
+  if (species?.skillChoices && !species.skillOrToolChoice) {
+    if (state.speciesSkillChoices.length !== species.skillChoices.count) {
       errors.push(
-        `${race.name} requires ${race.skillChoices.count} skill choice(s).`
+        `${species.name} requires ${species.skillChoices.count} skill choice(s).`
       );
     }
   }
 
-  if (race?.skillOrToolChoice) {
-    if (!state.raceSkillOrTool) {
-      errors.push(`${race.name} requires a skill or tool choice.`);
-    } else if (state.raceSkillOrTool === "skill" && state.raceSkillChoices.length !== 1) {
-      errors.push(`${race.name} requires one skill choice.`);
-    } else if (state.raceSkillOrTool === "tool" && !state.raceToolChoice) {
-      errors.push(`${race.name} requires one tool choice.`);
+  if (species?.skillOrToolChoice) {
+    if (!state.speciesSkillOrTool) {
+      errors.push(`${species.name} requires a skill or tool choice.`);
+    } else if (state.speciesSkillOrTool === "skill" && state.speciesSkillChoices.length !== 1) {
+      errors.push(`${species.name} requires one skill choice.`);
+    } else if (state.speciesSkillOrTool === "tool" && !state.speciesToolChoice) {
+      errors.push(`${species.name} requires one tool choice.`);
     }
   }
 
-  if (race?.weaponChoices) {
-    if (state.raceWeaponChoices.length !== race.weaponChoices.count) {
+  if (species?.weaponChoices) {
+    if (state.speciesWeaponChoices.length !== species.weaponChoices.count) {
       errors.push(
-        `${race.name} requires ${race.weaponChoices.count} weapon choice(s).`
+        `${species.name} requires ${species.weaponChoices.count} weapon choice(s).`
       );
     }
   }
 
-  if (race?.id === "human" && state.subraceId === "variant") {
+  if (species?.id === "human" && state.subspeciesId === "variant") {
     if (state.variantHumanAbilityBonuses.length !== 2) {
       errors.push("Variant Human requires two +1 ability score choices.");
     }
@@ -712,6 +756,12 @@ export function validateCreatorState(state: CharacterCreatorState, catalog?: Cre
   }
   if (state.classId === "ranger") {
     if (!state.favoredEnemy) errors.push("Favored enemy is required.");
+    if (
+      state.favoredEnemy === TWO_HUMANOID_SPECIES_OPTION &&
+      state.favoredHumanoidSpecies.length !== 2
+    ) {
+      errors.push("Choose exactly two humanoid species for favored enemy.");
+    }
     if (!state.favoredTerrain) errors.push("Favored terrain is required.");
   }
 

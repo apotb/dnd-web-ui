@@ -9,7 +9,7 @@ export const EXTENDED_BACKGROUNDS: PhbBackground[] = [
     languageChoices: 2,
     equipment: [
       "uniform",
-      "horn",
+      "signal horn",
       "manacles",
       "10 feet silk rope",
       "belt pouch",

@@ -1,9 +1,20 @@
 import {
   characterDataSchema,
+  normalizeCustomAbilityMods,
   stripDmNotesFromCharacterData,
   type CharacterData,
 } from "@/lib/schemas/character";
-import { xpForLevel } from "@/lib/dnd/xp";
+import { syncSavingThrowsFromClass } from "@/lib/character/class-derivation";
+import { syncAcFromEquipment } from "@/lib/character/ac-derivation";
+import { sanitizeEquippedItems } from "@/lib/character/equip-rules";
+import { stripGrantedFeaturesForSave } from "@/lib/character/feature-derivation";
+import { migrateFeatureChoices } from "@/lib/character/feature-choices";
+import { migrateSkillKeys } from "@/lib/character/skill-migration";
+import { resolveCharacterClass } from "@/lib/character/class-derivation";
+import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
+import { migrateLanguageChoices } from "@/lib/character/language-choices";
+import { syncSpellcastingFromClass } from "@/lib/dnd/spellcasting";
+import { levelFromXp, xpForLevel } from "@/lib/dnd/xp";
 import {
   combatantDataSchema,
   stripDmNotesFromCombatantData,
@@ -22,6 +33,9 @@ export type ParsedCombatant = Omit<EncounterCombatant, "data"> & {
 // in the items table. Only entries that differ from the naive slug derivation
 // need to be listed explicitly.
 // ---------------------------------------------------------------------------
+/** Slugs removed from the catalog — re-resolve from display name on load. */
+const REMOVED_ITEM_SLUGS = new Set(["artisans-tools", "musical-instrument"]);
+
 const NAME_TO_SLUG: Record<string, string> = {
   // weapons
   "light crossbow": "light-crossbow",
@@ -29,6 +43,9 @@ const NAME_TO_SLUG: Record<string, string> = {
   "heavy crossbow": "heavy-crossbow",
   "war pick": "war-pick",
   "light hammer": "light-hammer",
+  "short sword": "shortsword",
+  "belaying pin (club)": "belaying-pin",
+  "belaying pin": "belaying-pin",
   // armor
   "padded armor": "padded-armor",
   "padded armour": "padded-armor",
@@ -60,8 +77,7 @@ const NAME_TO_SLUG: Record<string, string> = {
   "disguise kit": "disguise-kit",
   "navigator's tools": "navigators-tools",
   "navigators tools": "navigators-tools",
-  "artisan's tools": "artisans-tools",
-  "artisans tools": "artisans-tools",
+  "cartographer's tools": "cartographers-tools",
   "burglar's pack": "burglars-pack",
   "dungeoneers pack": "dungeoneers-pack",
   "dungeoneer's pack": "dungeoneers-pack",
@@ -90,6 +106,7 @@ const NAME_TO_SLUG: Record<string, string> = {
   "signet ring": "signet-ring",
   "sealing wax": "sealing-wax",
   "iron pot": "iron-pot",
+  "pot, iron": "iron-pot",
   "lantern, bullseye": "lantern-bullseye",
   "lantern, hooded": "lantern-hooded",
   "lantern bullseye": "lantern-bullseye",
@@ -127,7 +144,35 @@ const NAME_TO_SLUG: Record<string, string> = {
   "common clothes": "clothes-common",
   "traveler's clothes": "clothes-travelers",
   "costume clothes": "clothes-costume",
+  "costume": "clothes-costume",
+  "winter blanket": "blanket",
+  "belt pouch": "belt-pouch",
+  "deck of cards": "deck-of-cards",
   "playing cards": "deck-of-cards",
+  "playing card set": "playing-card-set",
+  "quill": "ink-pen",
+  "ink pen": "ink-pen",
+  "bottle of black ink": "ink",
+  "ink (1 oz. bottle)": "ink",
+  "staff": "walking-staff",
+  "scroll of pedigree": "scroll-pedigree",
+  "map of hometown": "map-hometown",
+  "scroll case of notes": "scroll-case-notes",
+  "letter of introduction from guild": "letter-of-introduction",
+  "incense (5 sticks)": "incense-5-sticks",
+  "prayer book": "prayer-book",
+  "prayer wheel": "prayer-wheel",
+  "con tools (10 gp)": "con-tools",
+  "letter from dead colleague": "letter-dead-colleague",
+  "token from parents": "parent-token",
+  "trophy from fallen enemy": "trophy-enemy",
+  "trophy from animal": "trophy-animal",
+  "dark common clothes with hood": "dark-hooded-clothes",
+  "50 feet silk rope": "rope-silk",
+  "silk rope (50 feet)": "rope-silk",
+  "insignia of rank": "insignia-of-rank",
+  "insignia rank": "insignia-of-rank",
+  "signal horn": "signal-horn",
 };
 
 function normalise(name: string): string {
@@ -162,6 +207,7 @@ function resolveSlug(name: string): string | null {
  *
  * - Adds `itemId` to inventory items matchable to the catalog by name.
  * - Seeds `basicInfo.xp` from `basicInfo.level` for saves that predate XP tracking.
+ * - Coerces `customAbilityMods` values to integers (form saves may store strings).
  */
 function migrateCharacterData(raw: Record<string, unknown>): Record<string, unknown> {
   // --- XP migration ---
@@ -172,33 +218,103 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
     raw = { ...raw, basicInfo: { ...basicInfo } };
   }
 
+  // --- Custom ability mod migration ---
+  raw = {
+    ...raw,
+    customAbilityMods: normalizeCustomAbilityMods(raw.customAbilityMods),
+  };
+
+  // --- Feature choices (class/species customizable features) ---
+  raw = migrateFeatureChoices(raw as unknown as CharacterData) as Record<string, unknown>;
+
+  // --- Language choices (species / background picks) ---
+  raw = migrateLanguageChoices(raw as unknown as CharacterData) as Record<string, unknown>;
+
+  // --- Skill keys (display-name keys from pre-schema saves) ---
+  raw = migrateSkillKeys(raw as unknown as CharacterData) as Record<string, unknown>;
+
+  // --- Spellcasting ability, slots, and cantrip preparation from class ---
+  const spellClass = resolveCharacterClass(raw as unknown as CharacterData);
+  const spellLevel = levelFromXp(
+    typeof (raw.basicInfo as Record<string, unknown> | undefined)?.xp === "number"
+      ? ((raw.basicInfo as Record<string, unknown>).xp as number)
+      : 0
+  );
+  if (spellClass?.spellcasting) {
+    raw = {
+      ...raw,
+      spells: syncSpellcastingFromClass(
+        raw as unknown as CharacterData,
+        spellClass,
+        spellLevel
+      ),
+    };
+  }
+
+  // --- Saving throws from class (not manually edited) ---
+  raw = {
+    ...raw,
+    savingThrows: syncSavingThrowsFromClass(raw as unknown as CharacterData),
+  };
+
   // --- Item catalog migration ---
   const inventory = raw.inventory as Record<string, unknown> | undefined;
-  if (!inventory) return raw;
+  if (!inventory) {
+    return syncAcFromEquipment(
+      syncFeatureGrants(
+        stripGrantedFeaturesForSave(raw as unknown as CharacterData)
+      )
+    ) as Record<string, unknown>;
+  }
 
   const items = inventory.items;
-  if (!Array.isArray(items)) return raw;
+  if (!Array.isArray(items)) {
+    return syncAcFromEquipment(
+      syncFeatureGrants(
+        stripGrantedFeaturesForSave(raw as unknown as CharacterData)
+      )
+    ) as Record<string, unknown>;
+  }
 
   const migratedItems = items.map((item: unknown) => {
     if (typeof item !== "object" || item === null) return item;
     const entry = item as Record<string, unknown>;
 
-    // Already has an itemId — nothing to do
-    if (entry.itemId) return entry;
-
     const name = typeof entry.name === "string" ? entry.name : "";
+
+    const existingId =
+      typeof entry.itemId === "string" ? entry.itemId : undefined;
+    if (existingId && !REMOVED_ITEM_SLUGS.has(existingId)) {
+      return entry;
+    }
+
     if (!name) return entry;
 
     const slug = resolveSlug(name);
-    if (!slug) return entry;
+    if (!slug) {
+      if (existingId) {
+        const { itemId: _removed, ...rest } = entry;
+        return rest;
+      }
+      return entry;
+    }
 
     return { ...entry, itemId: slug };
   });
 
-  return {
-    ...raw,
-    inventory: { ...inventory, items: migratedItems },
-  };
+  return syncAcFromEquipment(
+    syncFeatureGrants(
+      stripGrantedFeaturesForSave({
+        ...(raw as unknown as CharacterData),
+        inventory: {
+          ...inventory,
+          items: sanitizeEquippedItems(
+            migratedItems as CharacterData["inventory"]["items"]
+          ),
+        },
+      } as CharacterData)
+    )
+  ) as Record<string, unknown>;
 }
 
 export function parseCharacterRow(row: Character, isDm: boolean): ParsedCharacter {

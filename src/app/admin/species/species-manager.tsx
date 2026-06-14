@@ -131,7 +131,7 @@ export function SpeciesManager({ entries }: { entries: SpeciesRow[] }) {
               <Input value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))} placeholder="PHB, Custom…" />
             </div>
             <div className="space-y-1.5">
-              <Label>Data (JSON — PhbRace shape)</Label>
+              <Label>Data (JSON — PhbSpecies shape)</Label>
               <p className="text-xs text-muted-foreground">{`{ "size": "Medium", "speed": 30, "abilityBonus": { "kind": "fixed", "bonuses": { "str": 2 } }, "languages": ["Common"], "traits": [...] }`}</p>
               <Textarea rows={10} className="font-mono text-xs" value={form.jsonData} onChange={(e) => setForm((f) => ({ ...f, jsonData: e.target.value }))} />
             </div>

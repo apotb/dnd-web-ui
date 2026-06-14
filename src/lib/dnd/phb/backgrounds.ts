@@ -221,25 +221,6 @@ export function getBackground(id: string): PhbBackground | undefined {
   return ALL_BACKGROUNDS.find((b) => b.id === id);
 }
 
-export const STANDARD_LANGUAGES = [
-  "Common",
-  "Dwarvish",
-  "Elvish",
-  "Giant",
-  "Gnomish",
-  "Goblin",
-  "Halfling",
-  "Orc",
-  "Abyssal",
-  "Celestial",
-  "Draconic",
-  "Deep Speech",
-  "Infernal",
-  "Primordial",
-  "Sylvan",
-  "Undercommon",
-];
-
 export const ARTISAN_TOOLS = [
   "Alchemist's supplies",
   "Brewer's supplies",

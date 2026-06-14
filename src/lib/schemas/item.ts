@@ -128,6 +128,89 @@ export function getShieldProperties(item: Item): ShieldProperties | null {
   return result.success ? result.data : null;
 }
 
+/** Build tooltip text with item stats and description. */
+export function formatItemTooltip(item: Item): string | null {
+  const lines: string[] = [];
+
+  const weapon = getWeaponProperties(item);
+  if (weapon) {
+    if (weapon.damage) {
+      lines.push(
+        `Damage: ${weapon.damage}${weapon.damageType ? ` ${weapon.damageType}` : ""}`
+      );
+    }
+    if (weapon.versatileDamage) {
+      lines.push(`Versatile: ${weapon.versatileDamage}`);
+    }
+    lines.push(`${weapon.weaponCategory} ${weapon.weaponRange}`);
+    if (weapon.weaponProperties.length) {
+      lines.push(`Properties: ${weapon.weaponProperties.join(", ")}`);
+    }
+    if (weapon.rangeNormal != null) {
+      const range =
+        weapon.rangeLong != null
+          ? `${weapon.rangeNormal}/${weapon.rangeLong} ft`
+          : `${weapon.rangeNormal} ft`;
+      lines.push(`Range: ${range}`);
+    }
+    if (weapon.throwRangeNormal != null) {
+      const range =
+        weapon.throwRangeLong != null
+          ? `${weapon.throwRangeNormal}/${weapon.throwRangeLong} ft`
+          : `${weapon.throwRangeNormal} ft`;
+      lines.push(`Thrown: ${range}`);
+    }
+  }
+
+  const armor = getArmorProperties(item);
+  if (armor) {
+    lines.push(`AC: ${armor.armorClass} (${armor.armorType})`);
+    if (!armor.dexBonus) {
+      lines.push("No Dex bonus");
+    } else if (armor.maxDexBonus != null) {
+      lines.push(`Max Dex: +${armor.maxDexBonus}`);
+    }
+    if (armor.strengthRequirement > 0) {
+      lines.push(`Str ${armor.strengthRequirement} required`);
+    }
+    if (armor.stealthDisadvantage) {
+      lines.push("Stealth disadvantage");
+    }
+  }
+
+  const shield = getShieldProperties(item);
+  if (shield) {
+    lines.push(`AC: +${shield.armorClass}`);
+  }
+
+  if (!weapon && !armor && !shield && item.category !== "other") {
+    lines.push(categoryLabel(item.category));
+  }
+
+  if (item.weight_lb != null) {
+    lines.push(`Weight: ${item.weight_lb} lb`);
+  }
+  if (item.cost_gp != null) {
+    const cost =
+      item.cost_gp % 1 === 0 ? String(item.cost_gp) : item.cost_gp.toFixed(2);
+    lines.push(`Cost: ${cost} gp`);
+  }
+  if (item.is_magic && item.rarity !== "common") {
+    lines.push(rarityLabel(item.rarity));
+  }
+  if (item.requires_attunement) {
+    lines.push("Requires attunement");
+  }
+
+  const description = item.description.trim();
+  if (description) {
+    if (lines.length) lines.push("");
+    lines.push(description);
+  }
+
+  return lines.length ? lines.join("\n") : null;
+}
+
 export function isWeapon(item: Item): boolean {
   return item.category === "weapon";
 }
@@ -155,6 +238,25 @@ export function categoryLabel(category: ItemCategory): string {
   return labels[category] ?? category;
 }
 
+export function weaponCategoryLabel(category: "simple" | "martial" | string): string {
+  if (category === "simple") return "Simple";
+  if (category === "martial") return "Martial";
+  return category;
+}
+
+export function weaponRangeLabel(range: "melee" | "ranged" | string): string {
+  if (range === "melee") return "Melee";
+  if (range === "ranged") return "Ranged";
+  return range;
+}
+
+export function armorTypeLabel(type: "light" | "medium" | "heavy" | string): string {
+  if (type === "light") return "Light";
+  if (type === "medium") return "Medium";
+  if (type === "heavy") return "Heavy";
+  return type;
+}
+
 /** Human-readable label for rarity. */
 export function rarityLabel(rarity: ItemRarity): string {
   const labels: Record<ItemRarity, string> = {
@@ -178,3 +280,65 @@ export const RARITY_COLOR: Record<ItemRarity, string> = {
   artifact: "text-red-600 dark:text-red-400",
   varies: "text-muted-foreground",
 };
+
+/** Subcategory options grouped by item category (used in admin + character creation filters). */
+export const ITEM_SUBCATEGORY_OPTIONS: Partial<
+  Record<ItemCategory, Array<{ value: string; label: string; hint?: string }>>
+> = {
+  weapon: [
+    { value: "simple_melee", label: "Simple melee" },
+    { value: "simple_ranged", label: "Simple ranged" },
+    { value: "martial_melee", label: "Martial melee" },
+    { value: "martial_ranged", label: "Martial ranged" },
+  ],
+  armor: [
+    { value: "light_armor", label: "Light armor" },
+    { value: "medium_armor", label: "Medium armor" },
+    { value: "heavy_armor", label: "Heavy armor" },
+  ],
+  tool: [
+    {
+      value: "artisans_tools",
+      label: "Artisan's tools",
+      hint: "Shows in “Choose artisan's tools” during character creation",
+    },
+    {
+      value: "musical_instrument",
+      label: "Musical instrument",
+      hint: "Shows in musical instrument pickers",
+    },
+    {
+      value: "gaming_set",
+      label: "Gaming set",
+      hint: "Shows in gaming set pickers",
+    },
+    {
+      value: "kit",
+      label: "Kit",
+      hint: "Thieves' tools, disguise kit, herbalism kit, etc.",
+    },
+    {
+      value: "explorer_tools",
+      label: "Explorer's tools",
+      hint: "Cartographer's or navigator's tools",
+    },
+  ],
+};
+
+const SUBCATEGORY_LABELS: Record<string, string> = Object.fromEntries(
+  Object.values(ITEM_SUBCATEGORY_OPTIONS)
+    .flat()
+    .map(({ value, label }) => [value, label])
+);
+
+/** Human-readable label for an item subcategory slug. */
+export function subcategoryLabel(subcategory: string | null | undefined): string {
+  if (!subcategory) return "";
+  return SUBCATEGORY_LABELS[subcategory] ?? subcategory.replace(/_/g, " ");
+}
+
+export function subcategoryOptionsForCategory(
+  category: ItemCategory
+): Array<{ value: string; label: string; hint?: string }> {
+  return ITEM_SUBCATEGORY_OPTIONS[category] ?? [];
+}

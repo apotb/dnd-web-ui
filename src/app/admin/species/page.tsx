@@ -16,8 +16,8 @@ export default async function SpeciesPage() {
     <div>
       <h2 className="page-title">Species Catalog</h2>
       <p className="retro-note" style={{ marginTop: "12px" }}>
-        Races/species available in the character creator. The JSON data matches the{" "}
-        <code>PhbRace</code> shape (id, name, size, speed, abilityBonus, traits, …).
+        Species available in the character creator. The JSON data matches the{" "}
+        <code>PhbSpecies</code> shape (id, name, size, speed, abilityBonus, traits, …).
       </p>
       <SpeciesManager entries={entries} />
     </div>

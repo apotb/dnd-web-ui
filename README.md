@@ -27,11 +27,16 @@ cp .env.local.example .env.local
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Copy your project URL and anon key into `.env.local`
-3. Run the migration in the SQL Editor:
+3. Apply database migrations with the Supabase CLI (see [supabase/README.md](supabase/README.md)):
 
-```
-supabase/migrations/001_initial_schema.sql
-```
+   ```bash
+   npm install
+   npm run db:login
+   npm run db:link
+   npm run db:push
+   ```
+
+   This runs any pending files in `supabase/migrations/` — you do **not** paste them into the SQL Editor one by one. If you already applied older migrations manually in the dashboard, see the **repair** section in `supabase/README.md` before pushing.
 
 4. Enable Email auth under Authentication → Providers
 
@@ -154,4 +159,5 @@ npm run dev      # Development server
 npm run build    # Production build
 npm run start    # Production server
 npm run lint     # ESLint
+npm run db:push  # Apply pending Supabase migrations to linked project
 ```

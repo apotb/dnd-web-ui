@@ -7,6 +7,7 @@ import { SpeciesManager } from "../species/species-manager";
 import { ClassesManager } from "../classes/classes-manager";
 import { BackgroundsManager } from "../backgrounds/backgrounds-manager";
 import { FeatsManager } from "../feats/feats-manager";
+import { LanguagesManager } from "../languages/languages-manager";
 import type { Item } from "@/lib/schemas/item";
 
 const CATEGORIES = [
@@ -16,6 +17,7 @@ const CATEGORIES = [
   { id: "classes",     label: "Classes" },
   { id: "backgrounds", label: "Backgrounds" },
   { id: "feats",       label: "Feats" },
+  { id: "languages",   label: "Languages" },
 ] as const;
 
 type Category = (typeof CATEGORIES)[number]["id"];
@@ -76,6 +78,20 @@ export default async function DatabasePage({
     const { data } = await supabase.from("backgrounds").select("slug,name,source,data").order("name");
     const entries = (data ?? []).map((r) => ({ slug: r.slug as string, name: r.name as string, source: r.source as string, extra: r.data as Record<string, unknown> }));
     content = <BackgroundsManager entries={entries} />;
+  } else if (cat === "languages") {
+    const { data } = await supabase
+      .from("languages")
+      .select("slug,name,script,is_standard,source,description")
+      .order("name");
+    const entries = (data ?? []).map((r) => ({
+      slug: r.slug as string,
+      name: r.name as string,
+      script: (r.script as string | null) ?? "",
+      isStandard: r.is_standard as boolean,
+      source: r.source as string,
+      description: r.description as string,
+    }));
+    content = <LanguagesManager entries={entries} />;
   } else {
     const { data } = await supabase.from("feats").select("slug,name,description,prerequisite,source,data").order("name");
     const entries = (data ?? []).map((r) => ({ slug: r.slug as string, name: r.name as string, description: r.description as string, prerequisite: (r.prerequisite as string | null) ?? "", source: r.source as string, extra: r.data as Record<string, unknown> }));

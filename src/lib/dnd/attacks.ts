@@ -1,5 +1,12 @@
+import {
+  getEffectiveWieldMain,
+  getEffectiveWieldOff,
+} from "@/lib/character/equip-rules";
+import { getAllCharacterFeatures } from "@/lib/character/feature-derivation";
+import { getEffectiveWeaponProficiencies } from "@/lib/character/class-derivation";
 import type { CharacterData, AbilityKey } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
+import type { PhbClass } from "@/lib/dnd/phb/types";
 import { getWeaponProperties } from "@/lib/schemas/item";
 import {
   abilityModifier,
@@ -73,9 +80,12 @@ function isProficientWithWeapon(
   character: CharacterData,
   weaponCategory: "simple" | "martial",
   itemName: string,
-  itemSlug: string
+  itemSlug: string,
+  catalogClasses?: PhbClass[]
 ): boolean {
-  const profs = character.weaponProficiencies.map((p) => p.toLowerCase());
+  const profs = getEffectiveWeaponProficiencies(character, catalogClasses).map((p) =>
+    p.toLowerCase()
+  );
   if (profs.includes("simple weapons") && weaponCategory === "simple") return true;
   if (profs.includes("martial weapons") && weaponCategory === "martial") return true;
   if (profs.includes("simple weapons") && weaponCategory === "simple") return true;
@@ -84,24 +94,46 @@ function isProficientWithWeapon(
   return profs.some((p) => p === slug || p === name);
 }
 
-/** Derive weapon attacks from the character's equipped inventory items. */
+function hasTwoWeaponFighting(
+  character: CharacterData,
+  catalogClasses?: PhbClass[]
+): boolean {
+  if (/two-weapon fighting/i.test(character.featureChoices?.fightingStyle ?? "")) {
+    return true;
+  }
+  return getAllCharacterFeatures(character, { classes: catalogClasses }).some(
+    (f) => /two-weapon fighting/i.test(f.name)
+  );
+}
+
+function formatDamageDice(dice: string, abilityMod: number, includeMod: boolean): string {
+  if (!includeMod) return dice;
+  return `${dice}${abilityMod >= 0 ? "+" : ""}${abilityMod}`;
+}
+
+/** Derive weapon attacks from wielded inventory items (main and off-hand). */
 export function deriveWeaponAttacks(
   character: CharacterData,
-  catalogItems: Record<string, Item>
+  catalogItems: Record<string, Item>,
+  catalogClasses?: PhbClass[]
 ): DerivedAttack[] {
   const attacks: DerivedAttack[] = [];
   const mods = getAbilityModifiers(character.abilityScores);
   const prof = getProficiencyBonus(character);
+  const twf = hasTwoWeaponFighting(character, catalogClasses);
 
   for (const invItem of character.inventory.items) {
-    if (!invItem.equipped || !invItem.itemId) continue;
+    if (!invItem.itemId) continue;
     const catalogItem = catalogItems[invItem.itemId];
     if (!catalogItem) continue;
 
     const wp = getWeaponProperties(catalogItem);
     if (!wp) continue;
 
-    // Determine relevant ability modifier
+    const mainHand = getEffectiveWieldMain(invItem, catalogItem);
+    const offHand = getEffectiveWieldOff(invItem);
+    if (!mainHand && !offHand) continue;
+
     const isFinesse = wp.weaponProperties.includes("finesse");
     const isRanged = wp.weaponRange === "ranged";
     const isThrown = wp.weaponProperties.includes("thrown");
@@ -119,13 +151,10 @@ export function deriveWeaponAttacks(
       character,
       wp.weaponCategory,
       catalogItem.name,
-      catalogItem.slug
+      catalogItem.slug,
+      catalogClasses
     );
     const attackBonus = abilityMod + (proficient ? prof : 0);
-
-    const damageDiceStr = wp.damage
-      ? `${wp.damage}${abilityMod >= 0 ? "+" : ""}${abilityMod}`
-      : "—";
 
     let range = "";
     if (isRanged && wp.rangeNormal) {
@@ -136,25 +165,38 @@ export function deriveWeaponAttacks(
       range = "5 ft";
     }
 
-    const notes: string[] = [];
-    if (wp.weaponProperties.includes("versatile") && wp.versatileDamage) {
-      const versMod = abilityMod >= 0 ? `+${abilityMod}` : `${abilityMod}`;
-      notes.push(`Two-handed: ${wp.versatileDamage}${versMod}`);
-    }
-    if (wp.weaponProperties.includes("finesse")) notes.push("Finesse");
-    if (wp.weaponProperties.includes("reach")) notes.push("Reach (10 ft)");
+    const baseName = invItem.name || catalogItem.name;
 
-    attacks.push({
-      id: `weapon-${invItem.id}`,
-      name: invItem.name || catalogItem.name,
-      attackBonus,
-      damageDice: damageDiceStr,
-      damageType: wp.damageType,
-      range,
-      notes: notes.join(", "),
-      source: "weapon",
-      itemId: invItem.itemId,
-    });
+    const addAttack = (isOffHand: boolean) => {
+      const includeMod = !isOffHand || twf;
+      const damageDiceStr = wp.damage
+        ? formatDamageDice(wp.damage, abilityMod, includeMod)
+        : "—";
+
+      const notes: string[] = [];
+      if (isOffHand) notes.push("Bonus action");
+      if (wp.weaponProperties.includes("versatile") && wp.versatileDamage && !isOffHand) {
+        const versMod = abilityMod >= 0 ? `+${abilityMod}` : `${abilityMod}`;
+        notes.push(`Two-handed: ${wp.versatileDamage}${versMod}`);
+      }
+      if (wp.weaponProperties.includes("finesse")) notes.push("Finesse");
+      if (wp.weaponProperties.includes("reach")) notes.push("Reach (10 ft)");
+
+      attacks.push({
+        id: `weapon-${invItem.id}${isOffHand ? "-off" : ""}`,
+        name: isOffHand ? `${baseName} (off-hand)` : baseName,
+        attackBonus,
+        damageDice: damageDiceStr,
+        damageType: wp.damageType,
+        range,
+        notes: notes.join(", "),
+        source: "weapon",
+        itemId: invItem.itemId,
+      });
+    };
+
+    if (mainHand) addAttack(false);
+    if (offHand) addAttack(true);
   }
 
   return attacks;
@@ -226,9 +268,10 @@ export function deriveCantripAttacks(character: CharacterData): DerivedAttack[] 
  */
 export function getAllAttacks(
   character: CharacterData,
-  catalogItems: Record<string, Item>
+  catalogItems: Record<string, Item>,
+  catalogClasses?: PhbClass[]
 ): DerivedAttack[] {
-  const weapon = deriveWeaponAttacks(character, catalogItems);
+  const weapon = deriveWeaponAttacks(character, catalogItems, catalogClasses);
   const cantrips = deriveCantripAttacks(character);
   const manual: DerivedAttack[] = character.attacks.map((a) => ({
     ...a,

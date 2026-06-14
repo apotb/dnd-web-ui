@@ -4,14 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
-import { CharacterSheet } from "@/components/character/character-sheet";
+import { CharacterSheetViewer } from "@/components/character/character-sheet-viewer";
 import { CharacterImportButton } from "@/components/character/character-import-button";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { ParsedCharacter } from "@/lib/character/utils";
+import type { PhbClass } from "@/lib/dnd/phb/types";
 
 interface CharacterSheetsListProps {
   campaignId: string;
   initialCharacters: ParsedCharacter[];
+  classes: PhbClass[];
   isDm: boolean;
   userId: string | null;
 }
@@ -43,6 +45,7 @@ function canClaimCharacter(
 export function CharacterSheetsList({
   campaignId,
   initialCharacters,
+  classes,
   isDm,
   userId,
 }: CharacterSheetsListProps) {
@@ -144,11 +147,16 @@ export function CharacterSheetsList({
                 />
               ) : null}
               <section className="retro-box character-sheet-wrap">
-                <CharacterSheet
-                  data={selectedCharacter.data}
-                  isDm={false}
-                  editable={false}
-                  editHref={selectedCanEdit ? `/campaigns/${campaignId}/characters/${selectedCharacter.id}` : undefined}
+                <CharacterSheetViewer
+                  character={selectedCharacter}
+                  classes={classes}
+                  isDm={isDm}
+                  canToggleEquipment={selectedCanEdit}
+                  editHref={
+                    selectedCanEdit
+                      ? `/campaigns/${campaignId}/characters/${selectedCharacter.id}`
+                      : undefined
+                  }
                 />
               </section>
             </>

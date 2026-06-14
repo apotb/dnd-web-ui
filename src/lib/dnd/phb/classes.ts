@@ -466,7 +466,17 @@ export const PHB_CLASSES: PhbClass[] = [
     ],
     features: [
       { name: "Favored Enemy", description: "Advantage on Survival checks to track and Intelligence to recall info about chosen enemy type." },
-      { name: "Natural Explorer", description: "Benefits in favored terrain." },
+      {
+        name: "Natural Explorer",
+        description:
+          "While traveling for an hour or more in your favored terrain, you gain the following benefits:\n" +
+          "• Difficult terrain doesn't slow your group's travel.\n" +
+          "• Your group can't become lost except by magical means.\n" +
+          "• Even when engaged in another activity while traveling (such as foraging, navigating, or tracking), you remain alert to danger.\n" +
+          "• If you are traveling alone, you can move stealthily at a normal pace.\n" +
+          "• When you forage, you find twice as much food as you normally would.\n" +
+          "• While tracking other creatures, you learn their exact number, their sizes, and how long ago they passed through the area.",
+      },
     ],
   },
   {
@@ -715,7 +725,7 @@ export const FAVORED_ENEMIES = [
   "Oozes",
   "Plants",
   "Undead",
-  "Two humanoid races",
+  "Two humanoid species",
 ];
 
 export const FAVORED_TERRAINS = [

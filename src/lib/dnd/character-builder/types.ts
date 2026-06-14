@@ -19,8 +19,8 @@ export interface CharacterCreatorState {
   name: string;
   playerName: string;
   alignment: string;
-  raceId: string;
-  subraceId: string;
+  speciesId: string;
+  subspeciesId: string;
   backgroundId: string;
   classId: string;
   subclassId: string;
@@ -28,11 +28,11 @@ export interface CharacterCreatorState {
   variantHumanAbilityBonuses: AbilityKey[];
   variantHumanSkill: SkillKey | "";
   variantHumanFeat: string;
-  raceSkillChoices: SkillKey[];
-  raceWeaponChoices: string[];
-  raceToolChoice: string;
-  raceSkillOrTool: "skill" | "tool" | "";
-  raceLanguageChoices: string[];
+  speciesSkillChoices: SkillKey[];
+  speciesWeaponChoices: string[];
+  speciesToolChoice: string;
+  speciesSkillOrTool: "skill" | "tool" | "";
+  speciesLanguageChoices: string[];
   backgroundLanguageChoices: string[];
   backgroundArtisanTool: string;
   backgroundGamingSet: string;
@@ -43,6 +43,7 @@ export interface CharacterCreatorState {
   backgroundToolMulti: Array<"thieves' tools" | "gaming set" | "musical instrument">;
   fightingStyle: string;
   favoredEnemy: string;
+  favoredHumanoidSpecies: string[];
   favoredTerrain: string;
   monkTool: string;
   baseScores: Record<AbilityKey, number>;
@@ -62,8 +63,8 @@ export function createInitialCreatorState(): CharacterCreatorState {
     name: "",
     playerName: "",
     alignment: "",
-    raceId: "",
-    subraceId: "",
+    speciesId: "",
+    subspeciesId: "",
     backgroundId: "",
     classId: "",
     subclassId: "",
@@ -71,11 +72,11 @@ export function createInitialCreatorState(): CharacterCreatorState {
     variantHumanAbilityBonuses: [],
     variantHumanSkill: "",
     variantHumanFeat: "",
-    raceSkillChoices: [],
-    raceWeaponChoices: [],
-    raceToolChoice: "",
-    raceSkillOrTool: "",
-    raceLanguageChoices: [],
+    speciesSkillChoices: [],
+    speciesWeaponChoices: [],
+    speciesToolChoice: "",
+    speciesSkillOrTool: "",
+    speciesLanguageChoices: [],
     backgroundLanguageChoices: [],
     backgroundArtisanTool: "",
     backgroundGamingSet: "",
@@ -86,6 +87,7 @@ export function createInitialCreatorState(): CharacterCreatorState {
     backgroundToolMulti: [],
     fightingStyle: "",
     favoredEnemy: "",
+    favoredHumanoidSpecies: [],
     favoredTerrain: "",
     monkTool: "",
     baseScores: defaultPointBuyScores(),

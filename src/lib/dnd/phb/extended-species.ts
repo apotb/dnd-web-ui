@@ -1,10 +1,10 @@
-import type { PhbRace } from "./types";
+import type { PhbSpecies } from "./types";
 
 /**
- * Supplemental races using D&D 5e (2014) rules from:
+ * Supplemental species using D&D 5e (2014) rules from:
  * EEPC, Volo's Guide to Monsters, Mordenkainen's Tome of Foes, Eberron: Rising from the Last War.
  */
-export const EXTENDED_RACES: PhbRace[] = [
+export const EXTENDED_SPECIES: PhbSpecies[] = [
   {
     id: "aarakocra",
     name: "Aarakocra",
@@ -48,7 +48,7 @@ export const EXTENDED_RACES: PhbRace[] = [
         description: "You know the light cantrip. Charisma is your spellcasting ability for it.",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "protector",
         name: "Protector",
@@ -156,10 +156,10 @@ export const EXTENDED_RACES: PhbRace[] = [
     traits: [
       {
         name: "Elemental Legacy",
-        description: "Your subrace determines your elemental cantrip, resistance, and other traits.",
+        description: "Your subspecies determines your elemental cantrip, resistance, and other traits.",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "air",
         name: "Air Genasi",
@@ -466,10 +466,10 @@ export const EXTENDED_RACES: PhbRace[] = [
       },
       {
         name: "Shifting",
-        description: "As a bonus action, you shift for 1 minute to gain temporary HP and a subrace benefit (once per short or long rest).",
+        description: "As a bonus action, you shift for 1 minute to gain temporary HP and a subspecies benefit (once per short or long rest).",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "beasthide",
         name: "Beasthide",
@@ -607,7 +607,7 @@ export const EXTENDED_RACES: PhbRace[] = [
         description: "Your body can be enhanced with armor you are proficient with.",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "str",
         name: "+1 Strength",

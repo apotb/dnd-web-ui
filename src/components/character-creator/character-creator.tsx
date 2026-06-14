@@ -13,8 +13,12 @@ import {
   buildCharacterExport,
   computeRacialBonuses,
   getClassSkillExclusions,
+  resolveBackgroundEquipment,
+  resolveBackgroundToolProficiencies,
   validateCreatorState,
 } from "@/lib/dnd/character-builder/build-character";
+import { choicePlaceholder, buildChoiceDescription } from "@/lib/character/feature-choices";
+import { TWO_HUMANOID_SPECIES_OPTION, formatFavoredEnemyDisplay } from "@/lib/dnd/phb/favored-enemy-humanoids";
 import {
   ALIGNMENTS,
   CREATOR_STEPS,
@@ -24,30 +28,30 @@ import {
   type CreatorStep,
 } from "@/lib/dnd/character-builder/types";
 import {
-  ARTISAN_TOOLS,
-  EXPLORER_TOOLS,
-  GAMING_SETS,
-  MUSICAL_INSTRUMENTS,
-  STANDARD_LANGUAGES,
-} from "@/lib/dnd/phb/backgrounds";
-import {
   classRequiresSubclassAtLevel1,
   FAVORED_ENEMIES,
   FAVORED_TERRAINS,
   FIGHTING_STYLES,
 } from "@/lib/dnd/phb/classes";
-import { MARTIAL_WEAPONS } from "@/lib/dnd/phb/martial-weapons";
-import { getRaceGrantLines } from "@/lib/dnd/phb/race-grants";
-import { GENERAL_TOOLS } from "@/lib/dnd/phb/tools";
+import { getSpeciesGrantLines } from "@/lib/dnd/phb/species-grants";
 import type { CreatorCatalog } from "@/lib/content/catalog";
 import { characterExportSchema } from "@/lib/schemas/character";
 import { AbilityScorePanel } from "./ability-score-panel";
+import { CatalogItemPicker } from "./catalog-item-picker";
 import {
   EquipmentSubPicker,
   getEquipmentPlaceholderFilter,
 } from "./equipment-sub-picker";
 import { IntroContent } from "./creator-intro-modal";
+import { LanguagePicker } from "./language-picker";
+import { HumanoidSpeciesPicker } from "./humanoid-species-picker";
+import { SkillPicker } from "./skill-picker";
+import { weaponChoicesToFilter } from "@/lib/items/catalog-picker-filter";
 import { Tooltip } from "@/components/ui/tooltip";
+import {
+  buildLanguageLookup,
+  resolveLanguageSlug,
+} from "@/lib/languages/resolve";
 
 interface CharacterCreatorProps {
   campaignId: string;
@@ -74,25 +78,25 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
   const visibleSteps = useMemo(() => getVisibleSteps(state), [state]);
   const currentStep = visibleSteps[stepIndex] ?? "identity";
 
-  const selectedRace = catalog.races.find((r) => r.id === state.raceId);
+  const selectedSpecies = catalog.species.find((r) => r.id === state.speciesId);
   const selectedBackground = catalog.backgrounds.find((b) => b.id === state.backgroundId);
   const selectedClass = catalog.classes.find((c) => c.id === state.classId);
 
-  const raceGrantLines = useMemo(() => {
-    if (!selectedRace) return [];
-    return getRaceGrantLines(selectedRace, {
-      subraceId: state.subraceId,
+  const speciesGrantLines = useMemo(() => {
+    if (!selectedSpecies) return [];
+    return getSpeciesGrantLines(selectedSpecies, {
+      subspeciesId: state.subspeciesId,
       halfElfAbilityBonuses: state.halfElfAbilityBonuses,
-      raceSkillChoices: state.raceSkillChoices,
-      raceWeaponChoices: state.raceWeaponChoices,
-      raceToolChoice: state.raceToolChoice,
-      raceSkillOrTool: state.raceSkillOrTool,
+      speciesSkillChoices: state.speciesSkillChoices,
+      speciesWeaponChoices: state.speciesWeaponChoices,
+      speciesToolChoice: state.speciesToolChoice,
+      speciesSkillOrTool: state.speciesSkillOrTool,
       variantHumanAbilityBonuses: state.variantHumanAbilityBonuses,
       variantHumanSkill: state.variantHumanSkill,
       variantHumanFeat: state.variantHumanFeat,
-      raceLanguageChoices: state.raceLanguageChoices,
+      speciesLanguageChoices: state.speciesLanguageChoices,
     });
-  }, [selectedRace, state]);
+  }, [selectedSpecies, state]);
 
   const racialPreview = useMemo(() => {
     const bonuses = computeRacialBonuses(state, catalog);
@@ -124,49 +128,49 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
         if (!state.alignment) return "Choose an alignment.";
         return null;
       case "origin": {
-        if (!state.raceId) return "Choose a race.";
-        if (selectedRace?.subraces?.length && !state.subraceId) return "Choose a subrace.";
+        if (!state.speciesId) return "Choose a species.";
+        if (selectedSpecies?.subspecies?.length && !state.subspeciesId) return "Choose a subspecies.";
         if (!state.backgroundId) return "Choose a background.";
-        if (state.raceId === "half-elf" && state.halfElfAbilityBonuses.length !== 2) {
+        if (state.speciesId === "half-elf" && state.halfElfAbilityBonuses.length !== 2) {
           return "Half-Elf: pick two ability scores for +1 (not Charisma).";
         }
-        if (selectedRace?.skillChoices && !selectedRace.skillOrToolChoice) {
-          const { count } = selectedRace.skillChoices;
-          if (state.raceSkillChoices.length !== count) {
-            return `${selectedRace.name}: pick ${count} skill proficiency${count === 1 ? "" : "ies"}.`;
+        if (selectedSpecies?.skillChoices && !selectedSpecies.skillOrToolChoice) {
+          const { count } = selectedSpecies.skillChoices;
+          if (state.speciesSkillChoices.length !== count) {
+            return `${selectedSpecies.name}: pick ${count} skill proficiency${count === 1 ? "" : "ies"}.`;
           }
         }
-        if (selectedRace?.skillOrToolChoice) {
-          if (!state.raceSkillOrTool) {
-            return `${selectedRace.name}: choose a skill or a tool.`;
+        if (selectedSpecies?.skillOrToolChoice) {
+          if (!state.speciesSkillOrTool) {
+            return `${selectedSpecies.name}: choose a skill or a tool.`;
           }
-          if (state.raceSkillOrTool === "skill" && state.raceSkillChoices.length !== 1) {
-            return `${selectedRace.name}: pick one skill.`;
+          if (state.speciesSkillOrTool === "skill" && state.speciesSkillChoices.length !== 1) {
+            return `${selectedSpecies.name}: pick one skill.`;
           }
-          if (state.raceSkillOrTool === "tool" && !state.raceToolChoice) {
-            return `${selectedRace.name}: pick one tool.`;
-          }
-        }
-        if (selectedRace?.weaponChoices) {
-          const { count } = selectedRace.weaponChoices;
-          if (state.raceWeaponChoices.length !== count) {
-            return `${selectedRace.name}: pick ${count} martial weapon${count === 1 ? "" : "s"}.`;
+          if (state.speciesSkillOrTool === "tool" && !state.speciesToolChoice) {
+            return `${selectedSpecies.name}: pick one tool.`;
           }
         }
-        if (state.raceId === "human" && state.subraceId === "variant") {
+        if (selectedSpecies?.weaponChoices) {
+          const { count } = selectedSpecies.weaponChoices;
+          if (state.speciesWeaponChoices.length !== count) {
+            return `${selectedSpecies.name}: pick ${count} martial weapon${count === 1 ? "" : "s"}.`;
+          }
+        }
+        if (state.speciesId === "human" && state.subspeciesId === "variant") {
           if (state.variantHumanAbilityBonuses.length !== 2) return "Variant Human: pick two +1 abilities.";
           if (!state.variantHumanSkill) return "Variant Human: pick a skill.";
           if (!state.variantHumanFeat) return "Variant Human: pick a feat.";
         }
-        const raceLangCount =
-          (selectedRace?.languageChoices ?? 0) +
-          (state.raceId === "elf" && state.subraceId === "high" ? 1 : 0);
-        if (state.raceLanguageChoices.length < raceLangCount) {
-          return `Choose ${raceLangCount} language(s) from your race.`;
+        const speciesLangCount =
+          (selectedSpecies?.languageChoices ?? 0) +
+          (state.speciesId === "elf" && state.subspeciesId === "high" ? 1 : 0);
+        if (state.speciesLanguageChoices.length < speciesLangCount) {
+          return `Choose ${speciesLangCount} ${speciesLangCount === 1 ? "language" : "languages"} from your species.`;
         }
         const bgLangCount = selectedBackground?.languageChoices ?? 0;
         if (state.backgroundLanguageChoices.length < bgLangCount) {
-          return `Choose ${bgLangCount} language(s) from your background.`;
+          return `Choose ${bgLangCount} ${bgLangCount === 1 ? "language" : "languages"} from your background.`;
         }
         if (selectedBackground?.skillChoices) {
           const { count } = selectedBackground.skillChoices;
@@ -224,6 +228,12 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
         if (state.classId === "fighter" && !state.fightingStyle) return "Choose a fighting style.";
         if (state.classId === "ranger") {
           if (!state.favoredEnemy) return "Choose a favored enemy.";
+          if (
+            state.favoredEnemy === TWO_HUMANOID_SPECIES_OPTION &&
+            state.favoredHumanoidSpecies.length !== 2
+          ) {
+            return "Choose two humanoid species for favored enemy.";
+          }
           if (!state.favoredTerrain) return "Choose a favored terrain.";
         }
         if (state.classId === "monk" && !state.monkTool) return "Choose a monk tool proficiency.";
@@ -347,31 +357,134 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
     return skills.map((s) => SKILL_LABELS[s]);
   }, [state, catalog]);
 
-  const raceSkillExclusions = useMemo(
-    () => selectedRace?.skillProficiencies ?? [],
-    [selectedRace]
+  const speciesSkillExclusions = useMemo(
+    () => selectedSpecies?.skillProficiencies ?? [],
+    [selectedSpecies]
   );
 
   const backgroundSkillExclusions = useMemo(() => {
     const excluded = new Set<SkillKey>([
-      ...(selectedRace?.skillProficiencies ?? []),
-      ...state.raceSkillChoices,
+      ...(selectedSpecies?.skillProficiencies ?? []),
+      ...state.speciesSkillChoices,
     ]);
     if (
-      state.raceId === "human" &&
-      state.subraceId === "variant" &&
+      state.speciesId === "human" &&
+      state.subspeciesId === "variant" &&
       state.variantHumanSkill
     ) {
       excluded.add(state.variantHumanSkill);
     }
     selectedBackground?.skillProficiencies.forEach((s) => excluded.add(s));
     return [...excluded];
-  }, [selectedRace, selectedBackground, state]);
+  }, [selectedSpecies, selectedBackground, state]);
+
+  const speciesLanguageChoiceCount = useMemo(
+    () =>
+      (selectedSpecies?.languageChoices ?? 0) +
+      (state.speciesId === "elf" && state.subspeciesId === "high" ? 1 : 0),
+    [selectedSpecies, state.speciesId, state.subspeciesId]
+  );
+
+  const backgroundLanguageChoiceCount =
+    selectedBackground?.languageChoices ?? 0;
+
+  const resolvedBackgroundTools = useMemo(
+    () => resolveBackgroundToolProficiencies(state, catalog),
+    [state, catalog]
+  );
+
+  const resolvedBackgroundEquipment = useMemo(
+    () => resolveBackgroundEquipment(state, catalog),
+    [state, catalog]
+  );
 
   const classSkillExclusions = useMemo(
     () => getClassSkillExclusions(state, catalog),
     [state, catalog]
   );
+
+  const automaticLanguages = useMemo(() => {
+    return [
+      ...(selectedSpecies?.languages ?? []),
+      ...(selectedSpecies?.fixedLanguages ?? []),
+      ...(selectedBackground?.fixedLanguages ?? []),
+    ];
+  }, [selectedSpecies, selectedBackground]);
+
+  const languageLookup = useMemo(
+    () => buildLanguageLookup(catalog.languages),
+    [catalog.languages]
+  );
+
+  const automaticLanguageSlugs = useMemo(
+    () => automaticLanguages.map((l) => resolveLanguageSlug(l, languageLookup)),
+    [automaticLanguages, languageLookup]
+  );
+
+  const speciesLanguageDisabled = useMemo(() => {
+    return [
+      ...new Set([
+        ...automaticLanguageSlugs,
+        ...state.backgroundLanguageChoices.map((l) =>
+          resolveLanguageSlug(l, languageLookup)
+        ),
+      ]),
+    ];
+  }, [
+    automaticLanguageSlugs,
+    state.backgroundLanguageChoices,
+    languageLookup,
+  ]);
+
+  const backgroundLanguageDisabled = useMemo(() => {
+    return [
+      ...new Set([
+        ...automaticLanguageSlugs,
+        ...state.speciesLanguageChoices.map((l) =>
+          resolveLanguageSlug(l, languageLookup)
+        ),
+      ]),
+    ];
+  }, [automaticLanguageSlugs, state.speciesLanguageChoices, languageLookup]);
+
+  useEffect(() => {
+    setState((prev) => {
+      const species = catalog.species.find((r) => r.id === prev.speciesId);
+      const bg = catalog.backgrounds.find((b) => b.id === prev.backgroundId);
+      const lookup = buildLanguageLookup(catalog.languages);
+      const auto = [
+        ...(species?.languages ?? []),
+        ...(species?.fixedLanguages ?? []),
+        ...(bg?.fixedLanguages ?? []),
+      ];
+      const autoSlugs = new Set(auto.map((l) => resolveLanguageSlug(l, lookup)));
+      const bgDisabled = new Set([
+        ...autoSlugs,
+        ...prev.speciesLanguageChoices.map((l) => resolveLanguageSlug(l, lookup)),
+      ]);
+      const prunedBg = prev.backgroundLanguageChoices.filter(
+        (l) => !bgDisabled.has(resolveLanguageSlug(l, lookup))
+      );
+      const speciesDisabled = new Set([
+        ...autoSlugs,
+        ...prunedBg.map((l) => resolveLanguageSlug(l, lookup)),
+      ]);
+      const prunedSpecies = prev.speciesLanguageChoices.filter(
+        (l) => !speciesDisabled.has(resolveLanguageSlug(l, lookup))
+      );
+      if (
+        prunedBg.length === prev.backgroundLanguageChoices.length &&
+        prunedSpecies.length === prev.speciesLanguageChoices.length
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        speciesLanguageChoices: prunedSpecies,
+        backgroundLanguageChoices: prunedBg,
+      };
+    });
+  }, [state.speciesId, state.subspeciesId, state.backgroundId, catalog]);
 
   useEffect(() => {
     if (currentStep !== "skills") return;
@@ -444,54 +557,54 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
 
       {currentStep === "origin" ? (
         <section className="retro-box creator-section">
-          <h3 className="retro-box-title">Race &amp; Background</h3>
+          <h3 className="retro-box-title">Species &amp; Background</h3>
           <div className="creator-two-col">
             <div>
-              <label className="candy-label">Race</label>
+              <label className="candy-label">Species</label>
               <select
                 className="candy-input"
-                value={state.raceId}
+                value={state.speciesId}
                 onChange={(e) =>
                   update({
-                    raceId: e.target.value,
-                    subraceId: "",
+                    speciesId: e.target.value,
+                    subspeciesId: "",
                     halfElfAbilityBonuses: [],
-                    raceSkillChoices: [],
-                    raceWeaponChoices: [],
-                    raceToolChoice: "",
-                    raceSkillOrTool: "",
+                    speciesSkillChoices: [],
+                    speciesWeaponChoices: [],
+                    speciesToolChoice: "",
+                    speciesSkillOrTool: "",
                     variantHumanAbilityBonuses: [],
                     variantHumanSkill: "",
                     variantHumanFeat: "",
-                    raceLanguageChoices: [],
+                    speciesLanguageChoices: [],
                   })
                 }
               >
                 <option value="">— choose —</option>
-                {catalog.races.map((r) => (
+                {catalog.species.map((r) => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
               </select>
 
-              {selectedRace?.subraces?.length ? (
+              {selectedSpecies?.subspecies?.length ? (
                 <>
-                  <label className="candy-label">Subrace / variant</label>
+                  <label className="candy-label">Subspecies / variant</label>
                   <select
                     className="candy-input"
-                    value={state.subraceId}
-                    onChange={(e) => update({ subraceId: e.target.value })}
+                    value={state.subspeciesId}
+                    onChange={(e) => update({ subspeciesId: e.target.value })}
                   >
                     <option value="">— choose —</option>
-                    {selectedRace.subraces.map((s) => (
+                    {selectedSpecies.subspecies.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
                 </>
               ) : null}
 
-              {selectedRace ? (
+              {selectedSpecies ? (
                 <div className="creator-grants">
-                  {raceGrantLines.map((line) => (
+                  {speciesGrantLines.map((line) => (
                     <p key={line.label} className="retro-muted">
                       {line.label}: {line.value}
                     </p>
@@ -499,7 +612,7 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                 </div>
               ) : null}
 
-              {state.raceId === "half-elf" ? (
+              {state.speciesId === "half-elf" ? (
                 <>
                   <p className="candy-label">+1 to two abilities (not Charisma)</p>
                   <div className="creator-chip-row">
@@ -525,102 +638,82 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                 </>
               ) : null}
 
-              {selectedRace?.skillChoices && !selectedRace.skillOrToolChoice ? (
+              {selectedSpecies?.skillChoices && !selectedSpecies.skillOrToolChoice ? (
                 <>
                   <p className="candy-label">
-                    {selectedRace.skillChoices.prompt ??
-                      `${selectedRace.skillChoices.count} skill proficiency${selectedRace.skillChoices.count === 1 ? "" : "ies"}`}
+                    {selectedSpecies.skillChoices.prompt ??
+                      `${selectedSpecies.skillChoices.count} skill proficiency${selectedSpecies.skillChoices.count === 1 ? "" : "ies"}`}
                   </p>
                   <SkillPicker
-                    selected={state.raceSkillChoices}
-                    max={selectedRace.skillChoices.count}
-                    options={selectedRace.skillChoices.options}
-                    excluded={raceSkillExclusions}
-                    onChange={(skills) => update({ raceSkillChoices: skills })}
+                    selected={state.speciesSkillChoices}
+                    max={selectedSpecies.skillChoices.count}
+                    options={selectedSpecies.skillChoices.options}
+                    excluded={speciesSkillExclusions}
+                    onChange={(skills) => update({ speciesSkillChoices: skills })}
                   />
                 </>
               ) : null}
 
-              {selectedRace?.skillOrToolChoice ? (
+              {selectedSpecies?.skillOrToolChoice ? (
                 <>
                   <p className="candy-label">
-                    {selectedRace.skillOrToolChoice.prompt ?? "Skill or tool"}
+                    {selectedSpecies.skillOrToolChoice.prompt ?? "Skill or tool"}
                   </p>
                   <div className="creator-chip-row">
                     <button
                       type="button"
-                      className={`candy-btn candy-btn-sm${state.raceSkillOrTool === "skill" ? " candy-btn-active" : ""}`}
+                      className={`candy-btn candy-btn-sm${state.speciesSkillOrTool === "skill" ? " candy-btn-active" : ""}`}
                       onClick={() =>
-                        update({ raceSkillOrTool: "skill", raceToolChoice: "" })
+                        update({ speciesSkillOrTool: "skill", speciesToolChoice: "" })
                       }
                     >
                       Skill
                     </button>
                     <button
                       type="button"
-                      className={`candy-btn candy-btn-sm${state.raceSkillOrTool === "tool" ? " candy-btn-active" : ""}`}
+                      className={`candy-btn candy-btn-sm${state.speciesSkillOrTool === "tool" ? " candy-btn-active" : ""}`}
                       onClick={() =>
-                        update({ raceSkillOrTool: "tool", raceSkillChoices: [] })
+                        update({ speciesSkillOrTool: "tool", speciesSkillChoices: [] })
                       }
                     >
                       Tool
                     </button>
                   </div>
-                  {state.raceSkillOrTool === "skill" ? (
+                  {state.speciesSkillOrTool === "skill" ? (
                     <SkillPicker
-                      selected={state.raceSkillChoices}
+                      selected={state.speciesSkillChoices}
                       max={1}
-                      excluded={raceSkillExclusions}
-                      onChange={(skills) => update({ raceSkillChoices: skills })}
+                      excluded={speciesSkillExclusions}
+                      onChange={(skills) => update({ speciesSkillChoices: skills })}
                     />
                   ) : null}
-                  {state.raceSkillOrTool === "tool" ? (
-                    <select
-                      className="candy-input"
-                      value={state.raceToolChoice}
-                      onChange={(e) => update({ raceToolChoice: e.target.value })}
-                    >
-                      <option value="">— choose tool —</option>
-                      {GENERAL_TOOLS.map((tool) => (
-                        <option key={tool} value={tool}>
-                          {tool}
-                        </option>
-                      ))}
-                    </select>
+                  {state.speciesSkillOrTool === "tool" ? (
+                    <EquipmentSubPicker
+                      filter={{ kind: "creator_tools" }}
+                      value={state.speciesToolChoice || null}
+                      onSelect={(tool) => update({ speciesToolChoice: tool })}
+                    />
                   ) : null}
                 </>
               ) : null}
 
-              {selectedRace?.weaponChoices ? (
+              {selectedSpecies?.weaponChoices ? (
                 <>
-                  <p className="candy-label">
-                    {selectedRace.weaponChoices.prompt ??
-                      `${selectedRace.weaponChoices.count} martial weapons`}
-                  </p>
-                  <div className="creator-chip-row creator-lang-grid">
-                    {MARTIAL_WEAPONS.map((weapon) => (
-                      <button
-                        key={weapon}
-                        type="button"
-                        className={`candy-btn candy-btn-sm${state.raceWeaponChoices.includes(weapon) ? " candy-btn-active" : ""}`}
-                        onClick={() =>
-                          update({
-                            raceWeaponChoices: toggleInList(
-                              state.raceWeaponChoices,
-                              weapon,
-                              selectedRace.weaponChoices!.count
-                            ),
-                          })
-                        }
-                      >
-                        {weapon}
-                      </button>
-                    ))}
-                  </div>
+                  <CatalogItemPicker
+                    filter={weaponChoicesToFilter(selectedSpecies.weaponChoices)}
+                    selected={state.speciesWeaponChoices}
+                    max={selectedSpecies.weaponChoices.count}
+                    label={
+                      selectedSpecies.weaponChoices.prompt ??
+                      `${selectedSpecies.weaponChoices.count} weapons`
+                    }
+                    placeholder="Search weapons…"
+                    onChange={(names) => update({ speciesWeaponChoices: names })}
+                  />
                 </>
               ) : null}
 
-              {state.raceId === "human" && state.subraceId === "variant" ? (
+              {state.speciesId === "human" && state.subspeciesId === "variant" ? (
                 <>
                   <p className="candy-label">+1 to two abilities</p>
                   <div className="creator-chip-row">
@@ -647,7 +740,7 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                   <SkillPicker
                     selected={state.variantHumanSkill ? [state.variantHumanSkill] : []}
                     max={1}
-                    excluded={raceSkillExclusions}
+                    excluded={speciesSkillExclusions}
                     onChange={(skills) =>
                       update({ variantHumanSkill: skills[0] ?? "" })
                     }
@@ -666,17 +759,32 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                 </>
               ) : null}
 
-              {(selectedRace?.languageChoices ?? 0) > 0 ||
-              (state.raceId === "elf" && state.subraceId === "high") ? (
+              {(selectedSpecies?.languageChoices ?? 0) > 0 ||
+              (state.speciesId === "elf" && state.subspeciesId === "high") ? (
                 <>
-                  <p className="candy-label">Bonus languages</p>
+                  <p className="candy-label">
+                    Bonus {speciesLanguageChoiceCount === 1 ? "language" : "languages"}
+                  </p>
                   <LanguagePicker
-                    selected={state.raceLanguageChoices}
-                    max={
-                      (selectedRace?.languageChoices ?? 0) +
-                      (state.raceId === "elf" && state.subraceId === "high" ? 1 : 0)
-                    }
-                    onChange={(langs) => update({ raceLanguageChoices: langs })}
+                    selected={state.speciesLanguageChoices}
+                    max={speciesLanguageChoiceCount}
+                    disabled={speciesLanguageDisabled}
+                    catalog={catalog.languages}
+                    onChange={(langs) => {
+                      const bgDisabled = new Set([
+                        ...automaticLanguageSlugs,
+                        ...langs.map((l) => resolveLanguageSlug(l, languageLookup)),
+                      ]);
+                      const prunedBg = state.backgroundLanguageChoices.filter(
+                        (l) => !bgDisabled.has(resolveLanguageSlug(l, languageLookup))
+                      );
+                      update({
+                        speciesLanguageChoices: langs,
+                        ...(prunedBg.length !== state.backgroundLanguageChoices.length
+                          ? { backgroundLanguageChoices: prunedBg }
+                          : {}),
+                      });
+                    }}
                   />
                 </>
               ) : null}
@@ -720,18 +828,7 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                     selectedBackground.toolPick ||
                     selectedBackground.toolMultiPick) ? (
                     <p className="retro-muted">
-                      Tools:{" "}
-                      {[
-                        ...(selectedBackground.toolProficiencies ?? []),
-                        ...(state.backgroundToolPick ? [state.backgroundToolPick] : []),
-                        ...state.backgroundToolMulti,
-                        ...(state.backgroundArtisanTool ? [state.backgroundArtisanTool] : []),
-                        ...(state.backgroundGamingSet ? [state.backgroundGamingSet] : []),
-                        ...(state.backgroundMusicalInstrument
-                          ? [state.backgroundMusicalInstrument]
-                          : []),
-                        ...(state.backgroundExplorerTool ? [state.backgroundExplorerTool] : []),
-                      ].join(", ")}
+                      Tools: {resolvedBackgroundTools.join(", ") || "—"}
                     </p>
                   ) : null}
                   <p className="retro-muted">Starting gold: {selectedBackground.gold} gp</p>
@@ -818,10 +915,16 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
 
               {(selectedBackground?.languageChoices ?? 0) > 0 ? (
                 <>
-                  <p className="candy-label">Background languages</p>
+                  <p className="candy-label">
+                    Background{" "}
+                    {backgroundLanguageChoiceCount === 1 ? "language" : "languages"}
+                  </p>
                   <LanguagePicker
                     selected={state.backgroundLanguageChoices}
-                    max={selectedBackground?.languageChoices ?? 0}
+                    max={backgroundLanguageChoiceCount}
+                    disabled={backgroundLanguageDisabled}
+                    standardOnly
+                    catalog={catalog.languages}
                     onChange={(langs) => update({ backgroundLanguageChoices: langs })}
                   />
                 </>
@@ -830,75 +933,43 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
               {(selectedBackground?.toolProficiencies?.includes("artisan's tools") ||
                 (selectedBackground?.toolPick?.options.includes("artisan's tools") &&
                   state.backgroundToolPick === "artisan's tools")) ? (
-                <>
-                  <label className="candy-label">Artisan&apos;s tools</label>
-                  <select
-                    className="candy-input"
-                    value={state.backgroundArtisanTool}
-                    onChange={(e) => update({ backgroundArtisanTool: e.target.value })}
-                  >
-                    <option value="">— choose —</option>
-                    {ARTISAN_TOOLS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </>
+                <EquipmentSubPicker
+                  filter={{ kind: "subcategory", subcategory: "artisans_tools" }}
+                  value={state.backgroundArtisanTool || null}
+                  onSelect={(tool) => update({ backgroundArtisanTool: tool })}
+                />
               ) : null}
 
               {(selectedBackground?.toolProficiencies?.includes("gaming set") ||
                 (selectedBackground?.toolPick?.options.includes("gaming set") &&
                   state.backgroundToolPick === "gaming set") ||
                 state.backgroundToolMulti.includes("gaming set")) ? (
-                <>
-                  <label className="candy-label">Gaming set</label>
-                  <select
-                    className="candy-input"
-                    value={state.backgroundGamingSet}
-                    onChange={(e) => update({ backgroundGamingSet: e.target.value })}
-                  >
-                    <option value="">— choose —</option>
-                    {GAMING_SETS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </>
+                <EquipmentSubPicker
+                  filter={{ kind: "subcategory", subcategory: "gaming_set" }}
+                  value={state.backgroundGamingSet || null}
+                  onSelect={(tool) => update({ backgroundGamingSet: tool })}
+                />
               ) : null}
 
               {(selectedBackground?.toolProficiencies?.includes("musical instrument") ||
                 (selectedBackground?.toolPick?.options.includes("musical instrument") &&
                   state.backgroundToolPick === "musical instrument") ||
                 state.backgroundToolMulti.includes("musical instrument")) ? (
-                <>
-                  <label className="candy-label">Musical instrument</label>
-                  <select
-                    className="candy-input"
-                    value={state.backgroundMusicalInstrument}
-                    onChange={(e) => update({ backgroundMusicalInstrument: e.target.value })}
-                  >
-                    <option value="">— choose —</option>
-                    {MUSICAL_INSTRUMENTS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </>
+                <EquipmentSubPicker
+                  filter={{ kind: "subcategory", subcategory: "musical_instrument" }}
+                  value={state.backgroundMusicalInstrument || null}
+                  onSelect={(tool) => update({ backgroundMusicalInstrument: tool })}
+                />
               ) : null}
 
               {selectedBackground?.toolProficiencies?.includes(
                 "cartographer's tools or navigator's tools"
               ) ? (
-                <>
-                  <label className="candy-label">Explorer&apos;s tools</label>
-                  <select
-                    className="candy-input"
-                    value={state.backgroundExplorerTool}
-                    onChange={(e) => update({ backgroundExplorerTool: e.target.value })}
-                  >
-                    <option value="">— choose —</option>
-                    {EXPLORER_TOOLS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </>
+                <EquipmentSubPicker
+                  filter={{ kind: "subcategory", subcategory: "explorer_tools" }}
+                  value={state.backgroundExplorerTool || null}
+                  onSelect={(tool) => update({ backgroundExplorerTool: tool })}
+                />
               ) : null}
             </div>
           </div>
@@ -923,6 +994,7 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                 equipmentSubChoices: {},
                 fightingStyle: "",
                 favoredEnemy: "",
+                favoredHumanoidSpecies: [],
                 favoredTerrain: "",
               })
             }
@@ -978,45 +1050,89 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
 
               {state.classId === "ranger" ? (
                 <>
-                  <label className="candy-label">Favored enemy</label>
-                  <select
-                    className="candy-input"
-                    value={state.favoredEnemy}
-                    onChange={(e) => update({ favoredEnemy: e.target.value })}
-                  >
-                    <option value="">— choose —</option>
-                    {FAVORED_ENEMIES.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                  <label className="candy-label">Favored terrain</label>
-                  <select
-                    className="candy-input"
-                    value={state.favoredTerrain}
-                    onChange={(e) => update({ favoredTerrain: e.target.value })}
-                  >
-                    <option value="">— choose —</option>
-                    {FAVORED_TERRAINS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
+                  {(() => {
+                    const enemyRules =
+                      selectedClass.features.find((f) => f.name === "Favored Enemy")
+                        ?.description ??
+                      "Advantage on Survival checks to track and Intelligence to recall info about chosen enemy type.";
+                    const terrainRules =
+                      selectedClass.features.find((f) => f.name === "Natural Explorer")
+                        ?.description ?? "";
+                    return (
+                      <>
+                        <label className="candy-label">Favored enemy</label>
+                        <select
+                          className="candy-input"
+                          value={state.favoredEnemy}
+                          onChange={(e) => {
+                            const favoredEnemy = e.target.value;
+                            update({
+                              favoredEnemy,
+                              favoredHumanoidSpecies:
+                                favoredEnemy === TWO_HUMANOID_SPECIES_OPTION
+                                  ? state.favoredHumanoidSpecies
+                                  : [],
+                            });
+                          }}
+                        >
+                          <option value="">{choicePlaceholder("favoredEnemy")}</option>
+                          {FAVORED_ENEMIES.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                        {state.favoredEnemy === TWO_HUMANOID_SPECIES_OPTION ? (
+                          <>
+                            <label className="candy-label">Humanoid species (pick 2)</label>
+                            <HumanoidSpeciesPicker
+                              selected={state.favoredHumanoidSpecies}
+                              onChange={(ids) => update({ favoredHumanoidSpecies: ids })}
+                              variant="creator"
+                            />
+                          </>
+                        ) : null}
+                        <p className="retro-muted text-sm whitespace-pre-wrap">
+                          {buildChoiceDescription(
+                            enemyRules,
+                            state.favoredEnemy
+                              ? formatFavoredEnemyDisplay(
+                                  state.favoredEnemy,
+                                  state.favoredHumanoidSpecies
+                                )
+                              : null
+                          )}
+                        </p>
+                        <label className="candy-label">Favored terrain</label>
+                        <select
+                          className="candy-input"
+                          value={state.favoredTerrain}
+                          onChange={(e) => update({ favoredTerrain: e.target.value })}
+                        >
+                          <option value="">{choicePlaceholder("favoredTerrain")}</option>
+                          {FAVORED_TERRAINS.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                        <p className="retro-muted text-sm whitespace-pre-wrap">
+                          {buildChoiceDescription(
+                            terrainRules,
+                            state.favoredTerrain || null
+                          )}
+                        </p>
+                      </>
+                    );
+                  })()}
                 </>
               ) : null}
 
               {state.classId === "monk" ? (
-                <>
-                  <label className="candy-label">Tool or instrument</label>
-                  <select
-                    className="candy-input"
-                    value={state.monkTool}
-                    onChange={(e) => update({ monkTool: e.target.value })}
-                  >
-                    <option value="">— choose —</option>
-                    {[...ARTISAN_TOOLS, ...MUSICAL_INSTRUMENTS].map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </>
+                <EquipmentSubPicker
+                  filter={{
+                    kind: "subcategory",
+                    subcategory: ["artisans_tools", "musical_instrument"],
+                  }}
+                  value={state.monkTool || null}
+                  onSelect={(tool) => update({ monkTool: tool })}
+                />
               ) : null}
             </>
           ) : null}
@@ -1152,7 +1268,8 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
 
           {selectedBackground ? (
             <p className="retro-muted creator-summary">
-              Background adds: {selectedBackground.equipment.join(", ")} and {selectedBackground.gold} gp.
+              Background adds: {resolvedBackgroundEquipment.join(", ")} and{" "}
+              {selectedBackground.gold} gp.
             </p>
           ) : null}
         </section>
@@ -1189,12 +1306,12 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
               .map((i) => (i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name))
               .join(", ");
 
-            const subraceName = selectedRace?.subraces?.find(
-              (sr) => sr.id === state.subraceId
+            const subspeciesName = selectedSpecies?.subspecies?.find(
+              (sr) => sr.id === state.subspeciesId
             )?.name;
-            const speciesLabel = subraceName
-              ? `${selectedRace?.name} (${subraceName})`
-              : selectedRace?.name ?? "—";
+            const speciesLabel = subspeciesName
+              ? `${selectedSpecies?.name} (${subspeciesName})`
+              : selectedSpecies?.name ?? "—";
 
             const subclassName = selectedClass?.subclasses?.find(
               (sc) => sc.id === state.subclassId
@@ -1349,64 +1466,6 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
       </div>
 
       {blurbOpen && <IntroContent onDismiss={() => setBlurbOpen(false)} />}
-    </div>
-  );
-}
-
-function SkillPicker({
-  selected,
-  max,
-  options,
-  excluded = [],
-  onChange,
-}: {
-  selected: SkillKey[];
-  max: number;
-  options?: SkillKey[];
-  excluded?: SkillKey[];
-  onChange: (skills: SkillKey[]) => void;
-}) {
-  const excludedSet = useMemo(() => new Set(excluded), [excluded]);
-  const keys = (options ?? (Object.keys(SKILL_LABELS) as SkillKey[])).filter(
-    (key) => !excludedSet.has(key)
-  );
-  return (
-    <div className="creator-chip-row creator-skill-grid">
-      {keys.map((key) => (
-        <button
-          key={key}
-          type="button"
-          className={`candy-btn candy-btn-sm${selected.includes(key) ? " candy-btn-active" : ""}`}
-          onClick={() => onChange(toggleInList(selected, key, max))}
-        >
-          {SKILL_LABELS[key]}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function LanguagePicker({
-  selected,
-  max,
-  onChange,
-}: {
-  selected: string[];
-  max: number;
-  onChange: (langs: string[]) => void;
-}) {
-  return (
-    <div className="creator-chip-row creator-lang-grid">
-      {STANDARD_LANGUAGES.map((lang) => (
-        <button
-          key={lang}
-          type="button"
-          className={`candy-btn candy-btn-sm${selected.includes(lang) ? " candy-btn-active" : ""}`}
-          onClick={() => onChange(toggleInList(selected, lang, max))}
-        >
-          {lang}
-        </button>
-      ))}
     </div>
   );
 }

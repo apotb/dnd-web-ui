@@ -1,7 +1,18 @@
-import type { PhbRace } from "./types";
-import { EXTENDED_RACES } from "./extended-races";
+import type { PhbSpecies } from "./types";
+import { EXTENDED_SPECIES } from "./extended-species";
 
-export const PHB_RACES: PhbRace[] = [
+/** Normalize legacy DB JSON that still uses `subraces`. */
+export function normalizePhbSpecies(
+  raw: PhbSpecies & { subraces?: PhbSpecies["subspecies"] }
+): PhbSpecies {
+  const { subraces, subspecies, ...rest } = raw;
+  return {
+    ...rest,
+    subspecies: subspecies ?? subraces,
+  };
+}
+
+export const PHB_SPECIES: PhbSpecies[] = [
   {
     id: "dwarf",
     name: "Dwarf",
@@ -24,7 +35,7 @@ export const PHB_RACES: PhbRace[] = [
         description: "Add double proficiency bonus to History checks related to stonework.",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "hill",
         name: "Hill Dwarf",
@@ -66,7 +77,7 @@ export const PHB_RACES: PhbRace[] = [
       },
     ],
     skillProficiencies: ["perception"],
-    subraces: [
+    subspecies: [
       {
         id: "high",
         name: "High Elf",
@@ -118,7 +129,7 @@ export const PHB_RACES: PhbRace[] = [
         description: "You can move through the space of any creature that is a size larger than you.",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "lightfoot",
         name: "Lightfoot Halfling",
@@ -147,7 +158,7 @@ export const PHB_RACES: PhbRace[] = [
         description: "You speak Common and one extra language of your choice.",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "standard",
         name: "Standard Human",
@@ -185,7 +196,7 @@ export const PHB_RACES: PhbRace[] = [
         description: "You have resistance to the damage type associated with your draconic ancestry.",
       },
     ],
-    subraces: [
+    subspecies: [
       { id: "black", name: "Black (Acid)", extras: ["Acid breath (5×30 ft line); acid resistance."] },
       { id: "blue", name: "Blue (Lightning)", extras: ["Lightning breath (5×30 ft line); lightning resistance."] },
       { id: "brass", name: "Brass (Fire)", extras: ["Fire breath (5×30 ft line); fire resistance."] },
@@ -215,7 +226,7 @@ export const PHB_RACES: PhbRace[] = [
         description: "Advantage on Intelligence, Wisdom, and Charisma saves against magic.",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "forest",
         name: "Forest Gnome",
@@ -293,7 +304,7 @@ export const PHB_RACES: PhbRace[] = [
         description: "You have resistance to fire damage.",
       },
     ],
-    subraces: [
+    subspecies: [
       {
         id: "asmodeus",
         name: "Asmodeus",
@@ -370,20 +381,20 @@ export const PHB_RACES: PhbRace[] = [
   },
 ];
 
-export const ALL_RACES: PhbRace[] = [...PHB_RACES, ...EXTENDED_RACES].sort((a, b) =>
+export const ALL_SPECIES: PhbSpecies[] = [...PHB_SPECIES, ...EXTENDED_SPECIES].sort((a, b) =>
   a.name.localeCompare(b.name)
 );
 
-export function getRace(id: string): PhbRace | undefined {
-  return ALL_RACES.find((r) => r.id === id);
+export function getSpecies(id: string): PhbSpecies | undefined {
+  return ALL_SPECIES.find((r) => r.id === id);
 }
 
-export function getRaceDisplayName(raceId: string, subraceId?: string): string {
-  const race = getRace(raceId);
-  if (!race) return raceId;
-  if (subraceId) {
-    const sub = race.subraces?.find((s) => s.id === subraceId);
-    if (sub) return `${race.name} (${sub.name})`;
+export function getSpeciesDisplayName(speciesId: string, subspeciesId?: string): string {
+  const species = getSpecies(speciesId);
+  if (!species) return speciesId;
+  if (subspeciesId) {
+    const sub = species.subspecies?.find((s) => s.id === subspeciesId);
+    if (sub) return `${species.name} (${sub.name})`;
   }
-  return race.name;
+  return species.name;
 }

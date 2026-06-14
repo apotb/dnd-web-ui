@@ -20,10 +20,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { optionLabel } from "@/lib/ui/select-display";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import type { Encounter } from "@/lib/types/database";
 import type { ParsedCharacter, ParsedCombatant } from "@/lib/character/utils";
+
+const COMBATANT_TYPE_OPTIONS = [
+  { value: "player", label: "Player" },
+  { value: "npc", label: "NPC" },
+  { value: "monster", label: "Monster" },
+] as const;
 import {
   COMMON_CONDITIONS,
   createDefaultCombatantData,
@@ -795,7 +802,7 @@ function AddCombatantDialog({ encounterId }: { encounterId: string }) {
           />
           <Select value={type} onValueChange={(v) => setType(v as CombatantType)}>
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue>{optionLabel(COMBATANT_TYPE_OPTIONS, type)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="player">Player</SelectItem>

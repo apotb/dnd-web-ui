@@ -10,7 +10,7 @@ export type RacialAbilityBonus =
     }
   | { kind: "variant-human"; plusOneChoices: 2; feat: true };
 
-export interface PhbRace {
+export interface PhbSpecies {
   id: string;
   name: string;
   size: string;
@@ -24,10 +24,14 @@ export interface PhbRace {
   weaponProficiencies?: string[];
   armorProficiencies?: string[];
   traits: { name: string; description: string }[];
-  /** Pick N martial weapons from the PHB martial weapon list. */
+  /** Pick N weapons from the items catalog (defaults to martial). */
   weaponChoices?: {
     count: number;
     prompt?: string;
+    filter?: {
+      weaponCategory?: "simple" | "martial";
+      weaponRange?: "melee" | "ranged";
+    };
   };
   /** Pick one skill or one tool (Githyanki Decadent Mastery). */
   skillOrToolChoice?: {
@@ -39,8 +43,8 @@ export interface PhbRace {
     options?: SkillKey[];
     prompt?: string;
   };
-  /** Sub-choice within race (e.g. draconic ancestry, gnome subrace). */
-  subraces?: {
+  /** Sub-choice within species (e.g. draconic ancestry, gnome subspecies). */
+  subspecies?: {
     id: string;
     name: string;
     abilityBonus?: Partial<Record<AbilityKey, number>>;

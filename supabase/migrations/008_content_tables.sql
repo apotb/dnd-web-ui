@@ -25,7 +25,7 @@ CREATE TABLE public.spells (
 );
 
 -- ──────────────────────────────────────────────────────────────────────────────
--- SPECIES (races)
+-- SPECIES
 -- ──────────────────────────────────────────────────────────────────────────────
 CREATE TABLE public.species (
   id         UUID    PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:push": "npx supabase db push",
+    "db:push:dry": "npx supabase db push --dry-run",
+    "db:migration:list": "npx supabase migration list",
+    "db:link": "npx supabase link",
+    "db:login": "npx supabase login",
+    "db:repair-baseline": "for v in 001 002 003 004 005 006 007 008 009 010 011 012 013; do npx supabase migration repair $v --status applied || exit 1; done"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -30,6 +36,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
+    "supabase": "^2.106.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

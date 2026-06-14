@@ -78,6 +78,15 @@ export interface EncounterCombatant {
   updated_at: string;
 }
 
+export interface CampaignNotebook {
+  id: string;
+  user_id: string;
+  campaign_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -173,6 +182,19 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<EncounterCombatant>;
+        Relationships: [];
+      };
+      campaign_notebooks: {
+        Row: CampaignNotebook;
+        Insert: {
+          id?: string;
+          user_id: string;
+          campaign_id: string;
+          content?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<CampaignNotebook>;
         Relationships: [];
       };
     };

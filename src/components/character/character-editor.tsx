@@ -8,6 +8,9 @@ import { CharacterSheet } from "@/components/character/character-sheet";
 import { JsonImportExport } from "@/components/character/json-import-export";
 import type { CharacterData } from "@/lib/schemas/character";
 import { syncCharacterTopLevelFields } from "@/lib/character/utils";
+import { prepareCharacterDataForSave } from "@/lib/character/save-character-data";
+import { syncSavingThrowsFromClass } from "@/lib/character/class-derivation";
+import type { PhbClass } from "@/lib/dnd/phb/types";
 
 interface CharacterEditorProps {
   characterId: string;
@@ -15,6 +18,7 @@ interface CharacterEditorProps {
   initialName: string;
   initialPlayerName: string;
   initialData: CharacterData;
+  classes: PhbClass[];
   canDelete?: boolean;
   showDmNotes?: boolean;
   showEditingNote?: boolean;
@@ -26,6 +30,7 @@ export function CharacterEditor({
   initialName,
   initialPlayerName,
   initialData,
+  classes,
   canDelete = true,
   showDmNotes = true,
   showEditingNote = false,
@@ -41,7 +46,13 @@ export function CharacterEditor({
     setSaving(true);
     setMessage(null);
 
-    const synced = syncCharacterTopLevelFields(name, playerName, data);
+    const synced = prepareCharacterDataForSave(
+      syncCharacterTopLevelFields(name, playerName, {
+        ...data,
+        savingThrows: syncSavingThrowsFromClass(data, classes),
+      }),
+      classes
+    );
     const supabase = createClient();
 
     const { error } = await supabase
@@ -156,6 +167,7 @@ export function CharacterEditor({
           data={data}
           isDm={showDmNotes}
           editable
+          classes={classes}
           onChange={setData}
         />
       </section>
