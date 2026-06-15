@@ -243,13 +243,33 @@ export const abilityScoreBreakdownSchema = z.record(
   abilityScoreBreakdownEntrySchema
 );
 
-export const currencySchema = z.object({
-  cp: z.number().int().min(0).default(0),
-  sp: z.number().int().min(0).default(0),
-  ep: z.number().int().min(0).default(0),
-  gp: z.number().int().min(0).default(0),
-  pp: z.number().int().min(0).default(0),
-});
+const CURRENCY_KEYS = ["cp", "sp", "ep", "gp", "pp"] as const;
+
+/** Clamp invalid stored currency (negatives, NaN) before validation. */
+export function normalizeCurrency(val: unknown): Record<(typeof CURRENCY_KEYS)[number], number> {
+  const defaults = { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
+  if (!val || typeof val !== "object" || Array.isArray(val)) return defaults;
+
+  const obj = val as Record<string, unknown>;
+  const normalized = { ...defaults };
+  for (const key of CURRENCY_KEYS) {
+    const raw = obj[key];
+    const n = typeof raw === "number" ? raw : parseInt(String(raw ?? 0), 10);
+    normalized[key] = Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+  }
+  return normalized;
+}
+
+export const currencySchema = z.preprocess(
+  normalizeCurrency,
+  z.object({
+    cp: z.number().int().min(0).default(0),
+    sp: z.number().int().min(0).default(0),
+    ep: z.number().int().min(0).default(0),
+    gp: z.number().int().min(0).default(0),
+    pp: z.number().int().min(0).default(0),
+  })
+);
 
 export const inventorySchema = z.object({
   currency: currencySchema.default({ cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 }),

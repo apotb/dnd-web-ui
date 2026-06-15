@@ -1891,7 +1891,7 @@ export function CharacterSheet({
                             ...data.inventory,
                             currency: {
                               ...data.inventory.currency,
-                              [coin]: parseInt(v) || 0,
+                              [coin]: Math.max(0, parseInt(v, 10) || 0),
                             },
                           },
                         })
