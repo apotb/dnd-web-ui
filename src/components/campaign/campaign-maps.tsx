@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeMapsData } from "@/lib/hooks/use-realtime-maps-data";
 import {
@@ -17,12 +18,20 @@ import {
   uploadCampaignMapImage,
 } from "@/lib/maps/storage";
 import {
+  HexRevealMap,
+  HexRevealMapFullscreen,
+} from "@/components/campaign/hex-reveal-map";
+import {
   MAP_MARKER_COLORS,
+  clearRevealedHexes,
   getMarkersForMap,
+  getRevealedHexesForMap,
+  isHexRevealMap,
   newCampaignMap,
   newDefaultPartyMarker,
   newMapMarker,
   sortCampaignMaps,
+  toggleRevealedHex,
   type MapMarker,
   type MapsData,
 } from "@/lib/schemas/maps";
@@ -83,6 +92,11 @@ export function CampaignMaps({
   const activeMarkers = activeMap
     ? getMarkersForMap(mapsData.markers, activeMap.id)
     : [];
+  const activeRevealedHexes = activeMap
+    ? getRevealedHexesForMap(mapsData, activeMap.id)
+    : [];
+  const activeHexReveal =
+    activeMap && isHexRevealMap(activeMap) ? activeMap : null;
 
   function selectMap(mapId: string) {
     const next = activeMapId === mapId ? null : mapId;
@@ -110,6 +124,43 @@ export function CampaignMaps({
     setDraft(next);
   }
 
+  async function persistMapsData(next: MapsData, feedback?: string) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("campaigns")
+      .update({ maps_data: next })
+      .eq("id", campaignId);
+
+    if (error) {
+      setMessage(error.message);
+    } else if (feedback) {
+      setMessage(feedback);
+    }
+  }
+
+  function toggleHex(hexId: number) {
+    if (!activeMap || !isDm) return;
+    const next = toggleRevealedHex(draft, activeMap.id, hexId);
+    updateDraft(next);
+    void persistMapsData(next);
+  }
+
+  function resetHexFog() {
+    if (!activeMap || !isDm) return;
+    const revealedCount = getRevealedHexesForMap(draft, activeMap.id).length;
+    if (revealedCount === 0) return;
+    if (
+      !window.confirm(
+        `Reset fog on ${activeMap.name}?\n\nThis will hide all ${revealedCount} revealed hex${revealedCount === 1 ? "" : "es"}. You will need to reveal them again manually.`
+      )
+    ) {
+      return;
+    }
+    const next = clearRevealedHexes(draft, activeMap.id);
+    updateDraft(next);
+    void persistMapsData(next, "Fog reset");
+  }
+
   function addMap() {
     const name = window.prompt("Map name");
     if (!name?.trim()) return;
@@ -134,9 +185,12 @@ export function CampaignMaps({
     if (!map) return;
     if (!window.confirm(`Remove map "${map.name}"?`)) return;
     const nextMaps = draft.maps.filter((entry) => entry.id !== mapId);
+    const nextRevealed = { ...draft.revealedHexes };
+    delete nextRevealed[mapId];
     updateDraft({
       maps: nextMaps,
       markers: draft.markers.filter((marker) => marker.mapId !== mapId),
+      revealedHexes: nextRevealed,
     });
     if (activeMapId === mapId) {
       const next = sortCampaignMaps(nextMaps)[0];
@@ -313,11 +367,13 @@ export function CampaignMaps({
                 type="button"
                 className="candy-btn candy-btn-sm"
                 onClick={() => setExpanded(true)}
-                disabled={!activeMap.imagePath}
+                disabled={
+                  activeHexReveal ? !activeHexReveal.hexLayoutId : !activeMap.imagePath
+                }
               >
                 Expand
               </button>
-              {isDm && activeMap.imagePath && (
+              {isDm && activeMap.imagePath && !activeHexReveal && (
                 <MapImageUploadButton
                   uploading={uploadingMapId === activeMap.id}
                   onFile={(file) => void uploadMapImage(activeMap.id, file)}
@@ -368,7 +424,27 @@ export function CampaignMaps({
             </div>
           )}
 
-          {activeMap.imagePath ? (
+          {activeHexReveal?.hexLayoutId ? (
+            <>
+              {!isDm ? (
+                <p className="retro-muted" style={{ marginBottom: "12px" }}>
+                  {activeRevealedHexes.length} explored hex
+                  {activeRevealedHexes.length === 1 ? "" : "es"}.
+                </p>
+              ) : null}
+              {!expanded ? (
+                <HexRevealMap
+                  layoutId={activeHexReveal.hexLayoutId}
+                  revealedHexIds={activeRevealedHexes}
+                  markers={activeMarkers}
+                  isDm={isDm}
+                  onToggleHex={toggleHex}
+                  onResetFog={resetHexFog}
+                  onMarkerMove={updateMarkerPosition}
+                />
+              ) : null}
+            </>
+          ) : !expanded && activeMap.imagePath ? (
             <MapCanvas
               campaignId={campaignId}
               imagePath={activeMap.imagePath}
@@ -417,7 +493,7 @@ export function CampaignMaps({
             </div>
           )}
 
-          {isDm && (
+          {isDm ? (
             <div className="party-inventory-save">
               <button
                 type="button"
@@ -429,11 +505,25 @@ export function CampaignMaps({
               </button>
               {message && <span className="retro-muted">{message}</span>}
             </div>
-          )}
+          ) : null}
         </section>
       ) : null}
 
-      {expanded && activeMap?.imagePath ? (
+      {expanded && activeHexReveal?.hexLayoutId ? (
+        <HexRevealMapFullscreen
+          layoutId={activeHexReveal.hexLayoutId}
+          mapName={activeHexReveal.name}
+          revealedHexIds={activeRevealedHexes}
+          markers={activeMarkers}
+          isDm={isDm}
+          onClose={() => setExpanded(false)}
+          onToggleHex={toggleHex}
+          onResetFog={resetHexFog}
+          onMarkerMove={updateMarkerPosition}
+        />
+      ) : null}
+
+      {expanded && activeMap?.imagePath && !activeHexReveal ? (
         <MapFullscreenOverlay
           campaignId={campaignId}
           imagePath={activeMap.imagePath}
@@ -651,7 +741,12 @@ function MapFullscreenOverlay({
   onMarkerMove?: (markerId: string, position: { x: number; y: number }) => void;
 }) {
   const [zoom, setZoom] = useState(1);
+  const [mounted, setMounted] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   function changeZoom(next: number) {
     const el = scrollRef.current;
@@ -683,7 +778,9 @@ function MapFullscreenOverlay({
     };
   }, []);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="campaign-map-overlay" role="dialog" aria-modal="true" aria-label={`${mapName} map`}>
       <div className="campaign-map-overlay-header">
         <strong>{mapName}</strong>
@@ -723,6 +820,7 @@ function MapFullscreenOverlay({
           scrollRef={scrollRef}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

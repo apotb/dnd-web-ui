@@ -1537,6 +1537,12 @@ html.campaign-bg-active .retro-back-link {
   background: #1a1a1a;
 }
 
+.campaign-map-viewer-expanded.hex-reveal-map-viewer {
+  max-height: none;
+  height: 100%;
+  background: #000;
+}
+
 .campaign-map-canvas {
   position: relative;
   min-width: 100%;
@@ -1643,8 +1649,8 @@ html.campaign-bg-active .retro-back-link {
 .campaign-map-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
-  background: rgba(0, 0, 0, 0.82);
+  z-index: 10000;
+  background: #000;
   display: flex;
   flex-direction: column;
 }
@@ -1664,4 +1670,78 @@ html.campaign-bg-active .retro-back-link {
   min-height: 0;
   overflow: hidden;
   display: flex;
+}
+
+.hex-reveal-map-expanded {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.campaign-map-overlay-body .hex-reveal-map-viewer {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  border: none;
+}
+
+.hex-reveal-map-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.hex-reveal-map-frame {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #000;
+  background: #000;
+}
+
+.hex-reveal-map-viewer {
+  background: #000;
+}
+
+.hex-reveal-map-canvas {
+  position: relative;
+  width: 100%;
+  line-height: 0;
+  margin: 0 auto;
+}
+
+.hex-reveal-map-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.hex-reveal-fog {
+  fill: #fcf5d9;
+  stroke: #1d1d1b;
+  stroke-width: 0.5;
+  opacity: 1;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.hex-reveal-fog-off {
+  opacity: 0;
+}
+
+.hex-reveal-fog-interactive {
+  cursor: pointer;
+}
+
+.hex-reveal-fog-interactive:hover {
+  fill: #f5e8b8;
+}
+
+.hex-reveal-fog-interactive.hex-reveal-fog-off:hover {
+  opacity: 0.35;
+  fill: #f5e8b8;
 }

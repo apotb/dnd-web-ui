@@ -13,9 +13,14 @@ export const MAP_MARKER_COLORS = [
 
 export const DEFAULT_PARTY_MARKER_COLOR = MAP_MARKER_COLORS[0].value;
 
+export const MAP_TYPES = ["image", "hex-reveal"] as const;
+export type MapType = (typeof MAP_TYPES)[number];
+
 export const campaignMapSchema = z.object({
   id: z.string().default(() => crypto.randomUUID()),
   name: z.string().default(""),
+  mapType: z.enum(MAP_TYPES).default("image"),
+  hexLayoutId: z.string().nullable().default(null),
   imagePath: z.string().nullable().default(null),
   sortOrder: z.number().int().default(0),
 });
@@ -32,6 +37,7 @@ export const mapMarkerSchema = z.object({
 export const mapsDataSchema = z.object({
   maps: z.array(campaignMapSchema).default([]),
   markers: z.array(mapMarkerSchema).default([]),
+  revealedHexes: z.record(z.string(), z.array(z.number().int())).default({}),
 });
 
 export type CampaignMap = z.infer<typeof campaignMapSchema>;
@@ -50,8 +56,48 @@ export function getMarkersForMap(markers: MapMarker[], mapId: string): MapMarker
   return markers.filter((marker) => marker.mapId === mapId);
 }
 
-export function newCampaignMap(name: string, sortOrder: number): CampaignMap {
-  return campaignMapSchema.parse({ name, sortOrder });
+export function getRevealedHexesForMap(mapsData: MapsData, mapId: string): number[] {
+  return mapsData.revealedHexes[mapId] ?? [];
+}
+
+export function isHexRevealed(mapsData: MapsData, mapId: string, hexId: number): boolean {
+  return getRevealedHexesForMap(mapsData, mapId).includes(hexId);
+}
+
+export function toggleRevealedHex(
+  mapsData: MapsData,
+  mapId: string,
+  hexId: number
+): MapsData {
+  const current = getRevealedHexesForMap(mapsData, mapId);
+  const next = current.includes(hexId)
+    ? current.filter((id) => id !== hexId)
+    : [...current, hexId].sort((a, b) => a - b);
+
+  return {
+    ...mapsData,
+    revealedHexes: {
+      ...mapsData.revealedHexes,
+      [mapId]: next,
+    },
+  };
+}
+
+export function clearRevealedHexes(mapsData: MapsData, mapId: string): MapsData {
+  const next = { ...mapsData.revealedHexes };
+  delete next[mapId];
+  return {
+    ...mapsData,
+    revealedHexes: next,
+  };
+}
+
+export function newCampaignMap(
+  name: string,
+  sortOrder: number,
+  overrides?: Partial<CampaignMap>
+): CampaignMap {
+  return campaignMapSchema.parse({ name, sortOrder, ...overrides });
 }
 
 export function newMapMarker(mapId: string, overrides?: Partial<MapMarker>): MapMarker {
@@ -60,4 +106,8 @@ export function newMapMarker(mapId: string, overrides?: Partial<MapMarker>): Map
 
 export function newDefaultPartyMarker(mapId: string): MapMarker {
   return newMapMarker(mapId, { label: "Party", color: DEFAULT_PARTY_MARKER_COLOR });
+}
+
+export function isHexRevealMap(map: CampaignMap): boolean {
+  return map.mapType === "hex-reveal" && !!map.hexLayoutId;
 }
