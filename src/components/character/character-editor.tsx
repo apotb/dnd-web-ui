@@ -84,6 +84,29 @@ export function CharacterEditor({
     router.refresh();
   }
 
+  async function persistPortrait(path: string) {
+    const nextData = {
+      ...data,
+      basicInfo: { ...data.basicInfo, portrait: path },
+    };
+    const synced = prepareCharacterDataForSave(
+      syncCharacterTopLevelFields(name, playerName, nextData),
+      classes,
+      { isDm: showDmNotes, originalData: initialData }
+    );
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("characters")
+      .update({ data: synced })
+      .eq("id", characterId);
+
+    if (!error) {
+      setData(synced);
+    }
+
+    return { error: error?.message ?? null };
+  }
+
   return (
     <div>
       <h2 className="page-title">Edit Character</h2>
@@ -170,6 +193,10 @@ export function CharacterEditor({
           editable
           classes={classes}
           onChange={setData}
+          campaignId={campaignId}
+          characterId={characterId}
+          canEditPortrait
+          onPersistPortrait={persistPortrait}
         />
       </section>
     </div>

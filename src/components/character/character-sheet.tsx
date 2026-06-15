@@ -65,6 +65,7 @@ import { categoryLabel, formatItemTooltip, getWeaponProperties, RARITY_COLOR, ra
 import { ItemPicker } from "@/components/items/item-picker";
 import { SpellPicker } from "@/components/spells/spell-picker";
 import { SpellGlossaryMeta } from "@/components/spells/spell-glossary-meta";
+import { CharacterPortrait } from "@/components/character/character-portrait";
 import { HumanoidSpeciesPicker } from "@/components/character-creator/humanoid-species-picker";
 import { TWO_HUMANOID_SPECIES_OPTION } from "@/lib/dnd/phb/favored-enemy-humanoids";
 import { getItemsBySlugsClient } from "@/lib/items/catalog-client";
@@ -159,6 +160,10 @@ interface CharacterSheetProps {
   editHref?: string;
   /** Class catalog for deriving saving throws and other class-granted rules. */
   classes?: PhbClass[];
+  campaignId?: string;
+  characterId?: string;
+  canEditPortrait?: boolean;
+  onPersistPortrait?: (path: string) => Promise<{ error: string | null }>;
 }
 
 function GrantedFeatureRow({ feature }: { feature: GrantedFeature }) {
@@ -399,6 +404,10 @@ export function CharacterSheet({
   onChange,
   editHref,
   classes,
+  campaignId,
+  characterId,
+  canEditPortrait = false,
+  onPersistPortrait,
 }: CharacterSheetProps) {
   const canMutate = editable || canToggleEquipment;
 
@@ -487,6 +496,12 @@ export function CharacterSheet({
       ? data.basicInfo.classes.join(" / ")
       : data.basicInfo.class ?? "";
 
+  const subclassName = data.basicInfo.subclass.trim();
+  const classOverviewDisplay =
+    subclassName && subclassName !== "—"
+      ? `${classDisplay} (${subclassName})`
+      : classDisplay;
+
   const primaryClassName =
     data.basicInfo.classes[0] ?? data.basicInfo.class ?? resolvedClass?.name ?? "";
 
@@ -517,6 +532,11 @@ export function CharacterSheet({
     );
     return match ? formatSubclassTooltip(match.subclass) : null;
   }, [primaryClassName, data.basicInfo.subclass, classCatalog]);
+
+  const classOverviewTooltip = useMemo(() => {
+    const parts = [classTooltip, subclassTooltip].filter(Boolean);
+    return parts.length > 0 ? parts.join("\n\n") : null;
+  }, [classTooltip, subclassTooltip]);
 
   const speciesClassDisplay = useMemo(() => {
     const species = speciesSubtitleLabel(data.basicInfo.species, catalogSpecies);
@@ -949,108 +969,123 @@ export function CharacterSheet({
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field
-              label="Species"
-              value={data.basicInfo.species}
-              editable={false}
-              tooltip={speciesTooltip}
-            />
-            <Field
-              label="Class"
-              value={classDisplay}
-              editable={false}
-              tooltip={classTooltip}
-            />
-            <Field
-              label="Background"
-              value={data.basicInfo.background}
-              editable={false}
-              tooltip={backgroundTooltip}
-            />
-            <Field
-              label="Alignment"
-              value={data.basicInfo.alignment}
-              editable={false}
-            />
-            <Field
-              label="Subclass"
-              value={data.basicInfo.subclass}
-              editable={false}
-              tooltip={subclassTooltip}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Level</Label>
-            {isDm && editable ? (
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-sm font-medium w-6 shrink-0">{level}</p>
-                  <DraftNumberInput
-                    min={0}
-                    value={xp}
-                    className="max-w-36"
-                    onCommit={(v) => {
-                      const next = Math.max(0, v ?? 0);
-                      updateBasicWithSync({ xp: next, level: levelFromXp(next) });
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {xpBar.nextLevelXp !== null
-                      ? `${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} XP to lvl ${level + 1}`
-                      : "Max level"}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <p className="text-sm font-medium w-6 shrink-0">{level}</p>
-                <div className="flex-1 space-y-0.5 min-w-0">
-                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full bg-foreground rounded-full transition-all"
-                      style={{ width: `${xpBar.pct}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {xp.toLocaleString()} XP
-                    {xpBar.nextLevelXp !== null
-                      ? ` · ${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} to lvl ${level + 1}`
-                      : " · Max level"}
-                  </p>
-                </div>
-              </div>
-            )}
-            {canMutate ? (
-              <div className="flex items-center gap-2 pt-1">
-                <Input
-                  placeholder="±XP"
-                  value={xpDelta}
-                  className="flex-1"
-                  inputMode="numeric"
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    if (next === "" || next === "-" || /^-?\d+$/.test(next)) {
-                      setXpDelta(next);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      applyXpDelta();
-                    }
-                  }}
+          <div className="character-overview-header">
+            <div className="character-overview-fields space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="Species"
+                  value={data.basicInfo.species}
+                  editable={false}
+                  tooltip={speciesTooltip}
                 />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0"
-                  disabled={!xpDeltaValid}
-                  onClick={applyXpDelta}
-                >
-                  Add
-                </Button>
+                <Field
+                  label="Class"
+                  value={classOverviewDisplay}
+                  editable={false}
+                  tooltip={classOverviewTooltip}
+                />
+                <Field
+                  label="Background"
+                  value={data.basicInfo.background}
+                  editable={false}
+                  tooltip={backgroundTooltip}
+                />
+                <Field
+                  label="Alignment"
+                  value={data.basicInfo.alignment}
+                  editable={false}
+                />
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Level</Label>
+                {isDm && editable ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="text-sm font-medium w-6 shrink-0">{level}</p>
+                      <DraftNumberInput
+                        min={0}
+                        value={xp}
+                        className="max-w-36"
+                        onCommit={(v) => {
+                          const next = Math.max(0, v ?? 0);
+                          updateBasicWithSync({ xp: next, level: levelFromXp(next) });
+                        }}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {xpBar.nextLevelXp !== null
+                          ? `${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} XP to lvl ${level + 1}`
+                          : "Max level"}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm font-medium w-6 shrink-0">{level}</p>
+                    <div className="flex-1 space-y-0.5 min-w-0">
+                      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full bg-foreground rounded-full transition-all"
+                          style={{ width: `${xpBar.pct}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {xp.toLocaleString()} XP
+                        {xpBar.nextLevelXp !== null
+                          ? ` · ${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} to lvl ${level + 1}`
+                          : " · Max level"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {canMutate ? (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Input
+                      placeholder="±XP"
+                      value={xpDelta}
+                      className="flex-1"
+                      inputMode="numeric"
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === "" || next === "-" || /^-?\d+$/.test(next)) {
+                          setXpDelta(next);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          applyXpDelta();
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      disabled={!xpDeltaValid}
+                      onClick={applyXpDelta}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            {campaignId && characterId ? (
+              <CharacterPortrait
+                portraitPath={data.basicInfo.portrait}
+                characterName={data.basicInfo.name || "Unnamed Character"}
+                campaignId={campaignId}
+                characterId={characterId}
+                canEdit={canEditPortrait && !!onPersistPortrait}
+                onPortraitChange={(path) => {
+                  if (!onChange) return;
+                  onChange({
+                    ...data,
+                    basicInfo: { ...data.basicInfo, portrait: path },
+                  });
+                }}
+                onPersist={onPersistPortrait ?? (async () => ({ error: null }))}
+              />
             ) : null}
           </div>
           <ProficiencyOverviewList label="Languages" entries={languageEntries} />

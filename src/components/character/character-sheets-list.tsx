@@ -149,9 +149,11 @@ export function CharacterSheetsList({
               <section className="retro-box character-sheet-wrap">
                 <CharacterSheetViewer
                   character={selectedCharacter}
+                  campaignId={campaignId}
                   classes={classes}
                   isDm={isDm}
                   canToggleEquipment={selectedCanEdit}
+                  canEditPortrait={selectedCanEdit}
                   editHref={
                     selectedCanEdit
                       ? `/campaigns/${campaignId}/characters/${selectedCharacter.id}`

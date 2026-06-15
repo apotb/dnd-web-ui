@@ -50,6 +50,8 @@ export default async function CharacterDetailPage({
         isDm={false}
         editable={false}
         classes={classes}
+        campaignId={campaignId}
+        characterId={character.id}
       />
     </>
   );

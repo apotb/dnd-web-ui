@@ -9,17 +9,21 @@ import type { PhbClass } from "@/lib/dnd/phb/types";
 
 interface CharacterSheetViewerProps {
   character: ParsedCharacter;
+  campaignId: string;
   classes: PhbClass[];
   isDm: boolean;
   canToggleEquipment: boolean;
+  canEditPortrait: boolean;
   editHref?: string;
 }
 
 export function CharacterSheetViewer({
   character,
+  campaignId,
   classes,
   isDm,
   canToggleEquipment,
+  canEditPortrait,
   editHref,
 }: CharacterSheetViewerProps) {
   const [data, setData] = useState<CharacterData>(character.data);
@@ -58,6 +62,18 @@ export function CharacterSheetViewer({
     scheduleSave(next);
   }
 
+  async function persistPortrait(path: string) {
+    const next = {
+      ...data,
+      basicInfo: { ...data.basicInfo, portrait: path },
+    };
+    const { error } = await saveCharacterData(character.id, next, classes, {
+      isDm,
+      originalData: character.data,
+    });
+    return { error: error ?? null };
+  }
+
   return (
     <>
       {canToggleEquipment && (saving || saveError) ? (
@@ -72,9 +88,19 @@ export function CharacterSheetViewer({
         isDm={isDm}
         editable={false}
         canToggleEquipment={canToggleEquipment}
-        onChange={canToggleEquipment ? handleChange : undefined}
+        onChange={
+          canToggleEquipment
+            ? handleChange
+            : canEditPortrait
+              ? setData
+              : undefined
+        }
         classes={classes}
         editHref={editHref}
+        campaignId={campaignId}
+        characterId={character.id}
+        canEditPortrait={canEditPortrait}
+        onPersistPortrait={canEditPortrait ? persistPortrait : undefined}
       />
     </>
   );
