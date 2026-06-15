@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
 import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
 import { CharacterSheetViewer } from "@/components/character/character-sheet-viewer";
 import { CharacterImportButton } from "@/components/character/character-import-button";
@@ -16,6 +15,7 @@ interface CharacterSheetsListProps {
   classes: PhbClass[];
   isDm: boolean;
   userId: string | null;
+  hideTitle?: boolean;
 }
 
 function selectionStorageKey(campaignId: string) {
@@ -48,9 +48,9 @@ export function CharacterSheetsList({
   classes,
   isDm,
   userId,
+  hideTitle = false,
 }: CharacterSheetsListProps) {
-  const pathname = usePathname();
-  const createCharacterHref = pathname.replace(/\/characters.*$/, "/create-character");
+  const createCharacterHref = `/campaigns/${campaignId}/create-character`;
   const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
   const sortedCharacters = useMemo(
     () => [...characters].sort((a, b) => a.name.localeCompare(b.name)),
@@ -115,7 +115,7 @@ export function CharacterSheetsList({
 
   return (
     <div>
-      <h2 className="page-title">Characters</h2>
+      {!hideTitle ? <h2 className="page-title">Characters</h2> : null}
 
       {sortedCharacters.length === 0 ? (
         <p className="retro-note">No characters yet.</p>

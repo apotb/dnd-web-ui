@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Input } from "@/components/ui/input";
+import { DraftNumberInput } from "@/components/ui/draft-number-input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -83,7 +84,7 @@ import {
   formatSubclassTooltip,
   speciesSubtitleLabel,
 } from "@/lib/content/catalog-tooltip";
-import { getAllAttacks, type DerivedAttack } from "@/lib/dnd/attacks";
+import { getAllAttacks, formatAttackRollLine, type DerivedAttack } from "@/lib/dnd/attacks";
 import {
   ACTION_COST_LABELS,
   ACTION_COST_ORDER,
@@ -128,7 +129,22 @@ import {
   calculateAcBreakdown,
   formatAcTooltip,
 } from "@/lib/character/ac-derivation";
-import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, isLightWeapon } from "@/lib/character/equip-rules";
+import {
+  applyHpDamage,
+  applyHpHeal,
+  formatInitiativeTooltip,
+  getInitiativeTotal,
+  getSpeciesSpeedFromCharacter,
+} from "@/lib/character/combat-derivation";
+import {
+  formatCarryCapacityLabel,
+  formatEncumbranceSpeedTooltip,
+  getEncumbranceInfo,
+  getInventoryWeightLb,
+  getMaxCarryCapacityLb,
+} from "@/lib/character/encumbrance";
+import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, isLightWeapon, sortInventoryForDisplay } from "@/lib/character/equip-rules";
+import { hasNaturalArmorSpecies } from "@/lib/dnd/phb/species-mechanics";
 import type { PhbBackground, PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 
 interface CharacterSheetProps {
@@ -259,6 +275,10 @@ function Field({
   onChange,
   type = "text",
   tooltip,
+  min,
+  max,
+  allowDecimal,
+  allowNegative,
 }: {
   label: string;
   value: string | number;
@@ -266,14 +286,29 @@ function Field({
   onChange?: (v: string) => void;
   type?: "text" | "number";
   tooltip?: string | null;
+  min?: number;
+  max?: number;
+  allowDecimal?: boolean;
+  allowNegative?: boolean;
 }) {
   const display =
     editable && onChange ? (
-      <Input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      type === "number" ? (
+        <DraftNumberInput
+          value={typeof value === "number" ? value : Number(value) || 0}
+          min={min}
+          max={max}
+          allowDecimal={allowDecimal}
+          allowNegative={allowNegative}
+          onCommit={(n) => onChange(String(n ?? 0))}
+        />
+      ) : (
+        <Input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )
     ) : (
       <p className="text-sm font-medium">{value || "—"}</p>
     );
@@ -359,14 +394,18 @@ export function CharacterSheet({
   };
 
   const [xpDelta, setXpDelta] = useState<string>("");
+  const [hpDelta, setHpDelta] = useState<string>("");
+  const [currencyDelta, setCurrencyDelta] = useState<
+    Record<"cp" | "sp" | "ep" | "gp" | "pp", string>
+  >({ cp: "", sp: "", ep: "", gp: "", pp: "" });
   const [catalogItems, setCatalogItems] = useState<Record<string, Item>>({});
   const [catalogSpells, setCatalogSpells] = useState<Record<string, CatalogSpellRow>>({});
   const [catalogSpecies, setCatalogSpecies] = useState<PhbSpecies[]>([]);
   const [catalogBackgrounds, setCatalogBackgrounds] = useState<PhbBackground[]>([]);
   const [loadedClasses, setLoadedClasses] = useState<PhbClass[]>([]);
   const [itemPickerOpen, setItemPickerOpen] = useState(false);
+  const [itemPickerSwapIndex, setItemPickerSwapIndex] = useState<number | null>(null);
   const [spellPickerOpen, setSpellPickerOpen] = useState(false);
-  const swapItemIndexRef = useRef<number | null>(null);
   const swapSpellIndexRef = useRef<number | null>(null);
 
   const classCatalog = classes?.length ? classes : loadedClasses;
@@ -453,6 +492,16 @@ export function CharacterSheet({
     getSpellsBySlugsClient(slugs).then(setCatalogSpells);
   }, [data.spells.known]);
 
+  const sortedInventoryItems = useMemo(
+    () =>
+      sortInventoryForDisplay(
+        data.inventory.items,
+        catalogItems,
+        data.basicInfo.species
+      ),
+    [data.inventory.items, catalogItems, data.basicInfo.species]
+  );
+
   const classSpellListId = resolvedClass?.spellcasting?.spellListId;
   const spellLimits = useMemo(
     () =>
@@ -494,6 +543,71 @@ export function CharacterSheet({
     }
     update(nextPatch);
   };
+
+  function applyXpDelta() {
+    const trimmed = xpDelta.trim();
+    if (!trimmed || trimmed === "-") return;
+    const delta = parseInt(trimmed, 10);
+    if (!Number.isFinite(delta) || delta === 0) return;
+    const nextXp = Math.max(0, xp + delta);
+    updateBasicWithSync({ xp: nextXp, level: levelFromXp(nextXp) });
+    setXpDelta("");
+  }
+
+  function handleHpDamage() {
+    const trimmed = hpDelta.trim();
+    if (!trimmed || !/^\d+$/.test(trimmed)) return;
+    const amount = parseInt(trimmed, 10);
+    if (amount <= 0) return;
+    updateCombat(applyHpDamage(data.combat, amount));
+    setHpDelta("");
+  }
+
+  function handleHpHeal() {
+    const trimmed = hpDelta.trim();
+    if (!trimmed || !/^\d+$/.test(trimmed)) return;
+    const amount = parseInt(trimmed, 10);
+    if (amount <= 0) return;
+    updateCombat(applyHpHeal(data.combat, amount));
+    setHpDelta("");
+  }
+
+  const xpDeltaValid = (() => {
+    const trimmed = xpDelta.trim();
+    if (!trimmed || trimmed === "-") return false;
+    const delta = parseInt(trimmed, 10);
+    return Number.isFinite(delta) && delta !== 0;
+  })();
+
+  const hpDeltaValid = (() => {
+    const trimmed = hpDelta.trim();
+    if (!trimmed || !/^\d+$/.test(trimmed)) return false;
+    return parseInt(trimmed, 10) > 0;
+  })();
+
+  const currencyCoins = ["cp", "sp", "ep", "gp", "pp"] as const;
+  type CurrencyCoin = (typeof currencyCoins)[number];
+
+  function isSignedDeltaValid(raw: string): boolean {
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === "-") return false;
+    const delta = parseInt(trimmed, 10);
+    return Number.isFinite(delta) && delta !== 0;
+  }
+
+  function applyCurrencyDelta(coin: CurrencyCoin) {
+    const trimmed = currencyDelta[coin].trim();
+    if (!isSignedDeltaValid(trimmed)) return;
+    const delta = parseInt(trimmed, 10);
+    const next = Math.max(0, data.inventory.currency[coin] + delta);
+    update({
+      inventory: {
+        ...data.inventory,
+        currency: { ...data.inventory.currency, [coin]: next },
+      },
+    });
+    setCurrencyDelta((prev) => ({ ...prev, [coin]: "" }));
+  }
 
   const updateSpells = (spells: CharacterData["spells"]) => {
     let next = spells;
@@ -673,6 +787,37 @@ export function CharacterSheet({
     [data, catalogItems, classCatalog]
   );
   const acTooltip = formatAcTooltip(acBreakdown);
+  const usesNaturalArmor = hasNaturalArmorSpecies(data.basicInfo.species);
+  const strength = data.abilityScores.str;
+
+  const baseSpeciesSpeed = useMemo(
+    () => getSpeciesSpeedFromCharacter(data, catalogSpecies),
+    [data, catalogSpecies]
+  );
+
+  const encumbrance = useMemo(
+    () =>
+      getEncumbranceInfo(
+        strength,
+        getInventoryWeightLb(data.inventory.items, catalogItems),
+        baseSpeciesSpeed
+      ),
+    [strength, data.inventory.items, catalogItems, baseSpeciesSpeed]
+  );
+
+  const speedTooltip = formatEncumbranceSpeedTooltip(
+    encumbrance,
+    baseSpeciesSpeed
+  );
+
+  const initiativeTotal = getInitiativeTotal(data);
+  const initiativeTooltip = formatInitiativeTooltip(data);
+
+  const applyInventoryItems = (items: CharacterData["inventory"]["items"]) => {
+    const weight = getInventoryWeightLb(items, catalogItems);
+    if (weight > getMaxCarryCapacityLb(strength)) return;
+    update({ inventory: { ...data.inventory, items } });
+  };
 
   return (
     <div className="space-y-4">
@@ -748,88 +893,79 @@ export function CharacterSheet({
               editable={false}
               tooltip={subclassTooltip}
             />
-            {/* Level + XP inline */}
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Level</Label>
-              {isDm && editable ? (
-                <div className="space-y-2">
-                  {/* Set total XP */}
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm font-medium w-6 shrink-0">{level}</p>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={xp}
-                      className="max-w-36"
-                      onChange={(e) => {
-                        const v = Math.max(0, parseInt(e.target.value) || 0);
-                        updateBasicWithSync({ xp: v, level: levelFromXp(v) });
-                      }}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {xpBar.nextLevelXp !== null
-                        ? `${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} XP to lvl ${level + 1}`
-                        : "Max level"}
-                    </p>
-                  </div>
-                  {/* Adjust XP by delta */}
-                  <div className="flex items-center gap-2 pl-9">
-                    <Input
-                      type="number"
-                      min={0}
-                      placeholder="Amount"
-                      value={xpDelta}
-                      className="max-w-28"
-                      onChange={(e) => setXpDelta(e.target.value)}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!xpDelta || isNaN(parseInt(xpDelta))}
-                      onClick={() => {
-                        const delta = Math.max(0, parseInt(xpDelta) || 0);
-                        const v = Math.max(0, xp + delta);
-                        updateBasicWithSync({ xp: v, level: levelFromXp(v) });
-                        setXpDelta("");
-                      }}
-                    >
-                      + Add
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!xpDelta || isNaN(parseInt(xpDelta))}
-                      onClick={() => {
-                        const delta = Math.max(0, parseInt(xpDelta) || 0);
-                        const v = Math.max(0, xp - delta);
-                        updateBasicWithSync({ xp: v, level: levelFromXp(v) });
-                        setXpDelta("");
-                      }}
-                    >
-                      − Sub
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Level</Label>
+            {isDm && editable ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
                   <p className="text-sm font-medium w-6 shrink-0">{level}</p>
-                  <div className="flex-1 space-y-0.5">
-                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full bg-foreground rounded-full transition-all"
-                        style={{ width: `${xpBar.pct}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {xp.toLocaleString()} XP
-                      {xpBar.nextLevelXp !== null
-                        ? ` · ${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} to lvl ${level + 1}`
-                        : " · Max level"}
-                    </p>
-                  </div>
+                  <DraftNumberInput
+                    min={0}
+                    value={xp}
+                    className="max-w-36"
+                    onCommit={(v) => {
+                      const next = Math.max(0, v ?? 0);
+                      updateBasicWithSync({ xp: next, level: levelFromXp(next) });
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {xpBar.nextLevelXp !== null
+                      ? `${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} XP to lvl ${level + 1}`
+                      : "Max level"}
+                  </p>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-medium w-6 shrink-0">{level}</p>
+                <div className="flex-1 space-y-0.5 min-w-0">
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full bg-foreground rounded-full transition-all"
+                      style={{ width: `${xpBar.pct}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {xp.toLocaleString()} XP
+                    {xpBar.nextLevelXp !== null
+                      ? ` · ${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} to lvl ${level + 1}`
+                      : " · Max level"}
+                  </p>
+                </div>
+              </div>
+            )}
+            {canMutate ? (
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  placeholder="±XP"
+                  value={xpDelta}
+                  className="flex-1"
+                  inputMode="numeric"
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (next === "" || next === "-" || /^-?\d+$/.test(next)) {
+                      setXpDelta(next);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applyXpDelta();
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={!xpDeltaValid}
+                  onClick={applyXpDelta}
+                >
+                  Add
+                </Button>
+              </div>
+            ) : null}
           </div>
           <ProficiencyOverviewList label="Languages" entries={languageEntries} />
           <ProficiencyOverviewList
@@ -858,7 +994,18 @@ export function CharacterSheet({
                 label="HP"
                 value={`${data.combat.currentHp}/${data.combat.maxHp}`}
               />
-              <Stat label="Speed" value={`${data.combat.speed} ft`} />
+              {speedTooltip ? (
+                <Tooltip content={speedTooltip}>
+                  <div className="cursor-default">
+                    <Stat
+                      label="Speed"
+                      value={`${encumbrance.effectiveSpeedFt} ft`}
+                    />
+                  </div>
+                </Tooltip>
+              ) : (
+                <Stat label="Speed" value={`${encumbrance.effectiveSpeedFt} ft`} />
+              )}
               <Stat
                 label="Passive Perception"
                 value={getPassivePerception(data)}
@@ -927,18 +1074,14 @@ export function CharacterSheet({
                           </p>
                         </Tooltip>
                         <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
+                          <DraftNumberInput
+                            allowNegative
                             className="w-16 h-7 text-xs"
                             placeholder="±0"
                             value={data.customAbilityMods?.[key] ?? 0}
-                            onChange={(e) => {
-                              const parsed = parseInt(e.target.value, 10);
-                              updateCustomAbilityMod(
-                                key,
-                                Number.isFinite(parsed) ? parsed : 0
-                              );
-                            }}
+                            onCommit={(n) =>
+                              updateCustomAbilityMod(key, n ?? 0)
+                            }
                           />
                           <span className="text-xs text-muted-foreground">custom</span>
                         </div>
@@ -1117,13 +1260,65 @@ export function CharacterSheet({
               type="number"
               onChange={(v) => updateCombat({ maxHp: parseInt(v) || 0 })}
             />
-            <Field
-              label="Current HP"
-              value={data.combat.currentHp}
-              editable={editable}
-              type="number"
-              onChange={(v) => updateCombat({ currentHp: parseInt(v) || 0 })}
-            />
+            {editable ? (
+              <Field
+                label="Current HP"
+                value={data.combat.currentHp}
+                editable
+                type="number"
+                onChange={(v) => updateCombat({ currentHp: parseInt(v) || 0 })}
+              />
+            ) : (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Current HP</Label>
+                <p className="text-sm font-medium">{data.combat.currentHp}</p>
+                {canMutate ? (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      placeholder="±"
+                      value={hpDelta}
+                      className="h-7 w-12 min-w-0 px-2 text-center"
+                      inputMode="numeric"
+                      aria-label="HP change amount"
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === "" || /^\d+$/.test(next)) {
+                          setHpDelta(next);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleHpDamage();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 w-7 shrink-0 p-0 text-base leading-none"
+                      aria-label="Damage"
+                      disabled={!hpDeltaValid}
+                      onClick={handleHpDamage}
+                    >
+                      −
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 w-7 shrink-0 p-0 text-base leading-none"
+                      aria-label="Heal"
+                      disabled={!hpDeltaValid}
+                      onClick={handleHpHeal}
+                    >
+                      +
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            )}
             <Field
               label="Temp HP"
               value={data.combat.tempHp}
@@ -1131,22 +1326,50 @@ export function CharacterSheet({
               type="number"
               onChange={(v) => updateCombat({ tempHp: parseInt(v) || 0 })}
             />
-            <Field
-              label="Initiative Bonus"
-              value={data.combat.initiativeBonus}
-              editable={editable}
-              type="number"
-              onChange={(v) =>
-                updateCombat({ initiativeBonus: parseInt(v) || 0 })
-              }
-            />
-            <Field
-              label="Speed"
-              value={data.combat.speed}
-              editable={editable}
-              type="number"
-              onChange={(v) => updateCombat({ speed: parseInt(v) || 0 })}
-            />
+            {editable ? (
+              <Field
+                label="Initiative Bonus"
+                value={data.combat.initiativeBonus}
+                editable
+                type="number"
+                allowNegative
+                onChange={(v) =>
+                  updateCombat({ initiativeBonus: parseInt(v) || 0 })
+                }
+              />
+            ) : (
+              <Tooltip content={initiativeTooltip}>
+                <div className="space-y-1 cursor-default">
+                  <Label className="text-xs text-muted-foreground">Initiative</Label>
+                  <p className="text-sm font-medium">
+                    {formatModifier(initiativeTotal)}
+                  </p>
+                </div>
+              </Tooltip>
+            )}
+            {speedTooltip ? (
+              <Tooltip content={speedTooltip}>
+                <div className="space-y-1 cursor-default">
+                  <Label className="text-xs text-muted-foreground">Speed</Label>
+                  <p className="text-sm font-medium">
+                    {encumbrance.effectiveSpeedFt} ft
+                  </p>
+                </div>
+              </Tooltip>
+            ) : (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Speed</Label>
+                <p className="text-sm font-medium">
+                  {encumbrance.effectiveSpeedFt} ft
+                </p>
+              </div>
+            )}
+            {encumbrance.status !== "normal" ? (
+              <p className="text-xs text-destructive sm:col-span-2">
+                Base speed {baseSpeciesSpeed} ft · effective{" "}
+                {encumbrance.effectiveSpeedFt} ft (encumbered)
+              </p>
+            ) : null}
             <Field
               label="Hit Dice"
               value={data.combat.hitDice}
@@ -1158,6 +1381,8 @@ export function CharacterSheet({
               value={data.combat.exhaustion}
               editable={editable}
               type="number"
+              min={0}
+              max={6}
               onChange={(v) =>
                 updateCombat({ exhaustion: parseInt(v) || 0 })
               }
@@ -1172,16 +1397,15 @@ export function CharacterSheet({
               <div>
                 <Label className="text-xs">Successes</Label>
                 {editable ? (
-                  <Input
-                    type="number"
+                  <DraftNumberInput
                     min={0}
                     max={3}
                     value={data.combat.deathSaves.successes}
-                    onChange={(e) =>
+                    onCommit={(n) =>
                       updateCombat({
                         deathSaves: {
                           ...data.combat.deathSaves,
-                          successes: parseInt(e.target.value) || 0,
+                          successes: n ?? 0,
                         },
                       })
                     }
@@ -1193,16 +1417,15 @@ export function CharacterSheet({
               <div>
                 <Label className="text-xs">Failures</Label>
                 {editable ? (
-                  <Input
-                    type="number"
+                  <DraftNumberInput
                     min={0}
                     max={3}
                     value={data.combat.deathSaves.failures}
-                    onChange={(e) =>
+                    onCommit={(n) =>
                       updateCombat({
                         deathSaves: {
                           ...data.combat.deathSaves,
-                          failures: parseInt(e.target.value) || 0,
+                          failures: n ?? 0,
                         },
                       })
                     }
@@ -1322,11 +1545,17 @@ export function CharacterSheet({
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-sm">{attack.name}</p>
                           <Badge variant="outline" className="text-xs">
-                            {attack.source === "weapon" ? "Weapon" : "Cantrip"}
+                            {attack.source === "weapon"
+                              ? "Weapon"
+                              : attack.source === "cantrip"
+                                ? "Cantrip"
+                                : attack.source === "spell"
+                                  ? "Spell"
+                                  : "Special"}
                           </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          {formatModifier(attack.attackBonus)} to hit ·{" "}
+                          {formatAttackRollLine(attack)} ·{" "}
                           {attack.damageDice} {attack.damageType}
                           {attack.range && ` · ${attack.range}`}
                         </p>
@@ -1356,15 +1585,15 @@ export function CharacterSheet({
                         }}
                       />
                       <div className="grid gap-2 sm:grid-cols-3">
-                        <Input
-                          type="number"
+                        <DraftNumberInput
+                          allowNegative
                           placeholder="Attack bonus"
                           value={manualAttack.attackBonus}
-                          onChange={(e) => {
+                          onCommit={(n) => {
                             const attacks = [...data.attacks];
                             attacks[i] = {
                               ...manualAttack,
-                              attackBonus: parseInt(e.target.value) || 0,
+                              attackBonus: n ?? 0,
                             };
                             update({ attacks });
                           }}
@@ -1877,57 +2106,123 @@ export function CharacterSheet({
             <CardContent className="space-y-4">
               <div>
                 <p className="mb-2 text-sm font-medium">Currency</p>
-                <div className="grid grid-cols-5 gap-2">
-                  {(["cp", "sp", "ep", "gp", "pp"] as const).map((coin) => (
-                    <Field
-                      key={coin}
-                      label={coin.toUpperCase()}
-                      value={data.inventory.currency[coin]}
-                      editable={editable}
-                      type="number"
-                      onChange={(v) =>
-                        update({
-                          inventory: {
-                            ...data.inventory,
-                            currency: {
-                              ...data.inventory.currency,
-                              [coin]: Math.max(0, parseInt(v, 10) || 0),
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                  {currencyCoins.map((coin) => (
+                    <div key={coin} className="space-y-1 min-w-0">
+                      <Field
+                        label={coin.toUpperCase()}
+                        value={data.inventory.currency[coin]}
+                        editable={editable}
+                        type="number"
+                        min={0}
+                        onChange={(v) =>
+                          update({
+                            inventory: {
+                              ...data.inventory,
+                              currency: {
+                                ...data.inventory.currency,
+                                [coin]: Math.max(0, parseInt(v, 10) || 0),
+                              },
                             },
-                          },
-                        })
-                      }
-                    />
+                          })
+                        }
+                      />
+                      {canMutate && !editable ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            placeholder="±"
+                            value={currencyDelta[coin]}
+                            className="h-8 min-w-0 flex-1"
+                            inputMode="numeric"
+                            aria-label={`Adjust ${coin.toUpperCase()}`}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              if (next === "" || next === "-" || /^-?\d+$/.test(next)) {
+                                setCurrencyDelta((prev) => ({ ...prev, [coin]: next }));
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                applyCurrencyDelta(coin);
+                              }
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 shrink-0 px-2 text-xs"
+                            disabled={!isSignedDeltaValid(currencyDelta[coin])}
+                            onClick={() => applyCurrencyDelta(coin)}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
               </div>
 
               <div>
-                <div className="mb-2 flex flex-row items-center justify-between">
-                  <p className="text-sm font-medium">Items</p>
+                <div className="mb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium">Items</p>
+                    <span
+                      className={`text-sm ${
+                        encumbrance.status === "normal"
+                          ? "text-muted-foreground"
+                          : "text-destructive"
+                      }`}
+                    >
+                      {formatCarryCapacityLabel(
+                        encumbrance.weightLb,
+                        encumbrance.carryCapacityLb
+                      )}
+                    </span>
+                    {encumbrance.status === "encumbered" ? (
+                      <span className="text-sm font-medium text-destructive">
+                        Encumbered!
+                      </span>
+                    ) : null}
+                    {encumbrance.status === "overloaded" ? (
+                      <span className="text-sm font-medium text-destructive">
+                        Over capacity!
+                      </span>
+                    ) : null}
+                  </div>
                   {editable && (
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setItemPickerOpen(true)}
+                      onClick={() => {
+                        setItemPickerSwapIndex(null);
+                        setItemPickerOpen(true);
+                      }}
                     >
                       + Add Item
                     </Button>
                   )}
                 </div>
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {data.inventory.items.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground sm:col-span-2">
                       {editable ? 'Click "+ Add Item" to pick from the catalog.' : "No items."}
                     </p>
                   )}
-                  {data.inventory.items.map((item, i) => {
+                  {sortedInventoryItems.map(({ item, index: i }) => {
                     const catalogItem = item.itemId ? catalogItems[item.itemId] : null;
                     const displayName = catalogItem?.name ?? (item.name || "Unknown item");
                     const isMagic = item.magicItem || (catalogItem?.is_magic ?? false);
                     const equippable = isEquippableItem(catalogItem, item);
                     const equipSlot = getItemEquipSlot(catalogItem, item);
                     const isWeapon = equipSlot === "weapon";
-                    const isWornGear = equipSlot === "armor" || equipSlot === "shield";
+                    const isArmor = equipSlot === "armor";
+                    const isShieldGear = equipSlot === "shield";
+                    const isWornGear = isArmor || isShieldGear;
+                    const canToggleWornGear =
+                      isWornGear &&
+                      (isShieldGear || !usesNaturalArmor);
                     const wieldMain =
                       item.wieldMain ||
                       (getEffectiveWieldMain(item, catalogItem) && !item.wieldOff);
@@ -1945,7 +2240,7 @@ export function CharacterSheet({
                       : item.notes || null;
 
                     return (
-                      <div key={item.id} className="rounded-md border p-2.5 space-y-1.5">
+                      <div key={item.id} className="min-w-0 rounded-md border p-2.5 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             {editable ? (
@@ -1954,7 +2249,7 @@ export function CharacterSheet({
                                   type="button"
                                   className="text-left px-2.5 py-1.5 rounded-md border text-sm font-medium hover:bg-accent transition-colors min-w-0"
                                   onClick={() => {
-                                    swapItemIndexRef.current = i;
+                                    setItemPickerSwapIndex(i);
                                     setItemPickerOpen(true);
                                   }}
                                 >
@@ -1973,7 +2268,7 @@ export function CharacterSheet({
                                 </span>
                               </Tooltip>
                             )}
-                            {isWornGear && (editable || canToggleEquipment) && (
+                            {canToggleWornGear && (editable || canToggleEquipment) && (
                               <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none shrink-0">
                                 <Checkbox
                                   checked={item.equipped}
@@ -1982,13 +2277,19 @@ export function CharacterSheet({
                                       data.inventory.items,
                                       i,
                                       !!checked,
-                                      catalogItems
+                                      catalogItems,
+                                      data.basicInfo.species
                                     );
                                     update({ inventory: { ...data.inventory, items } });
                                   }}
                                 />
                                 Equipped
                               </label>
+                            )}
+                            {isArmor && usesNaturalArmor && (editable || canToggleEquipment) && (
+                              <span className="text-xs text-muted-foreground shrink-0">
+                                Natural armor prevents equipping
+                              </span>
                             )}
                             {isWeapon && (editable || canToggleEquipment) && (
                               <>
@@ -2039,23 +2340,22 @@ export function CharacterSheet({
 
                           {/* Quantity */}
                           {editable ? (
-                            <Input
-                              type="number"
+                            <DraftNumberInput
+                              min={0}
                               className="w-16 h-8 text-sm shrink-0"
                               value={item.quantity}
-                              min={0}
-                              onChange={(e) => {
-                                const quantity = parseInt(e.target.value) || 0;
+                              onCommit={(quantity) => {
+                                const qty = quantity ?? 0;
                                 let items = [...data.inventory.items];
-                                items[i] = { ...item, quantity };
+                                items[i] = { ...item, quantity: qty };
                                 if (
-                                  quantity < 2 &&
+                                  qty < 2 &&
                                   items[i].wieldOff &&
                                   !canWieldOffHand(items, i, catalogItems)
                                 ) {
                                   items = setWeaponWield(items, i, "off", false, catalogItems);
                                 }
-                                update({ inventory: { ...data.inventory, items } });
+                                applyInventoryItems(items);
                               }}
                             />
                           ) : (
@@ -2066,23 +2366,18 @@ export function CharacterSheet({
 
                           {!item.itemId && editable && (
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <Input
-                                type="number"
-                                className="w-20 h-8 text-sm"
+                              <DraftNumberInput
+                                optional
+                                allowDecimal
                                 min={0}
-                                step="0.1"
+                                className="w-20 h-8 text-sm"
                                 placeholder="lb"
-                                value={item.weightLb ?? ""}
                                 aria-label="Weight in pounds"
-                                onChange={(e) => {
-                                  const raw = e.target.value.trim();
-                                  const weightLb =
-                                    raw === ""
-                                      ? undefined
-                                      : Math.max(0, parseFloat(raw) || 0);
+                                value={item.weightLb}
+                                onCommit={(weightLb) => {
                                   const items = [...data.inventory.items];
                                   items[i] = { ...item, weightLb };
-                                  update({ inventory: { ...data.inventory, items } });
+                                  applyInventoryItems(items);
                                 }}
                               />
                               <span className="text-xs text-muted-foreground">lb</span>
@@ -2090,7 +2385,7 @@ export function CharacterSheet({
                           )}
 
                           {/* Badges */}
-                          {isWornGear && item.equipped && !editable && !canToggleEquipment && (
+                          {canToggleWornGear && item.equipped && !editable && !canToggleEquipment && (
                             <Badge className="text-xs shrink-0">Equipped</Badge>
                           )}
                           {isWeapon && wieldMain && !editable && !canToggleEquipment && (
@@ -2121,11 +2416,14 @@ export function CharacterSheet({
                           <p className="text-xs text-muted-foreground">{item.weightLb} lb</p>
                         )}
 
-                        {equippable &&
-                          (editable || canToggleEquipment) &&
-                          (catalogItem?.requires_attunement || editable) && (
+                        {(editable ||
+                          (equippable &&
+                            canToggleEquipment &&
+                            catalogItem?.requires_attunement)) && (
                           <div className="flex flex-wrap items-center gap-3 pt-1">
-                            {catalogItem?.requires_attunement && (
+                            {equippable &&
+                            catalogItem?.requires_attunement &&
+                            (editable || canToggleEquipment) ? (
                               <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
                                 <Checkbox
                                   checked={item.attuned ?? false}
@@ -2137,7 +2435,7 @@ export function CharacterSheet({
                                 />
                                 Attuned
                               </label>
-                            )}
+                            ) : null}
                             {editable ? (
                               <Button
                                 size="sm"
@@ -2167,13 +2465,22 @@ export function CharacterSheet({
 
           <ItemPicker
             open={itemPickerOpen}
+            initialCustom={
+              itemPickerSwapIndex !== null &&
+              !data.inventory.items[itemPickerSwapIndex]?.itemId
+                ? {
+                    name: data.inventory.items[itemPickerSwapIndex].name,
+                    weightLb: data.inventory.items[itemPickerSwapIndex].weightLb,
+                  }
+                : undefined
+            }
             onClose={() => {
               setItemPickerOpen(false);
-              swapItemIndexRef.current = null;
+              setItemPickerSwapIndex(null);
             }}
             onSelect={(selection) => {
-              const swapIndex = swapItemIndexRef.current;
-              swapItemIndexRef.current = null;
+              const swapIndex = itemPickerSwapIndex;
+              setItemPickerSwapIndex(null);
 
               if (selection.source === "custom") {
                 if (swapIndex !== null) {
@@ -2189,28 +2496,23 @@ export function CharacterSheet({
                     wieldOff: false,
                     attuned: false,
                   };
-                  update({ inventory: { ...data.inventory, items } });
+                  applyInventoryItems(items);
                 } else {
-                  update({
-                    inventory: {
-                      ...data.inventory,
-                      items: [
-                        ...data.inventory.items,
-                        {
-                          id: crypto.randomUUID(),
-                          name: selection.name,
-                          quantity: 1,
-                          weightLb: selection.weightLb,
-                          equipped: false,
-                          wieldMain: false,
-                          wieldOff: false,
-                          attuned: false,
-                          magicItem: false,
-                          notes: "",
-                        },
-                      ],
+                  applyInventoryItems([
+                    ...data.inventory.items,
+                    {
+                      id: crypto.randomUUID(),
+                      name: selection.name,
+                      quantity: 1,
+                      weightLb: selection.weightLb,
+                      equipped: false,
+                      wieldMain: false,
+                      wieldOff: false,
+                      attuned: false,
+                      magicItem: false,
+                      notes: "",
                     },
-                  });
+                  ]);
                 }
                 return;
               }
@@ -2218,35 +2520,31 @@ export function CharacterSheet({
               const catalogItem = selection.item;
 
               if (swapIndex !== null) {
-                // Swap an existing slot to a different catalog item
                 const items = [...data.inventory.items];
                 items[swapIndex] = {
                   ...items[swapIndex],
                   itemId: catalogItem.slug,
                   name: catalogItem.name,
                   magicItem: catalogItem.is_magic,
+                  weightLb: undefined,
                 };
-                update({ inventory: { ...data.inventory, items } });
+                applyInventoryItems(items);
               } else {
-                // Add a brand new item
-                const newItem = {
-                  id: crypto.randomUUID(),
-                  itemId: catalogItem.slug,
-                  name: catalogItem.name,
-                  quantity: 1,
-                  equipped: false,
-                  wieldMain: false,
-                  wieldOff: false,
-                  attuned: false,
-                  magicItem: catalogItem.is_magic,
-                  notes: "",
-                };
-                update({
-                  inventory: {
-                    ...data.inventory,
-                    items: [...data.inventory.items, newItem],
+                applyInventoryItems([
+                  ...data.inventory.items,
+                  {
+                    id: crypto.randomUUID(),
+                    itemId: catalogItem.slug,
+                    name: catalogItem.name,
+                    quantity: 1,
+                    equipped: false,
+                    wieldMain: false,
+                    wieldOff: false,
+                    attuned: false,
+                    magicItem: catalogItem.is_magic,
+                    notes: "",
                   },
-                });
+                ]);
               }
             }}
           />

@@ -302,6 +302,9 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
     return { ...entry, itemId: slug };
   });
 
+  const speciesName =
+    (raw as { basicInfo?: { species?: string } }).basicInfo?.species ?? "";
+
   return syncAcFromEquipment(
     syncFeatureGrants(
       stripGrantedFeaturesForSave({
@@ -309,7 +312,9 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
         inventory: {
           ...inventory,
           items: sanitizeEquippedItems(
-            migratedItems as CharacterData["inventory"]["items"]
+            migratedItems as CharacterData["inventory"]["items"],
+            {},
+            speciesName
           ),
         },
       } as CharacterData)

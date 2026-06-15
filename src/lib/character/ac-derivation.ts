@@ -2,6 +2,7 @@ import { isWornForAc } from "@/lib/character/equip-rules";
 import type { CharacterData } from "@/lib/schemas/character";
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import { getAbilityModifiers } from "@/lib/dnd/calculations";
+import { hasNaturalArmorSpecies } from "@/lib/dnd/phb/species-mechanics";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import {
   getArmorProperties,
@@ -87,6 +88,7 @@ function resolveEquippedGear(
     if (catalog) {
       const armorProps = getArmorProperties(catalog);
       if (armorProps) {
+        if (hasNaturalArmorSpecies(data.basicInfo.species)) continue;
         const base = armorProps.armorClass;
         const noDex = !armorProps.dexBonus;
         const maxDex = noDex
@@ -109,6 +111,7 @@ function resolveEquippedGear(
 
     const legacy = lookupLegacyArmor(displayName);
     if (legacy) {
+      if (hasNaturalArmorSpecies(data.basicInfo.species)) continue;
       const noDex = legacy.maxDex === 0;
       const maxDex =
         legacy.maxDex === 0

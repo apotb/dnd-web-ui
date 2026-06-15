@@ -7,7 +7,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await getAuthUser();
 
   return (
-    <RetroShell>
+    <RetroShell wide>
       <div className="retro-header-row">
         <span className="retro-title">DM Admin</span>
         <CampaignAuthHeader userEmail={user?.email ?? null} />

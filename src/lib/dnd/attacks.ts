@@ -4,53 +4,192 @@ import {
 } from "@/lib/character/equip-rules";
 import { getAllCharacterFeatures } from "@/lib/character/feature-derivation";
 import { getEffectiveWeaponProficiencies } from "@/lib/character/class-derivation";
-import type { CharacterData, AbilityKey } from "@/lib/schemas/character";
+import type { CharacterData, Spell } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import { getWeaponProperties } from "@/lib/schemas/item";
 import {
-  abilityModifier,
-  getProficiencyBonus,
   getAbilityModifiers,
+  getProficiencyBonus,
+  getSpellAttackBonus,
+  getSpellSaveDc,
+  formatModifier,
 } from "@/lib/dnd/calculations";
 import { levelFromXp } from "@/lib/dnd/xp";
+import { canCastSpellWithRemainingSlots } from "@/lib/dnd/spellcasting";
 
-/** IDs of PHB cantrips that use a spell attack roll (not saving throw). */
-const ATTACK_CANTRIP_IDS = new Set([
-  "acid-splash",
-  "chill-touch",
-  "eldritch-blast",
-  "fire-bolt",
-  "ray-of-frost",
-  "shocking-grasp",
-]);
+type OffensiveSpellRollType = "attack" | "save" | "auto";
 
-/** Well-known cantrip attack dice by level range (based on character level). */
-const CANTRIP_DICE_AT_LEVEL: Record<string, string> = {
-  "fire-bolt": "1d10",
-  "ray-of-frost": "1d8",
-  "chill-touch": "1d8",
-  "eldritch-blast": "1d10",
-  "shocking-grasp": "1d8",
-  "acid-splash": "1d6",
-};
+interface OffensiveSpellMeta {
+  rollType: OffensiveSpellRollType;
+  damageDice: string;
+  damageType: string;
+  range: string;
+  saveAbility?: string;
+  /** Scale dice at character levels 5, 11, and 17 (cantrip progression). */
+  cantripScaling?: boolean;
+  /** Eldritch blast adds beams at those same breakpoints. */
+  eldritchBlast?: boolean;
+  notes?: string;
+}
 
-const CANTRIP_DAMAGE_TYPE: Record<string, string> = {
-  "fire-bolt": "fire",
-  "ray-of-frost": "cold",
-  "chill-touch": "necrotic",
-  "eldritch-blast": "force",
-  "shocking-grasp": "lightning",
-  "acid-splash": "acid",
-};
-
-const CANTRIP_RANGE: Record<string, string> = {
-  "fire-bolt": "120 ft",
-  "ray-of-frost": "60 ft",
-  "chill-touch": "120 ft",
-  "eldritch-blast": "120 ft",
-  "shocking-grasp": "Touch",
-  "acid-splash": "60 ft",
+/** Prepared offensive spells in the PHB catalog (attack rolls, saves, or auto-hit). */
+const OFFENSIVE_SPELL_METADATA: Record<string, OffensiveSpellMeta> = {
+  "acid-splash": {
+    rollType: "attack",
+    damageDice: "1d6",
+    damageType: "acid",
+    range: "60 ft",
+    cantripScaling: true,
+  },
+  "chill-touch": {
+    rollType: "attack",
+    damageDice: "1d8",
+    damageType: "necrotic",
+    range: "120 ft",
+    cantripScaling: true,
+  },
+  "eldritch-blast": {
+    rollType: "attack",
+    damageDice: "1d10",
+    damageType: "force",
+    range: "120 ft",
+    eldritchBlast: true,
+  },
+  "fire-bolt": {
+    rollType: "attack",
+    damageDice: "1d10",
+    damageType: "fire",
+    range: "120 ft",
+    cantripScaling: true,
+  },
+  "poison-spray": {
+    rollType: "save",
+    saveAbility: "Con",
+    damageDice: "1d12",
+    damageType: "poison",
+    range: "10 ft",
+    cantripScaling: true,
+  },
+  "produce-flame": {
+    rollType: "attack",
+    damageDice: "1d8",
+    damageType: "fire",
+    range: "30 ft",
+    cantripScaling: true,
+  },
+  "ray-of-frost": {
+    rollType: "attack",
+    damageDice: "1d8",
+    damageType: "cold",
+    range: "60 ft",
+    cantripScaling: true,
+  },
+  "sacred-flame": {
+    rollType: "save",
+    saveAbility: "Dex",
+    damageDice: "1d8",
+    damageType: "radiant",
+    range: "60 ft",
+    cantripScaling: true,
+    notes: "Ignores cover",
+  },
+  "shocking-grasp": {
+    rollType: "attack",
+    damageDice: "1d8",
+    damageType: "lightning",
+    range: "Touch",
+    cantripScaling: true,
+  },
+  "thorn-whip": {
+    rollType: "attack",
+    damageDice: "1d6",
+    damageType: "piercing",
+    range: "30 ft",
+    cantripScaling: true,
+  },
+  "vicious-mockery": {
+    rollType: "save",
+    saveAbility: "Wis",
+    damageDice: "1d4",
+    damageType: "psychic",
+    range: "60 ft",
+    cantripScaling: true,
+  },
+  "arms-of-hadar": {
+    rollType: "save",
+    saveAbility: "Str",
+    damageDice: "2d6",
+    damageType: "necrotic",
+    range: "10-ft radius",
+    notes: "+1d6 per slot above 1st",
+  },
+  "burning-hands": {
+    rollType: "save",
+    saveAbility: "Dex",
+    damageDice: "3d6",
+    damageType: "fire",
+    range: "15-ft cone",
+    notes: "+1d6 per slot above 1st",
+  },
+  "chromatic-orb": {
+    rollType: "attack",
+    damageDice: "3d8",
+    damageType: "varies",
+    range: "90 ft",
+    notes: "Acid, cold, fire, lightning, poison, or thunder; +1d8 per slot above 1st",
+  },
+  "guiding-bolt": {
+    rollType: "attack",
+    damageDice: "4d6",
+    damageType: "radiant",
+    range: "120 ft",
+    notes: "+1d6 per slot above 1st",
+  },
+  "hellish-rebuke": {
+    rollType: "save",
+    saveAbility: "Dex",
+    damageDice: "2d10",
+    damageType: "fire",
+    range: "60 ft",
+    notes: "Reaction; +1d10 per slot above 1st",
+  },
+  "inflict-wounds": {
+    rollType: "attack",
+    damageDice: "3d10",
+    damageType: "necrotic",
+    range: "Touch",
+    notes: "+1d10 per slot above 1st",
+  },
+  "magic-missile": {
+    rollType: "auto",
+    damageDice: "3×(1d4+1)",
+    damageType: "force",
+    range: "120 ft",
+    notes: "+1 dart per slot above 1st; each dart hits automatically",
+  },
+  "ray-of-sickness": {
+    rollType: "attack",
+    damageDice: "2d8",
+    damageType: "poison",
+    range: "60 ft",
+    notes: "+1d8 per slot above 1st",
+  },
+  "thunderwave": {
+    rollType: "save",
+    saveAbility: "Con",
+    damageDice: "2d8",
+    damageType: "thunder",
+    range: "15-ft cube",
+    notes: "+1d8 per slot above 1st",
+  },
+  "witch-bolt": {
+    rollType: "attack",
+    damageDice: "1d12",
+    damageType: "lightning",
+    range: "30 ft",
+    notes: "Concentration; +1d12 per slot above 1st on initial hit",
+  },
 };
 
 function cantripScaledDice(baseDice: string, level: number): string {
@@ -58,7 +197,23 @@ function cantripScaledDice(baseDice: string, level: number): string {
   if (scale === 1) return baseDice;
   const match = baseDice.match(/^(\d+)d(\d+)$/);
   if (!match) return baseDice;
-  return `${scale * parseInt(match[1])}d${match[2]}`;
+  return `${scale * parseInt(match[1], 10)}d${match[2]}`;
+}
+
+function eldritchBlastBeamCount(level: number): number {
+  if (level >= 17) return 4;
+  if (level >= 11) return 3;
+  if (level >= 5) return 2;
+  return 1;
+}
+
+function spellSlug(spell: Spell): string | null {
+  if (spell.spellId) return spell.spellId;
+  const slug = spell.name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-");
+  return slug || null;
 }
 
 /** A single derived or manual attack entry for display. */
@@ -70,9 +225,22 @@ export interface DerivedAttack {
   damageType: string;
   range: string;
   notes: string;
-  source: "weapon" | "cantrip" | "manual";
+  source: "weapon" | "cantrip" | "spell" | "manual";
+  spellLevel?: number;
+  rollType?: OffensiveSpellRollType;
+  saveAbility?: string;
+  saveDc?: number;
   /** slug of the catalog item that generated this attack, if any */
   itemId?: string;
+}
+
+export function formatAttackRollLine(attack: DerivedAttack): string {
+  if (attack.rollType === "auto") return "Auto hit";
+  if (attack.rollType === "save" && attack.saveDc != null) {
+    const ability = attack.saveAbility ? ` ${attack.saveAbility}` : "";
+    return `DC ${attack.saveDc}${ability} save`;
+  }
+  return `${formatModifier(attack.attackBonus)} to hit`;
 }
 
 /** Return true if the character is proficient with a given catalog item weapon. */
@@ -219,51 +387,101 @@ export function deriveUnarmedStrike(character: CharacterData): DerivedAttack {
   };
 }
 
-/** Derive attacks from attack cantrips in the character's known spells. */
-export function deriveCantripAttacks(character: CharacterData): DerivedAttack[] {
+function buildOffensiveSpellEntry(
+  spell: Spell,
+  meta: OffensiveSpellMeta,
+  attackBonus: number,
+  saveDc: number | undefined,
+  characterLevel: number
+): DerivedAttack {
+  let damageDice = meta.damageDice;
+  const noteParts: string[] = [];
+
+  if (spell.notes.trim()) noteParts.push(spell.notes.trim());
+  if (meta.notes) noteParts.push(meta.notes);
+
+  if (meta.eldritchBlast) {
+    const beams = eldritchBlastBeamCount(characterLevel);
+    if (beams > 1) {
+      damageDice = `${beams}×${meta.damageDice}`;
+      noteParts.push(`${beams} beams`);
+    }
+  } else if (meta.cantripScaling || spell.level === 0) {
+    damageDice = cantripScaledDice(meta.damageDice, characterLevel);
+  }
+
+  if (spell.level > 0) {
+    noteParts.unshift(`${spell.level}${spellLevelSuffix(spell.level)}-level spell`);
+  }
+
+  return {
+    id: `spell-${spell.id}`,
+    name: spell.name,
+    attackBonus,
+    damageDice,
+    damageType: meta.damageType,
+    range: meta.range,
+    notes: noteParts.join(" · "),
+    source: spell.level === 0 ? "cantrip" : "spell",
+    spellLevel: spell.level,
+    rollType: meta.rollType,
+    saveAbility: meta.saveAbility,
+    saveDc: meta.rollType === "save" ? saveDc : undefined,
+  };
+}
+
+function spellLevelSuffix(level: number): string {
+  if (level === 1) return "st";
+  if (level === 2) return "nd";
+  if (level === 3) return "rd";
+  return "th";
+}
+
+/** Derive attacks from offensive spells (cantrips and prepared leveled spells). */
+export function deriveSpellAttacks(character: CharacterData): DerivedAttack[] {
   if (!character.spells.spellcastingAbility) return [];
 
-  const mods = getAbilityModifiers(character.abilityScores);
-  const prof = getProficiencyBonus(character);
-  const castingMod = mods[character.spells.spellcastingAbility as AbilityKey];
-  const attackBonus = castingMod + prof;
-  const level = levelFromXp(character.basicInfo.xp ?? 0);
+  const attackBonus = getSpellAttackBonus(character) ?? 0;
+  const saveDc = getSpellSaveDc(character) ?? undefined;
+  const characterLevel = levelFromXp(character.basicInfo.xp ?? 0);
 
   const attacks: DerivedAttack[] = [];
 
   for (const spell of character.spells.known) {
-    if (spell.level !== 0) continue;
+    if (spell.level > 0 && !spell.prepared) continue;
+    if (
+      spell.level > 0 &&
+      !canCastSpellWithRemainingSlots(character.spells.slots, spell.level)
+    ) {
+      continue;
+    }
 
-    // Try to match by name to a known attack cantrip ID
-    const slug = spell.name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "")
-      .replace(/\s+/g, "-");
+    const slug = spellSlug(spell);
+    if (!slug) continue;
 
-    if (!ATTACK_CANTRIP_IDS.has(slug)) continue;
+    const meta = OFFENSIVE_SPELL_METADATA[slug];
+    if (!meta) continue;
 
-    const baseDice = CANTRIP_DICE_AT_LEVEL[slug] ?? "1d6";
-    const scaledDice = cantripScaledDice(baseDice, level);
-    const damageType = CANTRIP_DAMAGE_TYPE[slug] ?? "";
-    const range = CANTRIP_RANGE[slug] ?? "60 ft";
-
-    attacks.push({
-      id: `cantrip-${spell.id}`,
-      name: spell.name,
-      attackBonus,
-      damageDice: scaledDice,
-      damageType,
-      range,
-      notes: spell.notes || "",
-      source: "cantrip",
-    });
+    attacks.push(
+      buildOffensiveSpellEntry(spell, meta, attackBonus, saveDc, characterLevel)
+    );
   }
 
-  return attacks;
+  return attacks.sort((a, b) => {
+    const levelA = a.spellLevel ?? 0;
+    const levelB = b.spellLevel ?? 0;
+    if (levelA !== levelB) return levelA - levelB;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+}
+
+/** @deprecated Use deriveSpellAttacks */
+export function deriveCantripAttacks(character: CharacterData): DerivedAttack[] {
+  return deriveSpellAttacks(character).filter((a) => a.source === "cantrip");
 }
 
 /**
- * Combine all attacks for display: derived weapon attacks + cantrip attacks
+ * Combine all attacks for display: derived weapon attacks + spell attacks
  * come first, then manual attacks stored in character.attacks[].
  */
 export function getAllAttacks(
@@ -272,11 +490,11 @@ export function getAllAttacks(
   catalogClasses?: PhbClass[]
 ): DerivedAttack[] {
   const weapon = deriveWeaponAttacks(character, catalogItems, catalogClasses);
-  const cantrips = deriveCantripAttacks(character);
+  const spells = deriveSpellAttacks(character);
   const manual: DerivedAttack[] = character.attacks.map((a) => ({
     ...a,
     source: "manual" as const,
   }));
 
-  return [...weapon, ...cantrips, ...manual];
+  return [...weapon, ...spells, ...manual];
 }

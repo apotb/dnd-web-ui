@@ -13,6 +13,7 @@ export interface Campaign {
   name: string;
   created_by: string;
   party_data: Json;
+  world_data: Json;
   is_main: boolean;
   created_at: string;
   updated_at: string;
@@ -87,6 +88,25 @@ export interface CampaignNotebook {
   updated_at: string;
 }
 
+export interface CampaignCalendarEvent {
+  id: string;
+  campaign_id: string;
+  title: string;
+  description: string;
+  source: string;
+  location: string;
+  event_time: string | null;
+  all_day: boolean;
+  month: number;
+  day: number;
+  year: number | null;
+  repeat_rule: string;
+  created_by: string;
+  attribution: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -97,6 +117,7 @@ export type Database = {
           name: string;
           created_by: string;
           party_data?: Json;
+          world_data?: Json;
           is_main?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -195,6 +216,29 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<CampaignNotebook>;
+        Relationships: [];
+      };
+      campaign_calendar_events: {
+        Row: CampaignCalendarEvent;
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          title: string;
+          description?: string;
+          source?: string;
+          location?: string;
+          event_time?: string | null;
+          all_day?: boolean;
+          month: number;
+          day: number;
+          year?: number | null;
+          repeat_rule?: string;
+          created_by: string;
+          attribution?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<CampaignCalendarEvent>;
         Relationships: [];
       };
     };

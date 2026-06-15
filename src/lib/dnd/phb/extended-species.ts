@@ -405,7 +405,7 @@ export const EXTENDED_SPECIES: PhbSpecies[] = [
       },
       {
         name: "Natural Armor",
-        description: "Your AC is 13 + Dex modifier when you aren't wearing armor.",
+        description: "Your AC is 13 + Dex modifier when you aren't wearing armor. You can use a shield.",
       },
       {
         name: "Hungry Jaws",
@@ -569,7 +569,8 @@ export const EXTENDED_SPECIES: PhbSpecies[] = [
       },
       {
         name: "Natural Armor",
-        description: "Your shell provides a base AC of 17. Your Dexterity modifier doesn't affect this number. You can use a shield.",
+        description:
+          "Your shell provides a base AC of 17. Your Dexterity modifier doesn't affect this number. You can't wear armor, but you can use a shield.",
       },
       {
         name: "Shell Defense",

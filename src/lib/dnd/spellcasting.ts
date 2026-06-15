@@ -334,3 +334,18 @@ export function formatSpellSlotRemaining(
   const slotWord = info.remaining === 1 ? "slot" : "slots";
   return `${info.remaining} ${slotWord} remaining until rest`;
 }
+
+/** True when the character can cast a leveled spell (including upcasting). Cantrips always pass. */
+export function canCastSpellWithRemainingSlots(
+  slots: CharacterData["spells"]["slots"],
+  spellLevel: number
+): boolean {
+  if (spellLevel <= 0) return true;
+
+  return Object.entries(slots).some(([key, slot]) => {
+    const slotLevel = parseInt(key, 10);
+    if (!Number.isFinite(slotLevel) || slotLevel < spellLevel) return false;
+    if (slot.max <= 0) return false;
+    return slot.used < slot.max;
+  });
+}

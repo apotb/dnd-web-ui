@@ -33,6 +33,8 @@ interface ItemPickerProps {
   onSelect: (selection: ItemPickerSelection) => void;
   /** Pre-filter to a specific category */
   defaultCategory?: ItemCategory;
+  /** When editing a custom inventory row, pre-fill the custom fields. */
+  initialCustom?: { name: string; weightLb?: number };
 }
 
 function categoryFilterLabel(category: string): string {
@@ -81,7 +83,13 @@ function ItemRow({ item, onSelect }: { item: Item; onSelect: () => void }) {
   );
 }
 
-export function ItemPicker({ open, onClose, onSelect, defaultCategory }: ItemPickerProps) {
+export function ItemPicker({
+  open,
+  onClose,
+  onSelect,
+  defaultCategory,
+  initialCustom,
+}: ItemPickerProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>(defaultCategory ?? "all");
   const [results, setResults] = useState<Item[]>([]);
@@ -101,6 +109,14 @@ export function ItemPicker({ open, onClose, onSelect, defaultCategory }: ItemPic
     const tid = setTimeout(() => search(query, category), 200);
     return () => clearTimeout(tid);
   }, [open, query, category, search]);
+
+  useEffect(() => {
+    if (!open) return;
+    setCustomName(initialCustom?.name ?? "");
+    setCustomWeight(
+      initialCustom?.weightLb != null ? String(initialCustom.weightLb) : ""
+    );
+  }, [open, initialCustom?.name, initialCustom?.weightLb]);
 
   function resetForm() {
     setQuery("");
@@ -134,7 +150,7 @@ export function ItemPicker({ open, onClose, onSelect, defaultCategory }: ItemPic
     <Dialog open={open} onOpenChange={(o) => { if (!o) { onClose(); resetForm(); } }}>
       <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Add Item</DialogTitle>
+          <DialogTitle>{initialCustom ? "Edit Item" : "Add Item"}</DialogTitle>
         </DialogHeader>
 
         <div className="flex gap-2">
@@ -212,7 +228,7 @@ export function ItemPicker({ open, onClose, onSelect, defaultCategory }: ItemPic
               disabled={!customName.trim()}
               onClick={handleAddCustom}
             >
-              Add
+              {initialCustom ? "Save" : "Add"}
             </Button>
           </div>
         </div>

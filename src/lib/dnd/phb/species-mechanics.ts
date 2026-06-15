@@ -53,3 +53,9 @@ export function usesTortleNaturalArmor(
 ): boolean {
   return state.speciesId === "tortle" && !wearingArmor;
 }
+
+/** Lizardfolk and Tortle use natural armor instead of worn armor (shields still OK). */
+export function hasNaturalArmorSpecies(speciesDisplayName: string): boolean {
+  const lower = speciesDisplayName.toLowerCase();
+  return lower.includes("lizardfolk") || lower.includes("tortle");
+}

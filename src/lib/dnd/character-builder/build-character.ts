@@ -591,13 +591,16 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
           ].some((w) => lower.includes(w));
         const wieldMain = isWeapon && !mainWeaponAssigned;
         if (wieldMain) mainWeaponAssigned = true;
+        const naturalArmor =
+          usesLizardfolkNaturalArmor(state, false) ||
+          usesTortleNaturalArmor(state, false);
         return {
           id: crypto.randomUUID(),
           itemId: slug || undefined,
           name: item.name,
           quantity: item.quantity,
           weightLb: item.weightLb,
-          equipped: isArmor || isShield,
+          equipped: (!naturalArmor && isArmor) || isShield,
           wieldMain,
           wieldOff: false,
           attuned: false,

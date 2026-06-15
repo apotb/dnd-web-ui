@@ -304,8 +304,7 @@ export function ItemManager({ initialItems, onSave, onDelete }: ItemManagerProps
           <Button onClick={openCreate}>+ Add Item</Button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          {filtered.length} item{filtered.length !== 1 ? "s" : ""} shown
-          {items.length !== filtered.length ? ` of ${items.length}` : ""}
+          {filtered.length} of {items.length} items
         </p>
       </div>
 

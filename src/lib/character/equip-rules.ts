@@ -1,4 +1,5 @@
 import type { InventoryItem } from "@/lib/schemas/character";
+import { hasNaturalArmorSpecies } from "@/lib/dnd/phb/species-mechanics";
 import {
   getWeaponProperties,
   type Item,
@@ -72,6 +73,50 @@ export function isEquippableItem(
   invItem: InventoryItem
 ): boolean {
   return getItemEquipSlot(catalogItem, invItem) !== null;
+}
+
+/** Whether the item can actually be equipped (for sort/UI), respecting natural armor. */
+export function canEquipInventoryItem(
+  catalogItem: Item | null | undefined,
+  invItem: InventoryItem,
+  speciesDisplayName = ""
+): boolean {
+  const slot = getItemEquipSlot(catalogItem, invItem);
+  if (!slot) return false;
+  if (slot === "armor" && hasNaturalArmorSpecies(speciesDisplayName)) return false;
+  return true;
+}
+
+function inventoryDisplayName(
+  item: InventoryItem,
+  catalogItem: Item | null | undefined
+): string {
+  return (catalogItem?.name ?? item.name ?? "").trim();
+}
+
+/** Equippable items first (in use, then alpha), then other items alphabetically. */
+export function sortInventoryForDisplay(
+  items: InventoryItem[],
+  catalogItems: Record<string, Item>,
+  speciesDisplayName = ""
+): { item: InventoryItem; index: number }[] {
+  return [...items]
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const catalogA = resolveCatalog(a.item, catalogItems);
+      const catalogB = resolveCatalog(b.item, catalogItems);
+      const equippableA = canEquipInventoryItem(catalogA, a.item, speciesDisplayName);
+      const equippableB = canEquipInventoryItem(catalogB, b.item, speciesDisplayName);
+      if (equippableA !== equippableB) return equippableA ? -1 : 1;
+
+      const byName = inventoryDisplayName(a.item, catalogA).localeCompare(
+        inventoryDisplayName(b.item, catalogB),
+        undefined,
+        { sensitivity: "base" }
+      );
+      if (byName !== 0) return byName;
+      return a.index - b.index;
+    });
 }
 
 export function isLightWeapon(catalogItem: Item | null | undefined): boolean {
@@ -287,7 +332,8 @@ export function setItemEquipped(
   items: InventoryItem[],
   index: number,
   equipped: boolean,
-  catalogItems: Record<string, Item>
+  catalogItems: Record<string, Item>,
+  speciesDisplayName = ""
 ): InventoryItem[] {
   const target = items[index];
   if (!target) return items;
@@ -295,6 +341,14 @@ export function setItemEquipped(
   const targetCatalog = resolveCatalog(target, catalogItems);
   const targetSlot = getItemEquipSlot(targetCatalog, target);
   if (!targetSlot || targetSlot === "weapon") return items;
+
+  if (
+    equipped &&
+    targetSlot === "armor" &&
+    hasNaturalArmorSpecies(speciesDisplayName)
+  ) {
+    return items;
+  }
 
   const next = items.map((item) => ({ ...item }));
 
@@ -370,9 +424,11 @@ export function migrateInventoryWieldSlots(
 /** Strip invalid equip/wield state. */
 export function sanitizeEquippedItems(
   items: InventoryItem[],
-  catalogItems: Record<string, Item> = {}
+  catalogItems: Record<string, Item> = {},
+  speciesDisplayName = ""
 ): InventoryItem[] {
   const migrated = migrateInventoryWieldSlots(items, catalogItems);
+  const blockArmor = hasNaturalArmorSpecies(speciesDisplayName);
 
   return migrated.map((item) => {
     const catalog = item.itemId ? catalogItems[item.itemId] ?? null : null;
@@ -388,6 +444,9 @@ export function sanitizeEquippedItems(
     }
 
     if (!item.equipped) return item;
+    if (blockArmor && slot === "armor") {
+      return { ...item, equipped: false, wieldMain: false, wieldOff: false };
+    }
     if (item.itemId && !catalog) return item;
     if (isEquippableItem(catalog, item)) return { ...item, wieldMain: false, wieldOff: false };
     return { ...item, equipped: false, wieldMain: false, wieldOff: false };

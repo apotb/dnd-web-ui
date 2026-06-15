@@ -17,7 +17,11 @@ export function prepareCharacterDataForSave(
   const savingThrows = syncSavingThrowsFromClass(data, classes);
   const inventory = {
     ...data.inventory,
-    items: sanitizeEquippedItems(data.inventory.items),
+    items: sanitizeEquippedItems(
+      data.inventory.items,
+      {},
+      data.basicInfo.species
+    ),
   };
   const stripped = stripGrantedFeaturesForSave(
     { ...data, savingThrows, inventory },

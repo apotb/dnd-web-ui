@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   deleteLanguageEntry,
-  seedLanguages,
   upsertLanguageEntry,
 } from "@/lib/content/catalog";
 
@@ -105,18 +104,6 @@ export function LanguagesManager({ entries }: { entries: LanguageRow[] }) {
     });
   }
 
-  function handleSeed() {
-    startTransition(async () => {
-      const result = await seedLanguages();
-      if (result.error) {
-        alert(`Seed failed: ${result.error}`);
-        return;
-      }
-      alert(`Seeded ${result.seeded} languages.`);
-      window.location.reload();
-    });
-  }
-
   const filtered = list.filter(
     (r) =>
       r.name.toLowerCase().includes(filter.toLowerCase()) ||
@@ -131,35 +118,51 @@ export function LanguagesManager({ entries }: { entries: LanguageRow[] }) {
             placeholder="Filter languages…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="max-w-xs"
+            className="flex-1 min-w-48"
           />
-          <Button onClick={openCreate}>Add language</Button>
-          <Button variant="outline" onClick={handleSeed} disabled={isPending}>
-            Seed PHB languages
-          </Button>
+          <Button onClick={openCreate}>+ Add Language</Button>
         </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          {filtered.length} of {list.length} languages
+        </p>
       </div>
 
-      <div className="retro-box space-y-2">
-        {filtered.map((row) => (
+      <div className="retro-box" style={{ padding: 0 }}>
+        <div className="grid grid-cols-[1fr_120px_80px_80px_160px] gap-0 border-b px-4 py-2 bg-muted/50 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          <span>Language</span>
+          <span className="pr-4">Script</span>
+          <span className="pr-4">Standard</span>
+          <span className="pr-4">Source</span>
+          <span />
+        </div>
+
+        {filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            No languages found.
+          </p>
+        ) : null}
+
+        {filtered.map((row, idx) => (
           <div
             key={row.slug}
-            className="flex items-center justify-between gap-3 border-b border-border/50 pb-2 last:border-0 last:pb-0"
+            className={`grid grid-cols-[1fr_120px_80px_80px_160px] items-center gap-0 px-4 py-2.5 ${idx !== filtered.length - 1 ? "border-b" : ""}`}
           >
-            <div>
-              <p className="font-medium text-sm">
-                {row.name}
-                {row.isStandard ? (
-                  <span className="text-xs text-muted-foreground ml-2">standard</span>
-                ) : null}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {row.slug}
-                {row.script ? ` · ${row.script} script` : ""}
-                {row.source ? ` · ${row.source}` : ""}
-              </p>
+            <div className="min-w-0">
+              <span className="font-medium text-sm">{row.name}</span>
+              <div className="text-xs text-muted-foreground">
+                <span className="opacity-50">{row.slug}</span>
+              </div>
             </div>
-            <div className="flex gap-2 shrink-0">
+            <span className="text-sm text-muted-foreground pr-4">
+              {row.script || "—"}
+            </span>
+            <span className="text-sm text-muted-foreground pr-4">
+              {row.isStandard ? "Yes" : "—"}
+            </span>
+            <span className="text-sm text-muted-foreground pr-4">
+              {row.source || "—"}
+            </span>
+            <div className="flex gap-1.5 justify-end">
               <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
                 Edit
               </Button>
@@ -174,9 +177,6 @@ export function LanguagesManager({ entries }: { entries: LanguageRow[] }) {
             </div>
           </div>
         ))}
-        {filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No languages found.</p>
-        ) : null}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
