@@ -81,6 +81,23 @@ export function getProficiencyBonus(data: CharacterData): number {
   return data.proficiencyBonusOverride ?? proficiencyBonus(level);
 }
 
+export function getMaxInspiration(data: CharacterData): number {
+  return getProficiencyBonus(data);
+}
+
+export function clampInspiration(
+  inspiration: number,
+  data: CharacterData
+): number {
+  const max = getMaxInspiration(data);
+  const value = Number.isFinite(inspiration) ? Math.trunc(inspiration) : 0;
+  return Math.max(0, Math.min(max, value));
+}
+
+export function getInspiration(data: CharacterData): number {
+  return clampInspiration(data.inspiration ?? 0, data);
+}
+
 export function getAbilityModifiers(scores: CharacterData["abilityScores"]) {
   return {
     str: abilityModifier(scores.str),

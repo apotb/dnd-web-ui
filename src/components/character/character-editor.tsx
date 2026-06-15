@@ -51,7 +51,8 @@ export function CharacterEditor({
         ...data,
         savingThrows: syncSavingThrowsFromClass(data, classes),
       }),
-      classes
+      classes,
+      { isDm: showDmNotes, originalData: initialData }
     );
     const supabase = createClient();
 

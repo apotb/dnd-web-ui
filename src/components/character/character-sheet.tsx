@@ -31,6 +31,8 @@ import {
   getAbilityModifiers,
   getPassivePerception,
   getProficiencyBonus,
+  getInspiration,
+  clampInspiration,
   getSavingThrowTotal,
   getSkillTotal,
   getSpellAttackBonus,
@@ -239,6 +241,68 @@ function ConfigurableFeatureRow({
   );
 }
 
+function InspirationIndicator({
+  inspiration,
+  max,
+  isDm,
+  onAdjust,
+}: {
+  inspiration: number;
+  max: number;
+  isDm: boolean;
+  onAdjust?: (delta: number) => void;
+}) {
+  if (max <= 0) return null;
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Tooltip content={`Inspiration ${inspiration}/${max}`}>
+        <div
+          className="flex items-center gap-1"
+          aria-label={`Inspiration ${inspiration} of ${max}`}
+        >
+          {Array.from({ length: max }, (_, index) => (
+            <span
+              key={index}
+              className={`h-2 w-2 rounded-full border ${
+                index < inspiration
+                  ? "bg-foreground border-foreground"
+                  : "border-muted-foreground/50 bg-transparent"
+              }`}
+            />
+          ))}
+        </div>
+      </Tooltip>
+      {isDm && onAdjust ? (
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-6 w-6 p-0"
+            disabled={inspiration <= 0}
+            aria-label="Remove inspiration"
+            onClick={() => onAdjust(-1)}
+          >
+            −
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-6 w-6 p-0"
+            disabled={inspiration >= max}
+            aria-label="Grant inspiration"
+            onClick={() => onAdjust(1)}
+          >
+            +
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProficiencyOverviewList({
   label,
   entries,
@@ -412,6 +476,7 @@ export function CharacterSheet({
 
   const mods = getAbilityModifiers(data.abilityScores);
   const profBonus = getProficiencyBonus(data);
+  const inspiration = getInspiration(data);
   const resolvedClass = resolveCharacterClass(data, classCatalog);
   const level = levelFromXp(data.basicInfo.xp ?? 0);
   const xp = data.basicInfo.xp ?? 0;
@@ -540,6 +605,12 @@ export function CharacterSheet({
         resolvedClass,
         levelFromXp(nextBasic.xp ?? 0)
       );
+    }
+    if (patch.xp !== undefined) {
+      nextPatch.inspiration = clampInspiration(data.inspiration ?? 0, {
+        ...data,
+        ...nextPatch,
+      });
     }
     update(nextPatch);
   };
@@ -819,6 +890,13 @@ export function CharacterSheet({
     update({ inventory: { ...data.inventory, items } });
   };
 
+  function adjustInspiration(delta: number) {
+    if (!isDm || !onChange) return;
+    const next = Math.max(0, Math.min(profBonus, inspiration + delta));
+    if (next === inspiration) return;
+    update({ inspiration: next });
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -849,7 +927,15 @@ export function CharacterSheet({
             )}
           </p>
         </div>
-        <Badge variant="outline">Proficiency {formatModifier(profBonus)}</Badge>
+        <div className="flex flex-col items-end gap-1">
+          <Badge variant="outline">Proficiency {formatModifier(profBonus)}</Badge>
+          <InspirationIndicator
+            inspiration={inspiration}
+            max={profBonus}
+            isDm={isDm}
+            onAdjust={canMutate ? adjustInspiration : undefined}
+          />
+        </div>
       </div>
 
       <Tabs defaultValue="overview" className="sheet-tabs w-full">

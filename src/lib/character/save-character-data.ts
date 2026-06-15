@@ -1,4 +1,5 @@
 import type { CharacterData } from "@/lib/schemas/character";
+import { clampInspiration } from "@/lib/dnd/calculations";
 import { syncAcFromEquipment } from "@/lib/character/ac-derivation";
 import { sanitizeEquippedItems } from "@/lib/character/equip-rules";
 import { syncSavingThrowsFromClass, resolveCharacterClass } from "@/lib/character/class-derivation";
@@ -9,10 +10,17 @@ import { levelFromXp } from "@/lib/dnd/xp";
 import { createClient } from "@/lib/supabase/client";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 
+export interface SaveCharacterOptions {
+  /** When false, inspiration is preserved from originalData instead of data. */
+  isDm?: boolean;
+  originalData?: CharacterData;
+}
+
 /** Normalize derived fields before persisting character JSON. */
 export function prepareCharacterDataForSave(
   data: CharacterData,
-  classes?: PhbClass[]
+  classes?: PhbClass[],
+  options?: SaveCharacterOptions
 ): CharacterData {
   const savingThrows = syncSavingThrowsFromClass(data, classes);
   const inventory = {
@@ -33,16 +41,25 @@ export function prepareCharacterDataForSave(
   const withSpells = cls?.spellcasting
     ? { ...granted, spells: syncSpellcastingFromClass(granted, cls, level) }
     : granted;
-  return syncAcFromEquipment(withSpells, {}, classes);
+  const synced = syncAcFromEquipment(withSpells, {}, classes);
+  const inspirationSource = options?.isDm
+    ? synced.inspiration ?? 0
+    : options?.originalData?.inspiration ?? synced.inspiration ?? 0;
+
+  return {
+    ...synced,
+    inspiration: clampInspiration(inspirationSource, synced),
+  };
 }
 
 export async function saveCharacterData(
   characterId: string,
   data: CharacterData,
-  classes?: PhbClass[]
+  classes?: PhbClass[],
+  options?: SaveCharacterOptions
 ): Promise<{ error?: string }> {
   const supabase = createClient();
-  const synced = prepareCharacterDataForSave(data, classes);
+  const synced = prepareCharacterDataForSave(data, classes, options);
   const { error } = await supabase
     .from("characters")
     .update({ data: synced })

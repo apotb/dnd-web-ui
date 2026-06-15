@@ -353,6 +353,8 @@ export const characterDataSchema = z.preprocess(
     z.partialRecord(abilityKeySchema, z.number().int()).optional()
   ),
   proficiencyBonusOverride: z.number().optional(),
+  /** DM-granted inspiration points (max = proficiency bonus). */
+  inspiration: z.number().int().min(0).default(0),
   savingThrows: savingThrowsSchema.default({}),
   skills: skillsSchema.default({}),
   languages: z.array(z.string()).default([]),

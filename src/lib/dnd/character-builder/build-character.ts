@@ -535,6 +535,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
     },
     abilityScores: scores,
     abilityScoreBreakdown: breakdown,
+    inspiration: 0,
     savingThrows,
     skills,
     languages: collectLanguages(state, catalog),

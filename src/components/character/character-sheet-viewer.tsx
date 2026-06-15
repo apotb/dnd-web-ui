@@ -44,7 +44,10 @@ export function CharacterSheetViewer({
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
       setSaveError(null);
-      const { error } = await saveCharacterData(character.id, next, classes);
+      const { error } = await saveCharacterData(character.id, next, classes, {
+        isDm,
+        originalData: character.data,
+      });
       if (error) setSaveError(error);
       setSaving(false);
     }, 400);
