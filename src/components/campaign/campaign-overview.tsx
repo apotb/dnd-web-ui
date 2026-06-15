@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PartyInventory } from "@/components/campaign/party-inventory";
 import { HarptosCalendar } from "@/components/campaign/harptos-calendar";
+import { CampaignMaps } from "@/components/campaign/campaign-maps";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import {
@@ -14,6 +15,7 @@ import { getTopSkills, skillShortLabel } from "@/lib/dnd/party-summary";
 import type { ParsedCalendarEvent } from "@/lib/schemas/calendar-event";
 import type { PartyData } from "@/lib/schemas/party";
 import type { WorldData } from "@/lib/schemas/world";
+import type { MapsData } from "@/lib/schemas/maps";
 
 const OVERVIEW_TABS = [
   { id: "party", label: "Party" },
@@ -43,6 +45,7 @@ interface CampaignOverviewProps {
   campaignId: string;
   initialPartyData: PartyData;
   initialWorldData: WorldData;
+  initialMapsData: MapsData;
   initialCalendarEvents: ParsedCalendarEvent[];
   initialCharacters: ParsedCharacter[];
   isDm: boolean;
@@ -54,6 +57,7 @@ export function CampaignOverview({
   campaignId,
   initialPartyData,
   initialWorldData,
+  initialMapsData,
   initialCalendarEvents,
   initialCharacters,
   isDm,
@@ -160,12 +164,11 @@ export function CampaignOverview({
       ) : null}
 
       {activeTab === "maps" ? (
-        <section className="retro-box">
-          <p className="retro-box-title">Maps</p>
-          <p className="retro-muted">
-            Campaign maps and battle grids will live here.
-          </p>
-        </section>
+        <CampaignMaps
+          campaignId={campaignId}
+          initialMapsData={initialMapsData}
+          isDm={isDm}
+        />
       ) : null}
 
       {activeTab === "factions" ? (

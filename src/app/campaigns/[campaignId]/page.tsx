@@ -3,6 +3,7 @@ import { getCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { parsePartyData } from "@/lib/schemas/party";
 import { parseWorldData } from "@/lib/schemas/world";
+import { parseMapsData } from "@/lib/schemas/maps";
 import { parseCalendarEventRow } from "@/lib/schemas/calendar-event";
 import { CampaignOverview } from "@/components/campaign/campaign-overview";
 import type { CampaignCalendarEvent, Character } from "@/lib/types/database";
@@ -45,6 +46,7 @@ export default async function CampaignHomePage({
       campaignId={campaignId}
       initialPartyData={parsePartyData(access.campaign.party_data)}
       initialWorldData={parseWorldData(access.campaign.world_data)}
+      initialMapsData={parseMapsData(access.campaign.maps_data)}
       initialCalendarEvents={calendarEvents}
       initialCharacters={characters}
       isDm={access.isDm}

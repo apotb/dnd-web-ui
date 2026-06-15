@@ -14,6 +14,7 @@ export interface Campaign {
   created_by: string;
   party_data: Json;
   world_data: Json;
+  maps_data: Json;
   is_main: boolean;
   created_at: string;
   updated_at: string;
@@ -119,6 +120,7 @@ export type Database = {
           created_by: string;
           party_data?: Json;
           world_data?: Json;
+          maps_data?: Json;
           is_main?: boolean;
           created_at?: string;
           updated_at?: string;
