@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBuiltinHexLayout } from "@/lib/maps/layouts/load-builtin-layout";
-import { getChultBackgroundBytes } from "@/lib/maps/layouts/parse-chult-source";
+import { getBuiltinHexLayoutBackground } from "@/lib/maps/layouts/load-builtin-layout";
 import { isBuiltinHexLayoutId } from "@/lib/maps/layouts/registry";
 
 export async function GET(
@@ -14,19 +13,13 @@ export async function GET(
   }
 
   try {
-    const layout = await getBuiltinHexLayout(layoutId);
-
-    if (layoutId === "chult") {
-      const bytes = getChultBackgroundBytes(layout);
-      return new NextResponse(new Uint8Array(bytes), {
-        headers: {
-          "Content-Type": "image/jpeg",
-          "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
-        },
-      });
-    }
-
-    return NextResponse.json({ error: "Unsupported background" }, { status: 404 });
+    const bytes = await getBuiltinHexLayoutBackground(layoutId);
+    return new NextResponse(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
+      },
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load map background";

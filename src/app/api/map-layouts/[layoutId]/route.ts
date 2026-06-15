@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBuiltinHexLayout } from "@/lib/maps/layouts/load-builtin-layout";
+import { getBuiltinHexLayoutMeta } from "@/lib/maps/layouts/load-builtin-layout";
 import { isBuiltinHexLayoutId } from "@/lib/maps/layouts/registry";
 import type { HexLayout } from "@/lib/maps/layouts/types";
 
@@ -14,7 +14,7 @@ export async function GET(
   }
 
   try {
-    const layout = await getBuiltinHexLayout(layoutId);
+    const layout = await getBuiltinHexLayoutMeta(layoutId);
     const clientLayout: HexLayout = {
       ...layout,
       image: {
