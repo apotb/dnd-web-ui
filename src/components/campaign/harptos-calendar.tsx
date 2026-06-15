@@ -8,11 +8,15 @@ import {
   HARPTOS_MONTHS,
   addDays,
   addMonths,
+  festivalDate,
   formatHarptosDate,
   getEventsOnDate,
+  getFestivalById,
+  getFestivalsAfterMonth,
   getTendayInfo,
   sameHarptosDate,
   type HarptosDate,
+  type HarptosFestivalId,
 } from "@/lib/dnd/harptos-calendar";
 import { useRealtimeCalendarEvents } from "@/lib/hooks/use-realtime-calendar-events";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
@@ -51,7 +55,8 @@ function emptyEventForm(date: HarptosDate): CalendarEventFormValues {
     allDay: false,
     eventTime: "12:00",
     month: date.month,
-    day: date.day,
+    day: date.festival ? 0 : date.day,
+    festival: date.festival ?? null,
     year: date.year,
     repeatRule: "none",
   };
@@ -86,7 +91,12 @@ export function HarptosCalendar({
 
   useEffect(() => {
     setSelectedDate(today);
-  }, [today.year, today.month, today.day]);
+  }, [today.year, today.month, today.day, today.festival]);
+
+  const monthFestivals = useMemo(
+    () => getFestivalsAfterMonth(viewMonth, viewYear),
+    [viewMonth, viewYear]
+  );
 
   const selectedEvents = useMemo(
     () => sortCalendarEvents(getEventsOnDate(events, selectedDate)),
@@ -102,6 +112,17 @@ export function HarptosCalendar({
     }
     return map;
   }, [events, viewYear, viewMonth]);
+
+  const festivalEventsById = useMemo(() => {
+    const map = new Map<HarptosFestivalId, ParsedCalendarEvent[]>();
+    for (const festival of monthFestivals) {
+      map.set(
+        festival.id,
+        getEventsOnDate(events, festivalDate(viewYear, festival.id))
+      );
+    }
+    return map;
+  }, [events, monthFestivals, viewYear]);
 
   function resetForm() {
     setForm(emptyEventForm(selectedDate));
@@ -122,6 +143,7 @@ export function HarptosCalendar({
       eventTime: event.eventTime,
       month: event.month,
       day: event.day,
+      festival: event.festival,
       year: event.year,
       repeatRule: event.repeatRule,
     });
@@ -131,6 +153,13 @@ export function HarptosCalendar({
   function selectDay(day: number) {
     const date: HarptosDate = { year: viewYear, month: viewMonth, day };
     setSelectedDate(date);
+    setShowForm(false);
+    setEditingId(null);
+    setMessage(null);
+  }
+
+  function selectFestival(festivalId: HarptosFestivalId) {
+    setSelectedDate(festivalDate(viewYear, festivalId));
     setShowForm(false);
     setEditingId(null);
     setMessage(null);
@@ -228,7 +257,10 @@ export function HarptosCalendar({
   }
 
   const viewingTodayMonth =
-    viewYear === today.year && viewMonth === today.month;
+    viewYear === today.year &&
+    viewMonth === today.month &&
+    (!today.festival ||
+      monthFestivals.some((festival) => festival.id === today.festival));
 
   return (
     <section className="retro-box harptos-calendar">
@@ -355,6 +387,51 @@ export function HarptosCalendar({
               })}
             </tr>
           ))}
+          {monthFestivals.map((festival) => {
+            const festivalEvents = festivalEventsById.get(festival.id) ?? [];
+            const cellDate = festivalDate(viewYear, festival.id);
+            const isToday = sameHarptosDate(cellDate, today);
+            const isSelected = sameHarptosDate(cellDate, selectedDate);
+
+            return (
+              <tr key={festival.id} className="harptos-festival-row">
+                <th scope="row" className="harptos-grid-tenday-col">
+                  {festival.leapYearOnly ? "Leap day" : "Festival"}
+                </th>
+                <td
+                  colSpan={10}
+                  className="harptos-grid-cell-wrap harptos-festival-cell-wrap"
+                >
+                  <button
+                    type="button"
+                    className={[
+                      "harptos-day harptos-day-festival",
+                      isToday ? "harptos-day-today" : "",
+                      isSelected ? "harptos-day-selected" : "",
+                      festivalEvents.length > 0 ? "harptos-day-has-events" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => selectFestival(festival.id)}
+                    aria-label={`${festival.name}, ${viewYear} DR`}
+                    aria-pressed={isSelected}
+                  >
+                    <span className="harptos-day-number">{festival.name}</span>
+                    {festivalEvents.length > 0 ? (
+                      <span
+                        className="harptos-day-events"
+                        title={festivalEvents.map((e) => e.title).join(", ")}
+                      >
+                        {festivalEvents.length === 1
+                          ? "•"
+                          : `${festivalEvents.length}●`}
+                      </span>
+                    ) : null}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -555,35 +632,47 @@ function CalendarEventForm({
           </div>
         </div>
         <div className="calendar-event-date-row">
-          <div>
-            <label className="candy-label">Month</label>
-            <select
-              className="candy-input"
-              value={form.month}
-              onChange={(e) =>
-                onChange({ ...form, month: Number(e.target.value) })
-              }
-            >
-              {HARPTOS_MONTHS.map((name, index) => (
-                <option key={name} value={index + 1}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="candy-label">Day</label>
-            <input
-              className="candy-input"
-              type="number"
-              min={1}
-              max={30}
-              value={form.day}
-              onChange={(e) =>
-                onChange({ ...form, day: Number(e.target.value) || 1 })
-              }
-            />
-          </div>
+          {form.festival ? (
+            <div className="calendar-event-festival-label">
+              <label className="candy-label">Date</label>
+              <p className="retro-member-line">
+                {getFestivalById(form.festival)?.name ?? form.festival},{" "}
+                {form.year ?? "every year"}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="candy-label">Month</label>
+                <select
+                  className="candy-input"
+                  value={form.month}
+                  onChange={(e) =>
+                    onChange({ ...form, month: Number(e.target.value) })
+                  }
+                >
+                  {HARPTOS_MONTHS.map((name, index) => (
+                    <option key={name} value={index + 1}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="candy-label">Day</label>
+                <input
+                  className="candy-input"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={form.day}
+                  onChange={(e) =>
+                    onChange({ ...form, day: Number(e.target.value) || 1 })
+                  }
+                />
+              </div>
+            </>
+          )}
           <div>
             <label className="candy-label">Year</label>
             <input

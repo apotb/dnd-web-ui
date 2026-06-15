@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { CALENDAR_REPEAT_RULES } from "@/lib/dnd/harptos-calendar";
+import {
+  CALENDAR_REPEAT_RULES,
+  HARPTOS_FESTIVAL_IDS,
+  type HarptosFestivalId,
+} from "@/lib/dnd/harptos-calendar";
 import type { CampaignCalendarEvent } from "@/lib/types/database";
 
 export const calendarRepeatRuleSchema = z.enum(CALENDAR_REPEAT_RULES);
@@ -18,13 +22,18 @@ export const calendarEventFormSchema = z
     allDay: z.boolean().default(false),
     eventTime: eventTimeSchema.default(null),
     month: z.number().int().min(1).max(12),
-    day: z.number().int().min(1).max(30),
+    day: z.number().int().min(0).max(30),
+    festival: z.enum(HARPTOS_FESTIVAL_IDS).nullable().default(null),
     year: z.number().int().min(0).nullable().default(null),
     repeatRule: calendarRepeatRuleSchema.default("none"),
   })
   .refine((data) => data.allDay || data.eventTime !== null, {
     message: "Time is required unless all-day",
     path: ["eventTime"],
+  })
+  .refine((data) => (data.festival ? data.day === 0 : data.day >= 1), {
+    message: "Festival events use day 0; month days use 1–30",
+    path: ["day"],
   });
 
 export type CalendarEventFormValues = z.infer<typeof calendarEventFormSchema>;
@@ -40,10 +49,20 @@ export interface ParsedCalendarEvent {
   eventTime: string | null;
   month: number;
   day: number;
+  festival: HarptosFestivalId | null;
   year: number | null;
   repeatRule: z.infer<typeof calendarRepeatRuleSchema>;
   createdAt: string;
   updatedAt: string;
+}
+
+function parseFestivalFromDb(
+  value: string | null | undefined
+): HarptosFestivalId | null {
+  if (!value) return null;
+  return HARPTOS_FESTIVAL_IDS.includes(value as HarptosFestivalId)
+    ? (value as HarptosFestivalId)
+    : null;
 }
 
 export function parseEventTimeFromDb(value: string | null): string | null {
@@ -80,6 +99,7 @@ export function parseCalendarEventRow(
     eventTime: parseEventTimeFromDb(row.event_time ?? null),
     month: row.month,
     day: row.day,
+    festival: parseFestivalFromDb(row.festival),
     year: row.year,
     repeatRule: calendarRepeatRuleSchema.parse(row.repeat_rule),
     createdAt: row.created_at,
@@ -124,6 +144,7 @@ export function calendarEventToInsert(
     event_time: values.allDay ? null : values.eventTime,
     month: values.month,
     day: values.day,
+    festival: values.festival,
     year: values.year,
     repeat_rule: values.repeatRule,
     created_by: createdBy,
@@ -140,6 +161,7 @@ export function calendarEventToUpdate(values: CalendarEventFormValues) {
     event_time: values.allDay ? null : values.eventTime,
     month: values.month,
     day: values.day,
+    festival: values.festival,
     year: values.year,
     repeat_rule: values.repeatRule,
   };

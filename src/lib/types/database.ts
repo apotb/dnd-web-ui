@@ -99,6 +99,7 @@ export interface CampaignCalendarEvent {
   all_day: boolean;
   month: number;
   day: number;
+  festival: string | null;
   year: number | null;
   repeat_rule: string;
   created_by: string;
@@ -231,6 +232,7 @@ export type Database = {
           all_day?: boolean;
           month: number;
           day: number;
+          festival?: string | null;
           year?: number | null;
           repeat_rule?: string;
           created_by: string;

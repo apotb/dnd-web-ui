@@ -63,6 +63,10 @@ export function useRealtimeCalendarEvents(
               all_day: row.all_day ?? existing?.allDay ?? false,
               month: row.month ?? existing?.month ?? 1,
               day: row.day ?? existing?.day ?? 1,
+              festival:
+                row.festival !== undefined
+                  ? row.festival
+                  : (existing?.festival ?? null),
               year: row.year !== undefined ? row.year : (existing?.year ?? null),
               repeat_rule:
                 row.repeat_rule ?? existing?.repeatRule ?? "none",

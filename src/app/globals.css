@@ -993,6 +993,21 @@ html.campaign-bg-active .retro-back-link {
   font-weight: bold;
 }
 
+.harptos-festival-cell-wrap {
+  height: 56px;
+}
+
+.harptos-day-festival {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  padding-inline: 8px;
+}
+
+.harptos-day-festival .harptos-day-number {
+  white-space: normal;
+}
+
 .harptos-selected-day {
   margin-top: 4px;
   padding-top: 12px;
