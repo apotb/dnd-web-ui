@@ -777,6 +777,119 @@ html.campaign-bg-active .retro-muted {
   gap: 14px;
 }
 
+.notable-stack {
+  gap: 8px;
+}
+
+.notable-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 16px;
+  align-items: start;
+}
+
+.notable-card-fields {
+  min-width: 0;
+}
+
+.notable-card-title-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.notable-portrait {
+  width: clamp(100px, 18vw, 180px);
+  flex-shrink: 0;
+}
+
+.notable-portrait-frame {
+  width: 100%;
+  border: 1px solid #ccc;
+  background: #f4f4f4;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notable-portrait-frame-empty {
+  aspect-ratio: 1 / 1;
+}
+
+.notable-portrait-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.notable-portrait-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 88px;
+  color: #bbb;
+}
+
+.notable-events-section {
+  margin-top: 8px;
+}
+
+.notable-events-add {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.notable-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.notable-card-actions .retro-inline-link:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.notable-card-dm-hidden {
+  border-style: dashed;
+  opacity: 0.82;
+}
+
+.notable-hidden-label {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #8a6d3b;
+}
+
+.notable-event-editor-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notable-event-editor-actions .retro-inline-link:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.notable-event-text {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+@media (max-width: 640px) {
+  .notable-card-title-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 .retro-plain-list {
   margin: 0;
   padding-left: 20px;

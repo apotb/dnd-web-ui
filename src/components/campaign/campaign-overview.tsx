@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { PartyInventory } from "@/components/campaign/party-inventory";
 import { HarptosCalendar } from "@/components/campaign/harptos-calendar";
 import { CampaignMaps } from "@/components/campaign/campaign-maps";
+import { CampaignNotables } from "@/components/campaign/campaign-notables";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import { getCharacterPortraitUrl } from "@/lib/character/portrait-storage";
 import { createClient } from "@/lib/supabase/client";
@@ -18,13 +19,14 @@ import type { ParsedCalendarEvent } from "@/lib/schemas/calendar-event";
 import type { PartyData } from "@/lib/schemas/party";
 import type { WorldData } from "@/lib/schemas/world";
 import type { MapsData } from "@/lib/schemas/maps";
+import type { NotablesData } from "@/lib/schemas/notables";
 
 const OVERVIEW_TABS = [
   { id: "party", label: "Party" },
   { id: "world", label: "World" },
   { id: "maps", label: "Maps" },
-  { id: "factions", label: "Factions" },
   { id: "notables", label: "Notables" },
+  { id: "factions", label: "Factions" },
 ] as const;
 
 type OverviewTab = (typeof OVERVIEW_TABS)[number]["id"];
@@ -48,6 +50,7 @@ interface CampaignOverviewProps {
   initialPartyData: PartyData;
   initialWorldData: WorldData;
   initialMapsData: MapsData;
+  initialNotablesData: NotablesData;
   initialCalendarEvents: ParsedCalendarEvent[];
   initialCharacters: ParsedCharacter[];
   isDm: boolean;
@@ -60,6 +63,7 @@ export function CampaignOverview({
   initialPartyData,
   initialWorldData,
   initialMapsData,
+  initialNotablesData,
   initialCalendarEvents,
   initialCharacters,
   isDm,
@@ -183,12 +187,12 @@ export function CampaignOverview({
       ) : null}
 
       {activeTab === "notables" ? (
-        <section className="retro-box">
-          <p className="retro-box-title">Notables</p>
-          <p className="retro-muted">
-            NPCs, factions, and other notable figures will live here.
-          </p>
-        </section>
+        <CampaignNotables
+          campaignId={campaignId}
+          initialNotablesData={initialNotablesData}
+          initialWorldData={initialWorldData}
+          isDm={isDm}
+        />
       ) : null}
     </div>
   );
