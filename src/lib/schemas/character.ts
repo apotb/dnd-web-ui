@@ -43,8 +43,6 @@ export const restResetTypeSchema = z.enum([
   "none",
 ]);
 
-export const damageTypeSchema = z.string().min(1);
-
 // ---------------------------------------------------------------------------
 // Character sub-schemas
 // ---------------------------------------------------------------------------
@@ -119,7 +117,7 @@ export const attackSchema = z.object({
   name: z.string().default(""),
   attackBonus: z.number().default(0),
   damageDice: z.string().default(""),
-  damageType: damageTypeSchema.default(""),
+  damageType: z.string().default(""),
   range: z.string().default(""),
   notes: z.string().default(""),
 });

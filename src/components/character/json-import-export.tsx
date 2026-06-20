@@ -70,13 +70,17 @@ export function JsonImportExport({
           e.target.value = "";
         }}
       />
-      <button type="button" className="candy-btn candy-btn-sm" onClick={handleExport}>
-        Export .json
+      <button
+        type="button"
+        className="retro-inline-link text-sm"
+        onClick={handleExport}
+      >
+        export
       </button>
       {importError ? (
         <button
           type="button"
-          className="retro-inline-link retro-inline-error-link"
+          className="retro-inline-link retro-inline-error-link text-sm"
           onClick={() => setImportError(null)}
         >
           {importError}
@@ -84,11 +88,11 @@ export function JsonImportExport({
       ) : (
         <button
           type="button"
-          className="candy-btn candy-btn-sm"
+          className="retro-inline-link text-sm"
           disabled={importing}
           onClick={() => inputRef.current?.click()}
         >
-          {importing ? "Importing…" : "Import .json"}
+          {importing ? "importing…" : "import"}
         </button>
       )}
     </>

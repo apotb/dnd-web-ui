@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CharacterDeleteButton } from "@/components/character/character-delete-button";
 import { CharacterSheet } from "@/components/character/character-sheet";
+import { JsonImportExport } from "@/components/character/json-import-export";
 import { saveCharacterData } from "@/lib/character/save-character-data";
+import { syncCharacterTopLevelFields } from "@/lib/character/utils";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { PhbClass } from "@/lib/dnd/phb/types";
@@ -12,9 +15,8 @@ interface CharacterSheetViewerProps {
   campaignId: string;
   classes: PhbClass[];
   isDm: boolean;
-  canToggleEquipment: boolean;
-  canEditPortrait: boolean;
-  editHref?: string;
+  canEdit: boolean;
+  canDelete?: boolean;
 }
 
 export function CharacterSheetViewer({
@@ -22,9 +24,8 @@ export function CharacterSheetViewer({
   campaignId,
   classes,
   isDm,
-  canToggleEquipment,
-  canEditPortrait,
-  editHref,
+  canEdit,
+  canDelete = false,
 }: CharacterSheetViewerProps) {
   const [data, setData] = useState<CharacterData>(character.data);
   const [saving, setSaving] = useState(false);
@@ -42,7 +43,7 @@ export function CharacterSheetViewer({
   }, []);
 
   function scheduleSave(next: CharacterData) {
-    if (!canToggleEquipment) return;
+    if (!canEdit) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
     saveTimer.current = setTimeout(async () => {
@@ -62,6 +63,29 @@ export function CharacterSheetViewer({
     scheduleSave(next);
   }
 
+  async function handleImport(payload: {
+    name: string;
+    playerName: string;
+    data: CharacterData;
+  }) {
+    const next = syncCharacterTopLevelFields(
+      payload.name,
+      payload.playerName,
+      payload.data
+    );
+    setData(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+
+    setSaving(true);
+    setSaveError(null);
+    const { error } = await saveCharacterData(character.id, next, classes, {
+      isDm,
+      originalData: character.data,
+    });
+    if (error) setSaveError(error);
+    setSaving(false);
+  }
+
   async function persistPortrait(path: string) {
     const next = {
       ...data,
@@ -74,9 +98,27 @@ export function CharacterSheetViewer({
     return { error: error ?? null };
   }
 
+  const headerActions = canEdit ? (
+    <>
+      <JsonImportExport
+        name={character.name}
+        playerName={character.player_name}
+        data={data}
+        onImport={handleImport}
+      />
+      {canDelete ? (
+        <CharacterDeleteButton
+          characterId={character.id}
+          campaignId={campaignId}
+          characterName={character.name}
+        />
+      ) : null}
+    </>
+  ) : undefined;
+
   return (
     <>
-      {canToggleEquipment && (saving || saveError) ? (
+      {canEdit && (saving || saveError) ? (
         <p
           className={`text-xs mb-2 ${saveError ? "text-destructive" : "text-muted-foreground"}`}
         >
@@ -86,21 +128,15 @@ export function CharacterSheetViewer({
       <CharacterSheet
         data={data}
         isDm={isDm}
-        editable={false}
-        canToggleEquipment={canToggleEquipment}
-        onChange={
-          canToggleEquipment
-            ? handleChange
-            : canEditPortrait
-              ? setData
-              : undefined
-        }
+        editable={canEdit}
+        canToggleEquipment={canEdit}
+        onChange={canEdit ? handleChange : undefined}
+        headerActions={headerActions}
         classes={classes}
-        editHref={editHref}
         campaignId={campaignId}
         characterId={character.id}
-        canEditPortrait={canEditPortrait}
-        onPersistPortrait={canEditPortrait ? persistPortrait : undefined}
+        canEditPortrait={canEdit}
+        onPersistPortrait={canEdit ? persistPortrait : undefined}
       />
     </>
   );

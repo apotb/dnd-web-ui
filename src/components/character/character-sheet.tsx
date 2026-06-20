@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { DraftNumberInput } from "@/components/ui/draft-number-input";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -142,9 +141,12 @@ import {
 import {
   formatCarryCapacityLabel,
   formatEncumbranceSpeedTooltip,
+  formatInventoryItemWeightLine,
+  formatWeightLb,
   getEncumbranceInfo,
   getInventoryWeightLb,
   getMaxCarryCapacityLb,
+  resolveItemWeightLb,
 } from "@/lib/character/encumbrance";
 import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, isLightWeapon, sortInventoryForDisplay } from "@/lib/character/equip-rules";
 import { hasNaturalArmorSpecies } from "@/lib/dnd/phb/species-mechanics";
@@ -157,7 +159,7 @@ interface CharacterSheetProps {
   /** Equip/attune inventory items without full sheet edit mode. */
   canToggleEquipment?: boolean;
   onChange?: (data: CharacterData) => void;
-  editHref?: string;
+  headerActions?: ReactNode;
   /** Class catalog for deriving saving throws and other class-granted rules. */
   classes?: PhbClass[];
   campaignId?: string;
@@ -402,7 +404,7 @@ export function CharacterSheet({
   editable = false,
   canToggleEquipment = false,
   onChange,
-  editHref,
+  headerActions,
   classes,
   campaignId,
   characterId,
@@ -410,6 +412,7 @@ export function CharacterSheet({
   onPersistPortrait,
 }: CharacterSheetProps) {
   const canMutate = editable || canToggleEquipment;
+  const canEditAbilities = editable && isDm;
 
   const update = (patch: Partial<CharacterData>) => {
     if (!canMutate || !onChange) return;
@@ -925,11 +928,11 @@ export function CharacterSheet({
             <h1 className="text-2xl font-bold">
               {data.basicInfo.name || "Unnamed Character"}
             </h1>
-            {editHref && (
-              <Link href={editHref} className="retro-inline-link text-sm">
-                edit
-              </Link>
-            )}
+            {headerActions ? (
+              <div className="flex items-baseline gap-3 flex-wrap">
+                {headerActions}
+              </div>
+            ) : null}
           </div>
           <p className="text-muted-foreground">
             Level {level}
@@ -1176,7 +1179,7 @@ export function CharacterSheet({
                     <p className="text-xs text-muted-foreground">
                       {ABILITY_FULL_LABELS[key]}
                     </p>
-                    {editable ? (
+                    {canEditAbilities ? (
                       <div className="mt-1 space-y-1">
                         <Tooltip
                           content={
@@ -1307,7 +1310,7 @@ export function CharacterSheet({
                         ].join(" ")}
                       />
                     </Tooltip>
-                    {editable && (
+                    {canEditAbilities && (
                       <>
                         <Checkbox
                           checked={proficient}
@@ -1357,7 +1360,7 @@ export function CharacterSheet({
                 );
               })}
               </div>
-              {editable && (
+              {canEditAbilities && (
                 <p className="text-xs text-muted-foreground">
                   Dot = proficiency status (hover for source) · First checkbox = proficient, second = expertise · Feature-granted skills are locked on
                 </p>
@@ -2152,7 +2155,9 @@ export function CharacterSheet({
                               }}
                             >
                               <SelectTrigger className="w-full sm:w-48">
-                                <SelectValue />
+                                <SelectValue>
+                                  {ACTION_COST_LABELS[customAction.cost]}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
                                 {ACTION_COST_ORDER.map((option) => (
@@ -2233,22 +2238,9 @@ export function CharacterSheet({
                       <Field
                         label={coin.toUpperCase()}
                         value={data.inventory.currency[coin]}
-                        editable={editable}
                         type="number"
-                        min={0}
-                        onChange={(v) =>
-                          update({
-                            inventory: {
-                              ...data.inventory,
-                              currency: {
-                                ...data.inventory.currency,
-                                [coin]: Math.max(0, parseInt(v, 10) || 0),
-                              },
-                            },
-                          })
-                        }
                       />
-                      {canMutate && !editable ? (
+                      {canMutate ? (
                         <div className="flex items-center gap-1">
                           <Input
                             placeholder="±"
@@ -2359,9 +2351,15 @@ export function CharacterSheet({
                     const itemTooltip = catalogItem
                       ? formatItemTooltip(catalogItem)
                       : item.notes || null;
+                    const unitWeightLb = resolveItemWeightLb(item, catalogItem);
+                    const weightLine = formatInventoryItemWeightLine(
+                      unitWeightLb,
+                      item.quantity
+                    );
+                    const showWeightRow = editable || !!weightLine;
 
                     return (
-                      <div key={item.id} className="min-w-0 rounded-md border p-2.5 space-y-1.5">
+                      <div key={item.id} className="min-w-0 rounded-md border p-2 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             {editable ? (
@@ -2485,26 +2483,6 @@ export function CharacterSheet({
                             )
                           )}
 
-                          {!item.itemId && editable && (
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <DraftNumberInput
-                                optional
-                                allowDecimal
-                                min={0}
-                                className="w-20 h-8 text-sm"
-                                placeholder="lb"
-                                aria-label="Weight in pounds"
-                                value={item.weightLb}
-                                onCommit={(weightLb) => {
-                                  const items = [...data.inventory.items];
-                                  items[i] = { ...item, weightLb };
-                                  applyInventoryItems(items);
-                                }}
-                              />
-                              <span className="text-xs text-muted-foreground">lb</span>
-                            </div>
-                          )}
-
                           {/* Badges */}
                           {canToggleWornGear && item.equipped && !editable && !canToggleEquipment && (
                             <Badge className="text-xs shrink-0">Equipped</Badge>
@@ -2530,38 +2508,46 @@ export function CharacterSheet({
                           )}
                         </div>
 
-                        {detail && (
+                        {detail ? (
                           <p className="text-xs text-muted-foreground">{detail}</p>
-                        )}
-                        {!catalogItem && item.weightLb != null && !editable && (
-                          <p className="text-xs text-muted-foreground">{item.weightLb} lb</p>
-                        )}
-
-                        {(editable ||
-                          (equippable &&
-                            canToggleEquipment &&
-                            catalogItem?.requires_attunement)) && (
-                          <div className="flex flex-wrap items-center gap-3 pt-1">
-                            {equippable &&
-                            catalogItem?.requires_attunement &&
-                            (editable || canToggleEquipment) ? (
-                              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                                <Checkbox
-                                  checked={item.attuned ?? false}
-                                  onCheckedChange={(checked) => {
-                                    const items = [...data.inventory.items];
-                                    items[i] = { ...item, attuned: !!checked };
-                                    update({ inventory: { ...data.inventory, items } });
-                                  }}
-                                />
-                                Attuned
-                              </label>
-                            ) : null}
+                        ) : null}
+                        {showWeightRow ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                              {!item.itemId && editable ? (
+                                <>
+                                  <DraftNumberInput
+                                    optional
+                                    allowDecimal
+                                    min={0}
+                                    className="w-16 h-7 text-xs"
+                                    placeholder="0"
+                                    aria-label="Weight in pounds"
+                                    value={item.weightLb}
+                                    onCommit={(weightLb) => {
+                                      const items = [...data.inventory.items];
+                                      items[i] = { ...item, weightLb };
+                                      applyInventoryItems(items);
+                                    }}
+                                  />
+                                  <span>lb</span>
+                                  {item.quantity > 1 &&
+                                  item.weightLb != null &&
+                                  item.weightLb > 0 ? (
+                                    <span>
+                                      ({formatWeightLb(item.weightLb * item.quantity)} total)
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : weightLine ? (
+                                <span>{weightLine}</span>
+                              ) : null}
+                            </div>
                             {editable ? (
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-6 px-2 text-xs text-destructive hover:text-destructive ml-auto"
+                                className="h-6 shrink-0 px-2 text-xs text-destructive hover:text-destructive"
                                 onClick={() =>
                                   update({
                                     inventory: {
@@ -2575,7 +2561,23 @@ export function CharacterSheet({
                               </Button>
                             ) : null}
                           </div>
-                        )}
+                        ) : null}
+
+                        {equippable &&
+                        catalogItem?.requires_attunement &&
+                        (editable || canToggleEquipment) ? (
+                          <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                            <Checkbox
+                              checked={item.attuned ?? false}
+                              onCheckedChange={(checked) => {
+                                const items = [...data.inventory.items];
+                                items[i] = { ...item, attuned: !!checked };
+                                update({ inventory: { ...data.inventory, items } });
+                              }}
+                            />
+                            Attuned
+                          </label>
+                        ) : null}
                       </div>
                     );
                   })}

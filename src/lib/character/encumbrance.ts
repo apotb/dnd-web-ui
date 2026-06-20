@@ -88,6 +88,18 @@ export function formatCarryCapacityLabel(
   return `${formatWeightLb(weightLb)} / ${formatWeightLb(carryCapacityLb)}`;
 }
 
+export function formatInventoryItemWeightLine(
+  unitWeightLb: number,
+  quantity: number
+): string | null {
+  if (unitWeightLb <= 0) return null;
+  const unit = formatWeightLb(unitWeightLb);
+  if (quantity > 1) {
+    return `${unit} (${formatWeightLb(unitWeightLb * quantity)} total)`;
+  }
+  return unit;
+}
+
 export function canCarryAdditionalWeight(
   currentWeightLb: number,
   additionalLb: number,

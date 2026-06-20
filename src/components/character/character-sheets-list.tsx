@@ -157,7 +157,6 @@ export function CharacterSheetsList({
                   campaignId={campaignId}
                   isLoggedIn={!!userId}
                   canClaim={selectedCanClaim}
-                  isOwner={false}
                 />
               ) : null}
               <section className="retro-box character-sheet-wrap">
@@ -166,13 +165,8 @@ export function CharacterSheetsList({
                   campaignId={campaignId}
                   classes={classes}
                   isDm={isDm}
-                  canToggleEquipment={selectedCanEdit}
-                  canEditPortrait={selectedCanEdit}
-                  editHref={
-                    selectedCanEdit
-                      ? `/campaigns/${campaignId}/characters/${selectedCharacter.id}`
-                      : undefined
-                  }
+                  canEdit={selectedCanEdit}
+                  canDelete={isDm}
                 />
               </section>
             </>

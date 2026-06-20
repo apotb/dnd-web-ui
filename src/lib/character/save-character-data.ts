@@ -62,7 +62,11 @@ export async function saveCharacterData(
   const synced = prepareCharacterDataForSave(data, classes, options);
   const { error } = await supabase
     .from("characters")
-    .update({ data: synced })
+    .update({
+      data: synced,
+      name: synced.basicInfo.name,
+      player_name: synced.basicInfo.playerName,
+    })
     .eq("id", characterId);
 
   return { error: error?.message };

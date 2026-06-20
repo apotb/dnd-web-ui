@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 interface CharacterClaimBannerProps {
@@ -11,7 +10,6 @@ interface CharacterClaimBannerProps {
   campaignId: string;
   isLoggedIn: boolean;
   canClaim: boolean;
-  isOwner: boolean;
 }
 
 export function CharacterClaimBanner({
@@ -20,7 +18,6 @@ export function CharacterClaimBanner({
   campaignId,
   isLoggedIn,
   canClaim,
-  isOwner,
 }: CharacterClaimBannerProps) {
   const router = useRouter();
   const [claiming, setClaiming] = useState(false);
@@ -59,14 +56,6 @@ export function CharacterClaimBanner({
     }
 
     setClaiming(false);
-  }
-
-  if (isOwner) {
-    return (
-      <p className="retro-note character-claim-banner">
-        You are editing <strong>{characterName}</strong>.
-      </p>
-    );
   }
 
   if (canClaim) {

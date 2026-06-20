@@ -129,6 +129,11 @@ export function getShieldProperties(item: Item): ShieldProperties | null {
 }
 
 /** Build tooltip text with item stats and description. */
+export function formatItemCostGp(costGp: number): string {
+  const cost = costGp % 1 === 0 ? String(costGp) : costGp.toFixed(2);
+  return `${cost} gp`;
+}
+
 export function formatItemTooltip(item: Item): string | null {
   const lines: string[] = [];
 
@@ -191,9 +196,7 @@ export function formatItemTooltip(item: Item): string | null {
     lines.push(`Weight: ${item.weight_lb} lb`);
   }
   if (item.cost_gp != null) {
-    const cost =
-      item.cost_gp % 1 === 0 ? String(item.cost_gp) : item.cost_gp.toFixed(2);
-    lines.push(`Cost: ${cost} gp`);
+    lines.push(`Cost: ${formatItemCostGp(item.cost_gp)}`);
   }
   if (item.is_magic && item.rarity !== "common") {
     lines.push(rarityLabel(item.rarity));
