@@ -107,14 +107,3 @@ export function canCarryAdditionalWeight(
 ): boolean {
   return currentWeightLb + additionalLb <= getMaxCarryCapacityLb(strength);
 }
-
-export function formatEncumbranceSpeedTooltip(
-  info: EncumbranceInfo,
-  baseSpeedFt: number
-): string | null {
-  if (info.status === "normal") return null;
-  if (info.status === "overloaded") {
-    return `Carrying ${formatWeightLb(info.weightLb)} (max ${formatWeightLb(info.maxCapacityLb)}). Speed reduced to ${ENCUMBERED_SPEED_FT} ft.`;
-  }
-  return `Carrying ${formatWeightLb(info.weightLb)} (comfort limit ${formatWeightLb(info.carryCapacityLb)}). Speed reduced from ${baseSpeedFt} ft to ${ENCUMBERED_SPEED_FT} ft.`;
-}

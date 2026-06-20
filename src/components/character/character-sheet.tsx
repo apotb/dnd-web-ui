@@ -134,13 +134,18 @@ import {
 import {
   applyHpDamage,
   applyHpHeal,
+  calculateMaxHpBreakdown,
+  calculateSpeedBreakdown,
+  formatHitDiceTooltip,
   formatInitiativeTooltip,
+  formatMaxHpTooltip,
+  formatSpeedTooltip,
+  getHitDicePool,
   getInitiativeTotal,
   getSpeciesSpeedFromCharacter,
 } from "@/lib/character/combat-derivation";
 import {
   formatCarryCapacityLabel,
-  formatEncumbranceSpeedTooltip,
   formatInventoryItemWeightLine,
   formatWeightLb,
   getEncumbranceInfo,
@@ -494,6 +499,18 @@ export function CharacterSheet({
   const xp = data.basicInfo.xp ?? 0;
   const xpBar = xpProgress(xp);
 
+  const maxHpBreakdown = useMemo(
+    () => calculateMaxHpBreakdown(data, classCatalog, catalogSpecies),
+    [data, classCatalog, catalogSpecies]
+  );
+  const maxHpTooltip = formatMaxHpTooltip(maxHpBreakdown);
+  const derivedMaxHp = maxHpBreakdown.total;
+  const hitDicePool = useMemo(
+    () => getHitDicePool(data, classCatalog, level),
+    [data, classCatalog, level]
+  );
+  const hitDiceTooltip = formatHitDiceTooltip(data, classCatalog);
+
   const classDisplay =
     data.basicInfo.classes.length > 0
       ? data.basicInfo.classes.join(" / ")
@@ -662,7 +679,7 @@ export function CharacterSheet({
     if (!trimmed || !/^\d+$/.test(trimmed)) return;
     const amount = parseInt(trimmed, 10);
     if (amount <= 0) return;
-    updateCombat(applyHpHeal(data.combat, amount));
+    updateCombat(applyHpHeal(data.combat, amount, derivedMaxHp));
     setHpDelta("");
   }
 
@@ -899,10 +916,12 @@ export function CharacterSheet({
     [strength, data.inventory.items, catalogItems, baseSpeciesSpeed]
   );
 
-  const speedTooltip = formatEncumbranceSpeedTooltip(
-    encumbrance,
-    baseSpeciesSpeed
+  const speedBreakdown = useMemo(
+    () => calculateSpeedBreakdown(data, encumbrance, catalogSpecies),
+    [data, encumbrance, catalogSpecies]
   );
+  const speedTooltip = formatSpeedTooltip(speedBreakdown);
+  const effectiveSpeedFt = speedBreakdown.effectiveSpeedFt;
 
   const initiativeTotal = getInitiativeTotal(data);
   const initiativeTooltip = formatInitiativeTooltip(data);
@@ -1114,22 +1133,19 @@ export function CharacterSheet({
                   <Stat label="AC" value={acBreakdown.total} />
                 </div>
               </Tooltip>
-              <Stat
-                label="HP"
-                value={`${data.combat.currentHp}/${data.combat.maxHp}`}
-              />
-              {speedTooltip ? (
-                <Tooltip content={speedTooltip}>
-                  <div className="cursor-default">
-                    <Stat
-                      label="Speed"
-                      value={`${encumbrance.effectiveSpeedFt} ft`}
-                    />
-                  </div>
-                </Tooltip>
-              ) : (
-                <Stat label="Speed" value={`${encumbrance.effectiveSpeedFt} ft`} />
-              )}
+              <Tooltip content={maxHpTooltip}>
+                <div className="cursor-default">
+                  <Stat
+                    label="HP"
+                    value={`${data.combat.currentHp}/${derivedMaxHp}`}
+                  />
+                </div>
+              </Tooltip>
+              <Tooltip content={speedTooltip}>
+                <div className="cursor-default">
+                  <Stat label="Speed" value={`${effectiveSpeedFt} ft`} />
+                </div>
+              </Tooltip>
               <Stat
                 label="Passive Perception"
                 value={getPassivePerception(data)}
@@ -1377,31 +1393,35 @@ export function CharacterSheet({
                 <p className="text-sm font-medium">{acBreakdown.total}</p>
               </div>
             </Tooltip>
-            <Field
-              label="Max HP"
-              value={data.combat.maxHp}
-              editable={editable}
-              type="number"
-              onChange={(v) => updateCombat({ maxHp: parseInt(v) || 0 })}
-            />
-            {editable ? (
-              <Field
-                label="Current HP"
-                value={data.combat.currentHp}
-                editable
-                type="number"
-                onChange={(v) => updateCombat({ currentHp: parseInt(v) || 0 })}
-              />
-            ) : (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Current HP</Label>
-                <p className="text-sm font-medium">{data.combat.currentHp}</p>
+            <Tooltip content={maxHpTooltip}>
+              <div className="space-y-1 cursor-default">
+                <Label className="text-xs text-muted-foreground">Max HP</Label>
+                <p className="text-sm font-medium">{derivedMaxHp}</p>
+              </div>
+            </Tooltip>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Current HP</Label>
+              <div className="flex items-center gap-1 min-w-0">
+                <p className="text-sm font-medium shrink-0 tabular-nums">
+                  {data.combat.currentHp}
+                </p>
                 {canMutate ? (
-                  <div className="flex items-center gap-1">
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 w-7 shrink-0 p-0 text-base leading-none"
+                      aria-label="Damage"
+                      disabled={!hpDeltaValid}
+                      onClick={handleHpDamage}
+                    >
+                      −
+                    </Button>
                     <Input
-                      placeholder="±"
+                      placeholder="#"
                       value={hpDelta}
-                      className="h-7 w-12 min-w-0 px-2 text-center"
+                      className="h-7 w-9 min-w-0 shrink px-1 text-xs text-center"
                       inputMode="numeric"
                       aria-label="HP change amount"
                       onChange={(e) => {
@@ -1422,27 +1442,16 @@ export function CharacterSheet({
                       size="sm"
                       variant="outline"
                       className="h-7 w-7 shrink-0 p-0 text-base leading-none"
-                      aria-label="Damage"
-                      disabled={!hpDeltaValid}
-                      onClick={handleHpDamage}
-                    >
-                      −
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-7 w-7 shrink-0 p-0 text-base leading-none"
                       aria-label="Heal"
                       disabled={!hpDeltaValid}
                       onClick={handleHpHeal}
                     >
                       +
                     </Button>
-                  </div>
+                  </>
                 ) : null}
               </div>
-            )}
+            </div>
             <Field
               label="Temp HP"
               value={data.combat.tempHp}
@@ -1450,56 +1459,32 @@ export function CharacterSheet({
               type="number"
               onChange={(v) => updateCombat({ tempHp: parseInt(v) || 0 })}
             />
-            {editable ? (
-              <Field
-                label="Initiative Bonus"
-                value={data.combat.initiativeBonus}
-                editable
-                type="number"
-                allowNegative
-                onChange={(v) =>
-                  updateCombat({ initiativeBonus: parseInt(v) || 0 })
-                }
-              />
-            ) : (
-              <Tooltip content={initiativeTooltip}>
-                <div className="space-y-1 cursor-default">
-                  <Label className="text-xs text-muted-foreground">Initiative</Label>
-                  <p className="text-sm font-medium">
-                    {formatModifier(initiativeTotal)}
-                  </p>
-                </div>
-              </Tooltip>
-            )}
-            {speedTooltip ? (
-              <Tooltip content={speedTooltip}>
-                <div className="space-y-1 cursor-default">
-                  <Label className="text-xs text-muted-foreground">Speed</Label>
-                  <p className="text-sm font-medium">
-                    {encumbrance.effectiveSpeedFt} ft
-                  </p>
-                </div>
-              </Tooltip>
-            ) : (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Speed</Label>
+            <Tooltip content={initiativeTooltip}>
+              <div className="space-y-1 cursor-default">
+                <Label className="text-xs text-muted-foreground">Initiative</Label>
                 <p className="text-sm font-medium">
-                  {encumbrance.effectiveSpeedFt} ft
+                  {formatModifier(initiativeTotal)}
                 </p>
               </div>
-            )}
+            </Tooltip>
+            <Tooltip content={speedTooltip}>
+              <div className="space-y-1 cursor-default">
+                <Label className="text-xs text-muted-foreground">Speed</Label>
+                <p className="text-sm font-medium">{effectiveSpeedFt} ft</p>
+              </div>
+            </Tooltip>
             {encumbrance.status !== "normal" ? (
               <p className="text-xs text-destructive sm:col-span-2">
-                Base speed {baseSpeciesSpeed} ft · effective{" "}
-                {encumbrance.effectiveSpeedFt} ft (encumbered)
+                Base speed {baseSpeciesSpeed} ft · effective {effectiveSpeedFt}{" "}
+                ft (encumbered)
               </p>
             ) : null}
-            <Field
-              label="Hit Dice"
-              value={data.combat.hitDice}
-              editable={editable}
-              onChange={(v) => updateCombat({ hitDice: v })}
-            />
+            <Tooltip content={hitDiceTooltip}>
+              <div className="space-y-1 cursor-default">
+                <Label className="text-xs text-muted-foreground">Hit Dice</Label>
+                <p className="text-sm font-medium">{hitDicePool}</p>
+              </div>
+            </Tooltip>
             <Field
               label="Exhaustion"
               value={data.combat.exhaustion}

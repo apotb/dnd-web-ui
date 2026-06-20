@@ -39,6 +39,10 @@ import {
   type CombatantType,
 } from "@/lib/schemas/combat";
 import { applyDamage, applyHealing } from "@/lib/dnd/calculations";
+import {
+  calculateMaxHpBreakdown,
+  getInitiativeTotal,
+} from "@/lib/character/combat-derivation";
 import { useRealtimeEncounter } from "@/lib/hooks/use-realtime-encounter";
 
 interface CombatTrackerDmProps {
@@ -697,9 +701,8 @@ function AddPartyDialog({
 
   async function addCharacter(character: ParsedCharacter) {
     const supabase = createClient();
-    const dexMod = Math.floor((character.data.abilityScores.dex - 10) / 2);
-    const initiative =
-      dexMod + (character.data.combat.initiativeBonus ?? 0);
+    const { total: maxHp } = calculateMaxHpBreakdown(character.data);
+    const initiative = getInitiativeTotal(character.data);
 
     await supabase.from("encounter_combatants").insert({
       encounter_id: encounterId,
@@ -711,8 +714,8 @@ function AddPartyDialog({
         name: character.name,
         type: "player",
         ac: character.data.combat.ac,
-        maxHp: character.data.combat.maxHp,
-        currentHp: character.data.combat.currentHp,
+        maxHp,
+        currentHp: Math.min(character.data.combat.currentHp, maxHp),
         tempHp: character.data.combat.tempHp,
         conditions: character.data.combat.conditions,
         concentration: character.data.combat.concentration,

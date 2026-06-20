@@ -1,6 +1,7 @@
 import type { CharacterData } from "@/lib/schemas/character";
 import { clampInspiration } from "@/lib/dnd/calculations";
 import { syncAcFromEquipment } from "@/lib/character/ac-derivation";
+import { syncCombatDerivedStats } from "@/lib/character/combat-derivation";
 import { sanitizeEquippedItems } from "@/lib/character/equip-rules";
 import { syncSavingThrowsFromClass, resolveCharacterClass } from "@/lib/character/class-derivation";
 import { stripGrantedFeaturesForSave } from "@/lib/character/feature-derivation";
@@ -41,7 +42,8 @@ export function prepareCharacterDataForSave(
   const withSpells = cls?.spellcasting
     ? { ...granted, spells: syncSpellcastingFromClass(granted, cls, level) }
     : granted;
-  const synced = syncAcFromEquipment(withSpells, {}, classes);
+  const syncedAc = syncAcFromEquipment(withSpells, {}, classes);
+  const synced = syncCombatDerivedStats(syncedAc, classes);
   const inspirationSource = options?.isDm
     ? synced.inspiration ?? 0
     : options?.originalData?.inspiration ?? synced.inspiration ?? 0;
