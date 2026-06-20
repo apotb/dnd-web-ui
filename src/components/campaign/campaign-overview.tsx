@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { PartyInventory } from "@/components/campaign/party-inventory";
+import { CampaignDayAdvance } from "@/components/campaign/campaign-day-advance";
 import { HarptosCalendar } from "@/components/campaign/harptos-calendar";
 import { CampaignMaps } from "@/components/campaign/campaign-maps";
 import { CampaignNotables } from "@/components/campaign/campaign-notables";
@@ -158,6 +159,12 @@ export function CampaignOverview({
 
       {activeTab === "world" ? (
         <div className="retro-stack">
+          {isDm ? (
+            <CampaignDayAdvance
+              campaignId={campaignId}
+              initialWorldData={initialWorldData}
+            />
+          ) : null}
           <HarptosCalendar
             campaignId={campaignId}
             initialWorldData={initialWorldData}

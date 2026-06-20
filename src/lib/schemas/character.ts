@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HARPTOS_FESTIVAL_IDS, type HarptosDate } from "@/lib/dnd/harptos-calendar";
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -277,6 +278,22 @@ export const inventorySchema = z.object({
   notes: z.string().default(""),
 });
 
+/** Last calendar date the character ate or drank (Harptos). */
+export const storedHarptosDateSchema = z
+  .object({
+    year: z.number().int().min(0),
+    month: z.number().int().min(1).max(12),
+    day: z.number().int().min(0).max(30),
+    festival: z.enum(HARPTOS_FESTIVAL_IDS).nullable().optional(),
+  })
+  .nullable()
+  .default(null);
+
+export const suppliesSchema = z.object({
+  fedDate: storedHarptosDateSchema,
+  wateredDate: storedHarptosDateSchema,
+});
+
 export const featureSchema = z.object({
   id: z.string().default(() => crypto.randomUUID()),
   name: z.string().default(""),
@@ -371,6 +388,7 @@ export const characterDataSchema = z.preprocess(
   customActions: z.array(characterActionSchema).default([]),
   spells: spellsSchema.default(() => spellsSchema.parse({})),
   inventory: inventorySchema.default(() => inventorySchema.parse({})),
+  supplies: suppliesSchema.default(() => suppliesSchema.parse({})),
   featureChoices: featureChoicesSchema.default(() => featureChoicesSchema.parse({})),
   speciesChoices: speciesChoicesSchema.default(() => speciesChoicesSchema.parse({})),
   backgroundChoices: backgroundChoicesSchema.default(() => backgroundChoicesSchema.parse({})),
@@ -396,6 +414,7 @@ export type CharacterAction = z.infer<typeof characterActionSchema>;
 export type Spell = z.infer<typeof spellSchema>;
 export type Spells = z.infer<typeof spellsSchema>;
 export type Inventory = z.infer<typeof inventorySchema>;
+export type Supplies = z.infer<typeof suppliesSchema>;
 export type FeatureChoices = z.infer<typeof featureChoicesSchema>;
 export type SpeciesChoices = z.infer<typeof speciesChoicesSchema>;
 export type BackgroundChoices = z.infer<typeof backgroundChoicesSchema>;

@@ -611,6 +611,10 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       }),
       notes: "",
     },
+    supplies: {
+      fedDate: null,
+      wateredDate: null,
+    },
     featureChoices: {
       fightingStyle: state.fightingStyle,
       favoredEnemy: state.favoredEnemy,

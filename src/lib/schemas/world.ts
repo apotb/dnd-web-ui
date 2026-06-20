@@ -30,6 +30,8 @@ export const calendarDateSchema = z
 
 export const worldDataSchema = z.object({
   calendar: calendarDateSchema.default(DEFAULT_CAMPAIGN_DATE),
+  /** True after the DM has advanced the calendar at least once via Next Day. */
+  dailySuppliesActive: z.boolean().default(false),
 });
 
 export type CalendarDate = HarptosDate;
