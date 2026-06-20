@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { buildNextWorldData } from "@/lib/campaign/advance-day";
+import { advanceCampaignDay } from "@/lib/campaign/advance-day";
 import { formatHarptosDate } from "@/lib/dnd/harptos-calendar";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
 import { getCampaignCalendarDate, type WorldData } from "@/lib/schemas/world";
@@ -25,19 +25,11 @@ export function CampaignDayAdvance({
     setAdvancing(true);
     setMessage(null);
 
-    const nextWorldData = buildNextWorldData(worldData);
     const supabase = createClient();
-    const { error } = await supabase
-      .from("campaigns")
-      .update({ world_data: nextWorldData })
-      .eq("id", campaignId);
+    const { error } = await advanceCampaignDay(supabase, campaignId, worldData);
 
     if (error) {
-      setMessage(error.message);
-    } else {
-      setMessage(
-        `Now ${formatHarptosDate(nextWorldData.calendar)} — characters need food and water.`
-      );
+      setMessage(error);
     }
 
     setAdvancing(false);

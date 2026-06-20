@@ -614,7 +614,11 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
     supplies: {
       fedDate: null,
       wateredDate: null,
+      daysWithoutFood: 0,
+      waterGallonsToday: 0,
+      pendingDehydrationSave: null,
     },
+    exhaustionLevels: [],
     featureChoices: {
       fightingStyle: state.fightingStyle,
       favoredEnemy: state.favoredEnemy,

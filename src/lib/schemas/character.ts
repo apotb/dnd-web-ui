@@ -290,7 +290,29 @@ export const storedHarptosDateSchema = z
 export const suppliesSchema = z.object({
   fedDate: storedHarptosDateSchema,
   wateredDate: storedHarptosDateSchema,
+  daysWithoutFood: z.number().int().min(0).default(0),
+  waterGallonsToday: z.number().min(0).default(0),
+  pendingDehydrationSave: z
+    .object({
+      date: storedHarptosDateSchema,
+      dc: z.number().int().min(0).default(15),
+      exhaustionBeforeCheck: z.number().int().min(0).default(0),
+    })
+    .nullable()
+    .default(null),
 });
+
+export const exhaustionReasonSchema = z.enum(["Starvation", "Dehydration"]);
+
+export const exhaustionLevelSchema = z.object({
+  id: z.string().default(() => crypto.randomUUID()),
+  reason: exhaustionReasonSchema,
+  effect: z.string().default(""),
+  gainedDate: storedHarptosDateSchema,
+});
+
+export type ExhaustionReason = z.infer<typeof exhaustionReasonSchema>;
+export type ExhaustionLevel = z.infer<typeof exhaustionLevelSchema>;
 
 export const featureSchema = z.object({
   id: z.string().default(() => crypto.randomUUID()),
@@ -387,6 +409,7 @@ export const characterDataSchema = z.preprocess(
   spells: spellsSchema.default(() => spellsSchema.parse({})),
   inventory: inventorySchema.default(() => inventorySchema.parse({})),
   supplies: suppliesSchema.default(() => suppliesSchema.parse({})),
+  exhaustionLevels: z.array(exhaustionLevelSchema).max(6).default([]),
   featureChoices: featureChoicesSchema.default(() => featureChoicesSchema.parse({})),
   speciesChoices: speciesChoicesSchema.default(() => speciesChoicesSchema.parse({})),
   backgroundChoices: backgroundChoicesSchema.default(() => backgroundChoicesSchema.parse({})),

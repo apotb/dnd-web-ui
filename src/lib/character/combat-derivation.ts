@@ -8,6 +8,12 @@ import type { CharacterData } from "@/lib/schemas/character";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 import { abilityModifier, formatModifier } from "@/lib/dnd/calculations";
+import {
+  applyExhaustionToSpeed,
+  getExhaustionMaxHpSheetNote,
+  getExhaustionModifiers,
+  getExhaustionSpeedSheetNote,
+} from "@/lib/dnd/exhaustion";
 import { levelFromXp } from "@/lib/dnd/xp";
 
 export interface CombatStatSource {
@@ -66,6 +72,13 @@ export function calculateSpeedBreakdown(
   const baseSpeedFt = getSpeciesSpeedFromCharacter(data, pool);
   const sourceLabel = getSpeciesSpeedSourceLabel(data, pool);
   const sources: CombatStatSource[] = [{ label: sourceLabel, value: baseSpeedFt }];
+
+  const exhaustionSpeed = applyExhaustionToSpeed(baseSpeedFt, data);
+  const exhaustionMods = getExhaustionModifiers(data);
+  if (exhaustionMods.speedMultiplier !== 1) {
+    sources.push({ label: "Exhaustion", value: exhaustionSpeed });
+  }
+
   if (encumbranceInfo.status !== "normal") {
     sources.push({ label: "Encumbered", value: ENCUMBERED_SPEED_FT });
   }
@@ -75,11 +88,29 @@ export function calculateSpeedBreakdown(
   };
 }
 
-export function formatSpeedTooltip(breakdown: SpeedBreakdown): string | null {
+export function formatSpeedTooltip(
+  breakdown: SpeedBreakdown,
+  data?: CharacterData,
+  baseSpeedFt?: number
+): string | null {
   if (!breakdown.sources.length) return null;
-  return breakdown.sources
-    .map((source) => `${source.label}: ${source.value} ft`)
-    .join("\n");
+  const lines = breakdown.sources
+    .filter((source) => source.label !== "Exhaustion")
+    .map((source) => {
+      if (source.label === "Encumbered") {
+        return `${source.label}: Max ${source.value} ft`;
+      }
+      return `${source.label}: ${source.value} ft`;
+    });
+  if (data != null) {
+    const base =
+      baseSpeedFt ??
+      breakdown.sources.find((source) => source.label !== "Encumbered")?.value ??
+      0;
+    const note = getExhaustionSpeedSheetNote(base, data);
+    if (note) lines.push(note);
+  }
+  return lines.join("\n");
 }
 
 /** Species-granted HP at 1st level (level-up bonuses handled separately later). */
@@ -120,16 +151,57 @@ export function calculateMaxHpBreakdown(
   return { total, sources };
 }
 
-export function formatMaxHpTooltip(breakdown: MaxHpBreakdown): string | null {
+export function applyExhaustionToMaxHpBreakdown(
+  base: MaxHpBreakdown,
+  data: CharacterData
+): MaxHpBreakdown {
+  const mods = getExhaustionModifiers(data);
+  if (mods.maxHpMultiplier === 1) return base;
+
+  if (mods.maxHpMultiplier === 0) {
+    return {
+      total: 0,
+      sources: [...base.sources, { label: "Exhaustion (death)", value: 0 }],
+    };
+  }
+
+  const halved = Math.floor(base.total / 2);
+  return {
+    total: halved,
+    sources: [...base.sources, { label: "Exhaustion", value: halved }],
+  };
+}
+
+export function calculateEffectiveMaxHpBreakdown(
+  data: CharacterData,
+  catalogClasses?: PhbClass[],
+  speciesList?: PhbSpecies[]
+): MaxHpBreakdown {
+  return applyExhaustionToMaxHpBreakdown(
+    calculateMaxHpBreakdown(data, catalogClasses, speciesList),
+    data
+  );
+}
+
+export function formatMaxHpTooltip(
+  breakdown: MaxHpBreakdown,
+  data?: CharacterData,
+  baseMaxHp?: number
+): string | null {
   if (!breakdown.sources.length) return null;
-  return breakdown.sources
+  const lines = breakdown.sources
+    .filter((source) => !source.label.startsWith("Exhaustion"))
     .map((source) => {
       if (source.label === "Hit die") {
         return `${source.label}: d${source.value}`;
       }
       return `${source.label}: ${source.value >= 0 ? "+" : ""}${source.value}`;
-    })
-    .join("\n");
+    });
+  if (data != null && baseMaxHp != null) {
+    const note = getExhaustionMaxHpSheetNote(baseMaxHp, data);
+    if (note) lines.push(note);
+  }
+  return lines.join("\n");
 }
 
 /** Total hit dice pool (e.g. `5d10`); spent dice tracked separately later. */
@@ -165,13 +237,13 @@ export function formatInitiativeTooltip(data: CharacterData): string {
   return parts.join("\n");
 }
 
-/** Sync stored max HP, hit dice, and cap current HP — for saves and combat import. */
+/** Sync stored max HP, hit dice, cap current HP, and exhaustion level from stack. */
 export function syncCombatDerivedStats(
   data: CharacterData,
   catalogClasses?: PhbClass[],
   speciesList?: PhbSpecies[]
 ): CharacterData {
-  const { total: maxHp } = calculateMaxHpBreakdown(
+  const { total: maxHp } = calculateEffectiveMaxHpBreakdown(
     data,
     catalogClasses,
     speciesList
@@ -180,6 +252,7 @@ export function syncCombatDerivedStats(
   const pool = resolveSpeciesList(speciesList);
   const speed = getSpeciesSpeedFromCharacter(data, pool);
   const currentHp = Math.min(data.combat.currentHp, maxHp);
+  const exhaustion = data.exhaustionLevels.length;
   return {
     ...data,
     combat: {
@@ -188,6 +261,7 @@ export function syncCombatDerivedStats(
       hitDice,
       speed,
       currentHp,
+      exhaustion,
     },
   };
 }

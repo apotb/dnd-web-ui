@@ -21,6 +21,15 @@ import {
 import type { CharacterData, AbilityKey, SkillKey, ActionCost } from "@/lib/schemas/character";
 import { choicePlaceholder, type FeatureChoiceKey } from "@/lib/character/feature-choices";
 import {
+  appendExhaustionSheetNote,
+  applyExhaustionToSpeed,
+  formatExhaustionTooltipLines,
+  getExhaustionAbilityCheckSheetNote,
+  getExhaustionAttackSaveSheetNote,
+  getExhaustionCount,
+} from "@/lib/dnd/exhaustion";
+import { getStarvationTooltipLines } from "@/lib/dnd/survival";
+import {
   ABILITY_FULL_LABELS,
   ABILITY_LABELS,
   SKILL_ABILITY_MAP,
@@ -134,6 +143,7 @@ import {
 import {
   applyHpDamage,
   applyHpHeal,
+  calculateEffectiveMaxHpBreakdown,
   calculateMaxHpBreakdown,
   calculateSpeedBreakdown,
   formatHitDiceTooltip,
@@ -499,12 +509,21 @@ export function CharacterSheet({
   const xp = data.basicInfo.xp ?? 0;
   const xpBar = xpProgress(xp);
 
-  const maxHpBreakdown = useMemo(
+  const baseMaxHpBreakdown = useMemo(
     () => calculateMaxHpBreakdown(data, classCatalog, catalogSpecies),
     [data, classCatalog, catalogSpecies]
   );
-  const maxHpTooltip = formatMaxHpTooltip(maxHpBreakdown);
+  const maxHpBreakdown = useMemo(
+    () => calculateEffectiveMaxHpBreakdown(data, classCatalog, catalogSpecies),
+    [data, classCatalog, catalogSpecies]
+  );
+  const maxHpTooltip = formatMaxHpTooltip(
+    maxHpBreakdown,
+    data,
+    baseMaxHpBreakdown.total
+  );
   const derivedMaxHp = maxHpBreakdown.total;
+  const exhaustionAttackSaveNote = getExhaustionAttackSaveSheetNote(data);
   const hitDicePool = useMemo(
     () => getHitDicePool(data, classCatalog, level),
     [data, classCatalog, level]
@@ -906,25 +925,38 @@ export function CharacterSheet({
     [data, catalogSpecies]
   );
 
+  const speedBeforeEncumbrance = useMemo(
+    () => applyExhaustionToSpeed(baseSpeciesSpeed, data),
+    [baseSpeciesSpeed, data]
+  );
+
   const encumbrance = useMemo(
     () =>
       getEncumbranceInfo(
         strength,
         getInventoryWeightLb(data.inventory.items, catalogItems),
-        baseSpeciesSpeed
+        speedBeforeEncumbrance
       ),
-    [strength, data.inventory.items, catalogItems, baseSpeciesSpeed]
+    [strength, data.inventory.items, catalogItems, speedBeforeEncumbrance]
   );
 
   const speedBreakdown = useMemo(
     () => calculateSpeedBreakdown(data, encumbrance, catalogSpecies),
     [data, encumbrance, catalogSpecies]
   );
-  const speedTooltip = formatSpeedTooltip(speedBreakdown);
+  const speedTooltip = formatSpeedTooltip(speedBreakdown, data, baseSpeciesSpeed);
   const effectiveSpeedFt = speedBreakdown.effectiveSpeedFt;
 
   const initiativeTotal = getInitiativeTotal(data);
-  const initiativeTooltip = formatInitiativeTooltip(data);
+  const initiativeTooltip = appendExhaustionSheetNote(
+    formatInitiativeTooltip(data),
+    getExhaustionAbilityCheckSheetNote(data)
+  );
+
+  const passivePerceptionTooltip = appendExhaustionSheetNote(
+    `Perception ${formatModifier(getPassivePerception(data))}`,
+    getExhaustionAbilityCheckSheetNote(data)
+  );
 
   const applyInventoryItems = (items: CharacterData["inventory"]["items"]) => {
     const weight = getInventoryWeightLb(items, catalogItems);
@@ -1146,10 +1178,14 @@ export function CharacterSheet({
                   <Stat label="Speed" value={`${effectiveSpeedFt} ft`} />
                 </div>
               </Tooltip>
-              <Stat
-                label="Passive Perception"
-                value={getPassivePerception(data)}
-              />
+              <Tooltip content={passivePerceptionTooltip}>
+                <div className="cursor-default">
+                  <Stat
+                    label="Passive Perception"
+                    value={getPassivePerception(data)}
+                  />
+                </div>
+              </Tooltip>
             </CardContent>
           </Card>
           <div className="space-y-1">
@@ -1187,6 +1223,9 @@ export function CharacterSheet({
         </TabsContent>
 
         <TabsContent value="abilities" className="space-y-4">
+          {exhaustionAttackSaveNote ? (
+            <p className="text-sm text-muted-foreground">{exhaustionAttackSaveNote}</p>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {(Object.keys(ABILITY_LABELS) as AbilityKey[]).map((key) => (
               <Card key={key}>
@@ -1269,9 +1308,23 @@ export function CharacterSheet({
                           ].join(" ")}
                         />
                       </Tooltip>
-                      <span className="text-xs">
-                        Save {formatModifier(getSavingThrowTotal(data, key, classCatalog))}
-                      </span>
+                      <Tooltip
+                        content={appendExhaustionSheetNote(
+                          [
+                            `${ABILITY_FULL_LABELS[key]}: ${formatModifier(mods[key])}`,
+                            isClassSavingThrowProficient(data, key, classCatalog)
+                              ? `Proficiency: ${formatModifier(profBonus)}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join("\n"),
+                          getExhaustionAttackSaveSheetNote(data)
+                        )}
+                      >
+                        <span className="text-xs cursor-default">
+                          Save {formatModifier(getSavingThrowTotal(data, key, classCatalog))}
+                        </span>
+                      </Tooltip>
                     </div>
                   </div>
                 </CardContent>
@@ -1293,17 +1346,20 @@ export function CharacterSheet({
                 const granted = isGrantedSkill(skill, skillSourcesMap);
                 const proficient = isSkillProficient(data, skill, skillSourcesMap);
                 const ability = SKILL_ABILITY_MAP[skill];
-                const skillTooltip = (() => {
-                  if (skillData.override !== undefined) {
-                    return `Override: ${formatModifier(skillData.override)}`;
-                  }
-                  const parts = [
-                    `${ABILITY_FULL_LABELS[ability]}: ${formatModifier(mods[ability])}`,
-                  ];
-                  if (proficient) parts.push(`Proficiency: ${formatModifier(profBonus)}`);
-                  if (skillData.expertise) parts.push(`Expertise: ${formatModifier(profBonus)}`);
-                  return parts.join("\n");
-                })();
+                const skillTooltip = appendExhaustionSheetNote(
+                  (() => {
+                    if (skillData.override !== undefined) {
+                      return `Override: ${formatModifier(skillData.override)}`;
+                    }
+                    const parts = [
+                      `${ABILITY_FULL_LABELS[ability]}: ${formatModifier(mods[ability])}`,
+                    ];
+                    if (proficient) parts.push(`Proficiency: ${formatModifier(profBonus)}`);
+                    if (skillData.expertise) parts.push(`Expertise: ${formatModifier(profBonus)}`);
+                    return parts.join("\n");
+                  })(),
+                  getExhaustionAbilityCheckSheetNote(data)
+                );
                 const proficiencyTooltip = formatSkillProficiencyTooltip(
                   skill,
                   data,
@@ -1473,29 +1529,29 @@ export function CharacterSheet({
                 <p className="text-sm font-medium">{effectiveSpeedFt} ft</p>
               </div>
             </Tooltip>
-            {encumbrance.status !== "normal" ? (
-              <p className="text-xs text-destructive sm:col-span-2">
-                Base speed {baseSpeciesSpeed} ft · effective {effectiveSpeedFt}{" "}
-                ft (encumbered)
-              </p>
-            ) : null}
             <Tooltip content={hitDiceTooltip}>
               <div className="space-y-1 cursor-default">
                 <Label className="text-xs text-muted-foreground">Hit Dice</Label>
                 <p className="text-sm font-medium">{hitDicePool}</p>
               </div>
             </Tooltip>
-            <Field
-              label="Exhaustion"
-              value={data.combat.exhaustion}
-              editable={editable}
-              type="number"
-              min={0}
-              max={6}
-              onChange={(v) =>
-                updateCombat({ exhaustion: parseInt(v) || 0 })
-              }
-            />
+            <Tooltip
+              content={(() => {
+                const lines = [
+                  ...getStarvationTooltipLines(data),
+                  "",
+                  ...formatExhaustionTooltipLines(data.exhaustionLevels),
+                ];
+                return lines.join("\n");
+              })()}
+            >
+              <div className="space-y-1 cursor-default">
+                <Label className="text-xs text-muted-foreground">
+                  Exhaustion
+                </Label>
+                <p className="text-sm font-medium">{getExhaustionCount(data)}</p>
+              </div>
+            </Tooltip>
           </div>
 
           <Card>
@@ -1612,6 +1668,9 @@ export function CharacterSheet({
         </TabsContent>
 
         <TabsContent value="attacks" className="space-y-4">
+          {exhaustionAttackSaveNote ? (
+            <p className="text-sm text-muted-foreground">{exhaustionAttackSaveNote}</p>
+          ) : null}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Attacks</CardTitle>
@@ -1647,6 +1706,13 @@ export function CharacterSheet({
                 </p>
               )}
               {derivedAttacks.map((attack) => {
+                const attackTooltip = appendExhaustionSheetNote(
+                  formatAttackRollLine(attack),
+                  attack.rollType === "attack"
+                    ? getExhaustionAttackSaveSheetNote(data)
+                    : null
+                );
+
                 if (attack.source !== "manual") {
                   return (
                     <div key={attack.id} className="rounded-md border p-3 flex items-start justify-between gap-3">
@@ -1663,11 +1729,13 @@ export function CharacterSheet({
                                   : "Special"}
                           </Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          {formatAttackRollLine(attack)} ·{" "}
-                          {attack.damageDice} {attack.damageType}
-                          {attack.range && ` · ${attack.range}`}
-                        </p>
+                        <Tooltip content={attackTooltip}>
+                          <p className="text-sm text-muted-foreground cursor-default">
+                            {formatAttackRollLine(attack)} ·{" "}
+                            {attack.damageDice} {attack.damageType}
+                            {attack.range && ` · ${attack.range}`}
+                          </p>
+                        </Tooltip>
                         {attack.notes && (
                           <p className="text-xs text-muted-foreground mt-0.5">{attack.notes}</p>
                         )}

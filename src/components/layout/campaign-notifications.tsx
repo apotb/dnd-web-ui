@@ -1,23 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import {
   getFoodItems,
   getWaterItems,
+  formatSupplyItemTooltip,
   markFed,
   markWatered,
   needsFood,
   needsWater,
 } from "@/lib/dnd/supplies";
+import {
+  formatGallons,
+  getFoodNotificationInfo,
+  getWaterNotificationInfo,
+} from "@/lib/dnd/survival";
 import { useRealtimeCharacter } from "@/lib/hooks/use-realtime-character";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
-import type { InventoryItem } from "@/lib/schemas/character";
+import {
+  groupNotificationsByCategory,
+  type CampaignNotificationItem,
+  type NotificationAlertLevel,
+} from "@/lib/notifications/categories";
+import type { CharacterData, InventoryItem } from "@/lib/schemas/character";
 import {
   getCampaignCalendarDate,
   type WorldData,
 } from "@/lib/schemas/world";
+
+import { DehydrationSaveModal } from "@/components/layout/dehydration-save-modal";
+import { DeathSceneModal } from "@/components/layout/death-scene-modal";
+import { Tooltip } from "@/components/ui/tooltip";
+import {
+  getExhaustionDeathMessage,
+  getExhaustionModifiers,
+} from "@/lib/dnd/exhaustion";
 
 type SupplyKind = "food" | "water";
 
@@ -33,24 +53,89 @@ interface CampaignNotificationsProps {
   isDm: boolean;
 }
 
+function CriticalAlertBadge() {
+  return (
+    <span
+      className="campaign-notification-category-badge campaign-notification-category-badge-critical"
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="campaign-notification-category-icon"
+        aria-hidden="true"
+      >
+        <rect x="10.25" y="4.5" width="3.5" height="11" rx="1.75" fill="currentColor" />
+        <circle cx="12" cy="19.25" r="2.25" fill="currentColor" />
+      </svg>
+    </span>
+  );
+}
+
+function ReminderAlertBadge() {
+  return (
+    <span
+      className="campaign-notification-category-badge campaign-notification-category-badge-reminder"
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="campaign-notification-category-icon"
+        aria-hidden="true"
+      >
+        <path
+          d="M12 3c-1.1 0-2 .9-2 2v.3A6 6 0 0 0 6 11v4l-2 2v1h16v-1l-2-2v-4a6 6 0 0 0-4-5.7V5c0-1.1-.9-2-2-2zm-1 17h2a1 1 0 0 0-2 0z"
+          fill="currentColor"
+        />
+      </svg>
+    </span>
+  );
+}
+
+function CategoryBadge({ level }: { level: NotificationAlertLevel }) {
+  return level === "critical" ? <CriticalAlertBadge /> : <ReminderAlertBadge />;
+}
+
+function NotificationButton({ item }: { item: CampaignNotificationItem }) {
+  return (
+    <div className="campaign-notification-wrap">
+      <button
+        type="button"
+        className={`campaign-notification-btn${item.imageClassName ? ` ${item.imageClassName}` : ""}`}
+        title={item.title}
+        aria-label={item.ariaLabel}
+        onClick={item.onClick}
+      >
+        <img src={item.imageSrc} alt="" className="campaign-notification-img" />
+      </button>
+      {item.category === "alert" ? (
+        <CategoryBadge level={item.alertLevel} />
+      ) : null}
+    </div>
+  );
+}
+
 function SupplyPicker({
   kind,
+  data,
+  worldData,
   items,
   onSelect,
   onCancel,
   saving,
 }: {
   kind: SupplyKind;
+  data: CharacterData;
+  worldData: WorldData;
   items: InventoryItem[];
   onSelect: (itemId: string) => void;
   onCancel: () => void;
   saving: boolean;
 }) {
   const title = kind === "food" ? "Eat something" : "Drink something";
-  const empty =
-    kind === "food"
-      ? "No food in your inventory. Add rations to your sheet."
-      : "No water in your inventory. Add a waterskin to your sheet.";
+  const empty = kind === "food" ? "No food in inventory." : "No water in inventory.";
+
+  const foodInfo = kind === "food" ? getFoodNotificationInfo(data) : null;
+  const waterInfo = kind === "water" ? getWaterNotificationInfo(data, worldData) : null;
 
   return (
     <div className="supply-picker-overlay" onClick={onCancel}>
@@ -59,21 +144,50 @@ function SupplyPicker({
         onClick={(e) => e.stopPropagation()}
       >
         <p className="retro-box-title">{title}</p>
+        {kind === "food" && foodInfo ? (
+          <div className="supply-picker-summary">
+            <p className="supply-picker-stat">
+              {foodInfo.daysWithoutFood} / {foodInfo.maxDaysWithoutFood} days
+              without food
+            </p>
+            {foodInfo.starvationRisk ? (
+              <p className="supply-picker-warning">
+                If you don&apos;t eat you will starve!
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {kind === "water" && waterInfo ? (
+          <div className="supply-picker-summary">
+            <p className="supply-picker-stat">
+              {formatGallons(waterInfo.consumedGallons)} /{" "}
+              {formatGallons(waterInfo.requiredGallons)} gal consumed today
+            </p>
+            {waterInfo.needsHalfMessage ? (
+              <p className="supply-picker-note">
+                Drink at least half your daily water for a chance to avoid
+                dehydration.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {items.length === 0 ? (
           <p className="retro-muted">{empty}</p>
         ) : (
           <ul className="supply-picker-list">
             {items.map((item) => (
               <li key={item.id}>
-                <button
-                  type="button"
-                  className="supply-picker-item"
-                  disabled={saving}
-                  onClick={() => onSelect(item.id)}
-                >
-                  <span>{item.name || "Unnamed item"}</span>
-                  <span className="retro-muted">×{item.quantity}</span>
-                </button>
+                <Tooltip content={formatSupplyItemTooltip(item, kind)}>
+                  <button
+                    type="button"
+                    className="supply-picker-item"
+                    disabled={saving}
+                    onClick={() => onSelect(item.id)}
+                  >
+                    <span>{item.name || "Unnamed item"}</span>
+                    <span className="retro-muted">×{item.quantity}</span>
+                  </button>
+                </Tooltip>
               </li>
             ))}
           </ul>
@@ -110,12 +224,81 @@ export function CampaignNotifications({
   const [activePicker, setActivePicker] = useState<SupplyKind | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [dehydrationSaveOpen, setDehydrationSaveOpen] = useState(false);
+  const [deathSceneOpen, setDeathSceneOpen] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const hasPendingDehydrationSave =
+    !!character?.data.supplies.pendingDehydrationSave;
+  const isDead = character
+    ? getExhaustionModifiers(character.data).isDead
+    : false;
+  const deathMessage = character
+    ? getExhaustionDeathMessage(character.data)
+    : null;
+
+  useEffect(() => {
+    if (hasPendingDehydrationSave) {
+      setDehydrationSaveOpen(true);
+    }
+  }, [hasPendingDehydrationSave]);
+
+  useEffect(() => {
+    if (isDead) {
+      setDeathSceneOpen(true);
+    }
+  }, [isDead]);
+
+  const showFood = character
+    ? needsFood(character.data, worldData)
+    : false;
+  const showWater = character
+    ? needsWater(character.data, worldData)
+    : false;
+
+  const notifications = useMemo(() => {
+    if (!character) return [];
+
+    const items: CampaignNotificationItem[] = [];
+
+    if (showFood) {
+      const foodInfo = getFoodNotificationInfo(character.data);
+      items.push({
+        id: "food",
+        category: "alert",
+        title: "Eat something",
+        ariaLabel: "Eat something",
+        imageSrc: FOOD_NOTIFICATION_IMAGE,
+        imageClassName: "campaign-notification-btn-food",
+        alertLevel: foodInfo.starvationRisk ? "critical" : "reminder",
+        onClick: () => setActivePicker("food"),
+      });
+    }
+
+    if (showWater) {
+      const waterInfo = getWaterNotificationInfo(character.data, worldData);
+      items.push({
+        id: "water",
+        category: "alert",
+        title: "Drink something",
+        ariaLabel: "Drink something",
+        imageSrc: WATER_NOTIFICATION_IMAGE,
+        imageClassName: "campaign-notification-btn-water",
+        alertLevel: waterInfo.dehydrationRisk ? "critical" : "reminder",
+        onClick: () => setActivePicker("water"),
+      });
+    }
+
+    return groupNotificationsByCategory(items);
+  }, [character, showFood, showWater, worldData]);
 
   if (!userId || !ownedCharacterId || !character) return null;
 
-  const showFood = needsFood(character.data, worldData);
-  const showWater = needsWater(character.data, worldData);
-  if (!showFood && !showWater && !activePicker) return null;
+  const showRail = showFood || showWater;
 
   const foodItems = getFoodItems(character.data);
   const waterItems = getWaterItems(character.data);
@@ -129,7 +312,12 @@ export function CampaignNotifications({
     const nextData =
       kind === "food"
         ? markFed(character.data, campaignDate, inventoryItemId)
-        : markWatered(character.data, campaignDate, inventoryItemId);
+        : markWatered(
+            character.data,
+            campaignDate,
+            inventoryItemId,
+            worldData
+          );
 
     const { error } = await saveCharacterData(character.id, nextData, undefined, {
       isDm: false,
@@ -145,54 +333,64 @@ export function CampaignNotifications({
     setActivePicker(null);
   }
 
-  return (
+  if (!showRail && !dehydrationSaveOpen && !deathSceneOpen && !activePicker) return null;
+
+  const modals = (
     <>
-      <div className="campaign-notifications-rail" aria-label="Needs attention">
-        <div className="campaign-notifications">
-          {showFood ? (
-            <button
-              type="button"
-              className="campaign-notification-btn campaign-notification-btn-food"
-              title="You need to eat"
-              aria-label="You need to eat"
-              onClick={() => setActivePicker("food")}
-            >
-              <img
-                src={FOOD_NOTIFICATION_IMAGE}
-                alt=""
-                className="campaign-notification-img"
-              />
-            </button>
-          ) : null}
-          {showWater ? (
-            <button
-              type="button"
-              className="campaign-notification-btn campaign-notification-btn-water"
-              title="You need to drink"
-              aria-label="You need to drink"
-              onClick={() => setActivePicker("water")}
-            >
-              <img
-                src={WATER_NOTIFICATION_IMAGE}
-                alt=""
-                className="campaign-notification-img"
-              />
-            </button>
-          ) : null}
-        </div>
-        {message ? (
-          <p className="retro-muted campaign-notification-message">{message}</p>
-        ) : null}
-      </div>
+      {deathSceneOpen && deathMessage ? (
+        <DeathSceneModal
+          message={deathMessage}
+          onDismiss={() => setDeathSceneOpen(false)}
+        />
+      ) : null}
+      {dehydrationSaveOpen ? (
+        <DehydrationSaveModal
+          characterId={character.id}
+          data={character.data}
+          originalData={character.data}
+          onComplete={() => {
+            setDehydrationSaveOpen(false);
+            setMessage(null);
+          }}
+        />
+      ) : null}
       {activePicker ? (
         <SupplyPicker
           kind={activePicker}
+          data={character.data}
+          worldData={worldData}
           items={activePicker === "food" ? foodItems : waterItems}
           onSelect={(itemId) => consume(activePicker, itemId)}
           onCancel={() => setActivePicker(null)}
           saving={saving}
         />
       ) : null}
+    </>
+  );
+
+  return (
+    <>
+      {showRail ? (
+        <div className="campaign-notifications-rail" aria-label="Notifications">
+          <div className="campaign-notifications">
+            {notifications.map(({ category, items }) => (
+              <div
+                key={category.id}
+                className="campaign-notification-category"
+                aria-label={category.label}
+              >
+                {items.map((item) => (
+                  <NotificationButton key={item.id} item={item} />
+                ))}
+              </div>
+            ))}
+          </div>
+          {message ? (
+            <p className="retro-muted campaign-notification-message">{message}</p>
+          ) : null}
+        </div>
+      ) : null}
+      {mounted ? createPortal(modals, document.body) : null}
     </>
   );
 }

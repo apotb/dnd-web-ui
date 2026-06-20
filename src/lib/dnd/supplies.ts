@@ -2,10 +2,14 @@ import {
   sameHarptosDate,
   type HarptosDate,
 } from "@/lib/dnd/harptos-calendar";
+import {
+  getRequiredWaterGallons,
+  WATERSKIN_GALLONS,
+  formatGallons,
+} from "@/lib/dnd/survival";
 import type {
   CharacterData,
   InventoryItem,
-  Supplies,
 } from "@/lib/schemas/character";
 import type { WorldData } from "@/lib/schemas/world";
 
@@ -39,18 +43,49 @@ export function getWaterItems(data: CharacterData): InventoryItem[] {
   return data.inventory.items.filter(isWaterItem);
 }
 
-export function isFedForDate(
-  supplies: Supplies,
-  date: HarptosDate
-): boolean {
-  return !!supplies.fedDate && sameHarptosDate(supplies.fedDate, date);
+/** Days of food satisfied when this item is consumed. */
+export function getFoodItemDays(_item: InventoryItem): number {
+  return 1;
 }
 
-export function isWateredForDate(
-  supplies: Supplies,
+/** Gallons of water provided when this item is consumed. */
+export function getWaterItemGallons(_item: InventoryItem): number {
+  return WATERSKIN_GALLONS;
+}
+
+export function formatSupplyItemTooltip(
+  item: InventoryItem,
+  kind: "food" | "water"
+): string {
+  const lines: string[] = [item.name || "Unnamed item"];
+
+  if (kind === "food") {
+    const days = getFoodItemDays(item);
+    lines.push(
+      `Provides: ${days} day${days === 1 ? "" : "s"} of food`
+    );
+  } else {
+    const gallons = getWaterItemGallons(item);
+    lines.push(`Provides: ${formatGallons(gallons)} gal water`);
+  }
+
+  return lines.join("\n");
+}
+
+export function isFedForDate(
+  data: CharacterData,
   date: HarptosDate
 ): boolean {
-  return !!supplies.wateredDate && sameHarptosDate(supplies.wateredDate, date);
+  return (
+    !!data.supplies.fedDate && sameHarptosDate(data.supplies.fedDate, date)
+  );
+}
+
+export function hasEnoughWaterToday(
+  data: CharacterData,
+  worldData: WorldData
+): boolean {
+  return data.supplies.waterGallonsToday >= getRequiredWaterGallons(worldData);
 }
 
 export function needsFood(
@@ -58,7 +93,7 @@ export function needsFood(
   worldData: WorldData
 ): boolean {
   if (!worldData.dailySuppliesActive) return false;
-  return !isFedForDate(data.supplies, worldData.calendar);
+  return !isFedForDate(data, worldData.calendar);
 }
 
 export function needsWater(
@@ -66,7 +101,7 @@ export function needsWater(
   worldData: WorldData
 ): boolean {
   if (!worldData.dailySuppliesActive) return false;
-  return !isWateredForDate(data.supplies, worldData.calendar);
+  return !hasEnoughWaterToday(data, worldData);
 }
 
 export function consumeInventoryItem(
@@ -88,7 +123,11 @@ export function markFed(
 ): CharacterData {
   return {
     ...data,
-    supplies: { ...data.supplies, fedDate: date },
+    supplies: {
+      ...data.supplies,
+      fedDate: date,
+      daysWithoutFood: 0,
+    },
     inventory: {
       ...data.inventory,
       items: consumeInventoryItem(data.inventory.items, inventoryItemId),
@@ -99,11 +138,19 @@ export function markFed(
 export function markWatered(
   data: CharacterData,
   date: HarptosDate,
-  inventoryItemId: string
+  inventoryItemId: string,
+  worldData: WorldData
 ): CharacterData {
+  const gallons = data.supplies.waterGallonsToday + WATERSKIN_GALLONS;
+  const required = getRequiredWaterGallons(worldData);
+
   return {
     ...data,
-    supplies: { ...data.supplies, wateredDate: date },
+    supplies: {
+      ...data.supplies,
+      waterGallonsToday: gallons,
+      wateredDate: gallons >= required ? date : data.supplies.wateredDate,
+    },
     inventory: {
       ...data.inventory,
       items: consumeInventoryItem(data.inventory.items, inventoryItemId),
