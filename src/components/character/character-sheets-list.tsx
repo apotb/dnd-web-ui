@@ -52,10 +52,14 @@ export function CharacterSheetsList({
 }: CharacterSheetsListProps) {
   const createCharacterHref = `/campaigns/${campaignId}/create-character`;
   const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
-  const sortedCharacters = useMemo(
-    () => [...characters].sort((a, b) => a.name.localeCompare(b.name)),
-    [characters]
-  );
+  const sortedCharacters = useMemo(() => {
+    return [...characters].sort((a, b) => {
+      const aOwned = !!userId && a.owner_user_id === userId;
+      const bOwned = !!userId && b.owner_user_id === userId;
+      if (aOwned !== bOwned) return aOwned ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [characters, userId]);
   const [selectedId, setSelectedId] = useState("");
   const [restored, setRestored] = useState(false);
 
@@ -122,16 +126,26 @@ export function CharacterSheetsList({
       ) : (
         <>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
-            {sortedCharacters.map((character) => (
+            {sortedCharacters.map((character) => {
+              const isUserCharacter =
+                !!userId && character.owner_user_id === userId;
+
+              return (
               <button
                 key={character.id}
                 className={`candy-btn${character.id === selectedId ? " candy-btn-active" : ""}`}
-                style={{ flex: "0 1 auto" }}
+                style={{ flex: "0 1 auto", display: "inline-flex", alignItems: "center", gap: "6px" }}
                 onClick={() => selectCharacter(character.id === selectedId ? "" : character.id)}
               >
+                {isUserCharacter ? (
+                  <span className="character-owned-star" aria-hidden>
+                    ★
+                  </span>
+                ) : null}
                 {character.name}
               </button>
-            ))}
+              );
+            })}
           </div>
 
           {selectedCharacter ? (

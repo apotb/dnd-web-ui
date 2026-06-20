@@ -564,6 +564,17 @@ html.campaign-bg-active .retro-muted {
   font-weight: 700;
 }
 
+.character-owned-star {
+  color: #c9a227;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.candy-btn-active .character-owned-star {
+  color: #fff4c2;
+  text-shadow: 0 0 1px #1a1400, 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
 .candy-btn-row {
   display: flex;
   flex-direction: column;
