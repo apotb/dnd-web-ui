@@ -210,13 +210,12 @@ export function CampaignNotables({
   }
 
   return (
-    <div className="retro-stack notable-stack">
+    <div className="retro-stack party-overview-stack">
       <div
         style={{
           display: "flex",
           flexWrap: "wrap",
           gap: "8px",
-          marginBottom: "12px",
         }}
       >
         {NOTABLE_CATEGORIES.map((category) => (
@@ -242,56 +241,58 @@ export function CampaignNotables({
         ) : null}
       </div>
 
-      {isDm ? (
-        <NotablesSaveBar saving={saving} message={message} onSave={save} />
-      ) : null}
+      <div className="retro-stack notable-stack">
+        {isDm ? (
+          <NotablesSaveBar saving={saving} message={message} onSave={save} />
+        ) : null}
 
-      {activeCategory && visibleNotables.length === 0 ? (
-        <p className="retro-muted">No notables in this category yet.</p>
-      ) : (
-        visibleNotables.map((notable, index) => (
-          <NotableCard
-            key={notable.id}
-            campaignId={campaignId}
-            notable={notable}
-            campaignDate={campaignDate}
-            isDm={isDm}
-            canMoveUp={index > 0}
-            canMoveDown={index < visibleNotables.length - 1}
-            onMoveUp={() => moveNotable(notable.id, -1)}
-            onMoveDown={() => moveNotable(notable.id, 1)}
-            onChange={(next) =>
-              updateNotables(
-                draft.notables.map((entry) =>
-                  entry.id === notable.id ? next : entry
+        {activeCategory && visibleNotables.length === 0 ? (
+          <p className="retro-muted">No notables in this category yet.</p>
+        ) : (
+          visibleNotables.map((notable, index) => (
+            <NotableCard
+              key={notable.id}
+              campaignId={campaignId}
+              notable={notable}
+              campaignDate={campaignDate}
+              isDm={isDm}
+              canMoveUp={index > 0}
+              canMoveDown={index < visibleNotables.length - 1}
+              onMoveUp={() => moveNotable(notable.id, -1)}
+              onMoveDown={() => moveNotable(notable.id, 1)}
+              onChange={(next) =>
+                updateNotables(
+                  draft.notables.map((entry) =>
+                    entry.id === notable.id ? next : entry
+                  )
                 )
-              )
-            }
-            onPersist={isDm ? persistNotable : undefined}
-            onToggleVisibility={
-              isDm ? () => toggleNotableVisibility(notable) : undefined
-            }
-            onRemove={async () => {
-              if (!window.confirm(`Remove ${notable.name || "this notable"}?`)) {
-                return;
               }
-              if (notable.portraitPath) {
-                await removeNotablePortrait(
-                  createClient(),
-                  notable.portraitPath
+              onPersist={isDm ? persistNotable : undefined}
+              onToggleVisibility={
+                isDm ? () => toggleNotableVisibility(notable) : undefined
+              }
+              onRemove={async () => {
+                if (!window.confirm(`Remove ${notable.name || "this notable"}?`)) {
+                  return;
+                }
+                if (notable.portraitPath) {
+                  await removeNotablePortrait(
+                    createClient(),
+                    notable.portraitPath
+                  );
+                }
+                updateNotables(
+                  draft.notables.filter((entry) => entry.id !== notable.id)
                 );
-              }
-              updateNotables(
-                draft.notables.filter((entry) => entry.id !== notable.id)
-              );
-            }}
-          />
-        ))
-      )}
+              }}
+            />
+          ))
+        )}
 
-      {isDm ? (
-        <NotablesSaveBar saving={saving} message={message} onSave={save} />
-      ) : null}
+        {isDm ? (
+          <NotablesSaveBar saving={saving} message={message} onSave={save} />
+        ) : null}
+      </div>
     </div>
   );
 }

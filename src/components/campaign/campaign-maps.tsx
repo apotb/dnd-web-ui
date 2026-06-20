@@ -326,13 +326,12 @@ export function CampaignMaps({
   }
 
   return (
-    <div className="retro-stack">
+    <div className="retro-stack party-overview-stack">
       <div
         style={{
           display: "flex",
           flexWrap: "wrap",
           gap: "8px",
-          marginBottom: "12px",
         }}
       >
         {sortedMaps.map((map) => (

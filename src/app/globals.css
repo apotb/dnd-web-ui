@@ -792,6 +792,18 @@ html.campaign-bg-active .retro-muted {
   gap: 8px;
 }
 
+.notable-stack > .retro-box {
+  margin-bottom: 0;
+}
+
+.party-overview-stack {
+  gap: 12px;
+}
+
+.party-overview-stack > .retro-box {
+  margin-bottom: 0;
+}
+
 .notable-card-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

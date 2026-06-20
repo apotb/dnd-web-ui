@@ -128,7 +128,7 @@ export function CampaignOverview({
       </div>
 
       {activeTab === "party" ? (
-        <div className="retro-stack">
+        <div className="retro-stack party-overview-stack">
           <section className="retro-box">
             <p className="retro-box-title">Party Members</p>
             {characters.length === 0 ? (
