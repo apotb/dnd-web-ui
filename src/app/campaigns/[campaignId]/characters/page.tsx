@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { fetchCatalogClasses } from "@/lib/content/catalog";
@@ -26,12 +27,14 @@ export default async function CharactersPage({
   const classes = await fetchCatalogClasses();
 
   return (
-    <CharacterSheetsList
-      campaignId={campaignId}
-      initialCharacters={characters}
-      classes={classes}
-      isDm={access.isDm}
-      userId={access.user?.id ?? null}
-    />
+    <Suspense fallback={<p className="retro-note">Loading characters…</p>}>
+      <CharacterSheetsList
+        campaignId={campaignId}
+        initialCharacters={characters}
+        classes={classes}
+        isDm={access.isDm}
+        userId={access.user?.id ?? null}
+      />
+    </Suspense>
   );
 }

@@ -72,6 +72,14 @@ export function CampaignOverview({
   canManageCalendarEvents,
 }: CampaignOverviewProps) {
   const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
+  const sortedCharacters = useMemo(() => {
+    return [...characters].sort((a, b) => {
+      const aOwned = !!userId && a.owner_user_id === userId;
+      const bOwned = !!userId && b.owner_user_id === userId;
+      if (aOwned !== bOwned) return aOwned ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [characters, userId]);
   const [activeTab, setActiveTab] = useState<OverviewTab | null>(null);
   const [restored, setRestored] = useState(false);
 
@@ -132,16 +140,16 @@ export function CampaignOverview({
         <div className="retro-stack party-overview-stack">
           <section className="retro-box">
             <p className="retro-box-title">Party Members</p>
-            {characters.length === 0 ? (
+            {sortedCharacters.length === 0 ? (
               <p className="retro-muted">No characters yet.</p>
             ) : (
               <div className="retro-member-grid">
-                {characters.map((character) => (
+                {sortedCharacters.map((character) => (
                   <PartyMemberSummary
                     key={character.id}
                     character={character}
                     campaignId={campaignId}
-                    isDm={isDm}
+                    userId={userId}
                   />
                 ))}
               </div>
@@ -205,15 +213,20 @@ export function CampaignOverview({
   );
 }
 
+function characterSheetHref(campaignId: string, characterId: string) {
+  return `/campaigns/${campaignId}/characters?character=${characterId}`;
+}
+
 function PartyMemberSummary({
   character,
   campaignId,
-  isDm,
+  userId,
 }: {
   character: ParsedCharacter;
   campaignId: string;
-  isDm: boolean;
+  userId: string | null;
 }) {
+  const isUserCharacter = !!userId && character.owner_user_id === userId;
   const data = character.data;
   const mods = getAbilityModifiers(data.abilityScores);
   const topSkills = getTopSkills(character, 3);
@@ -240,16 +253,17 @@ function PartyMemberSummary({
       <div className="retro-member-box-content">
         <div className="retro-member-header">
           <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
-            <strong>{character.name}</strong>
-            {isDm && (
-              <Link
-                href={`/campaigns/${campaignId}/characters/${character.id}`}
-                className="retro-inline-link"
-                style={{ fontWeight: "normal", fontSize: "11px" }}
-              >
-                edit
-              </Link>
-            )}
+            {isUserCharacter ? (
+              <span className="character-owned-star" aria-hidden>
+                ★
+              </span>
+            ) : null}
+            <Link
+              href={characterSheetHref(campaignId, character.id)}
+              className="retro-member-name-link"
+            >
+              <strong>{character.name}</strong>
+            </Link>
           </div>
           <span className="retro-member-meta">
             Lv {basicInfo.level}

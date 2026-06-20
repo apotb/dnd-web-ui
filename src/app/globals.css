@@ -647,6 +647,25 @@ html.campaign-bg-active .retro-muted {
   font-size: 13px;
 }
 
+.retro-member-header .character-owned-star {
+  font-size: 14px;
+}
+
+.retro-member-name-link {
+  color: #000;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.retro-member-name-link strong {
+  color: #000;
+}
+
+.retro-member-name-link:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .retro-member-meta {
   color: #333;
   font-size: 11px;

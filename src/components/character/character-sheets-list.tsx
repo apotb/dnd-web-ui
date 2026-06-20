@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
 import { CharacterSheetViewer } from "@/components/character/character-sheet-viewer";
@@ -50,6 +51,7 @@ export function CharacterSheetsList({
   userId,
   hideTitle = false,
 }: CharacterSheetsListProps) {
+  const searchParams = useSearchParams();
   const createCharacterHref = `/campaigns/${campaignId}/create-character`;
   const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
   const sortedCharacters = useMemo(() => {
@@ -69,6 +71,13 @@ export function CharacterSheetsList({
   }, [campaignId]);
 
   useEffect(() => {
+    const fromQuery = searchParams.get("character");
+    if (!fromQuery || !sortedCharacters.some((c) => c.id === fromQuery)) return;
+    setSelectedId(fromQuery);
+    localStorage.setItem(selectionStorageKey(campaignId), fromQuery);
+  }, [campaignId, searchParams, sortedCharacters]);
+
+  useEffect(() => {
     if (sortedCharacters.length === 0) {
       setSelectedId("");
       setRestored(false);
@@ -76,9 +85,12 @@ export function CharacterSheetsList({
     }
 
     if (!restored) {
-      const stored = localStorage.getItem(selectionStorageKey(campaignId));
-      if (stored && sortedCharacters.some((c) => c.id === stored)) {
-        setSelectedId(stored);
+      const fromQuery = searchParams.get("character");
+      if (!fromQuery) {
+        const stored = localStorage.getItem(selectionStorageKey(campaignId));
+        if (stored && sortedCharacters.some((c) => c.id === stored)) {
+          setSelectedId(stored);
+        }
       }
       setRestored(true);
       return;
@@ -88,7 +100,7 @@ export function CharacterSheetsList({
       setSelectedId("");
       localStorage.removeItem(selectionStorageKey(campaignId));
     }
-  }, [campaignId, sortedCharacters, selectedId, restored]);
+  }, [campaignId, sortedCharacters, selectedId, restored, searchParams]);
 
   function selectCharacter(id: string) {
     setSelectedId(id);
