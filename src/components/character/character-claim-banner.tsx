@@ -10,6 +10,7 @@ interface CharacterClaimBannerProps {
   campaignId: string;
   isLoggedIn: boolean;
   canClaim: boolean;
+  isDm?: boolean;
 }
 
 export function CharacterClaimBanner({
@@ -18,6 +19,7 @@ export function CharacterClaimBanner({
   campaignId,
   isLoggedIn,
   canClaim,
+  isDm = false,
 }: CharacterClaimBannerProps) {
   const router = useRouter();
   const [claiming, setClaiming] = useState(false);
@@ -62,7 +64,9 @@ export function CharacterClaimBanner({
     return (
       <section className="retro-box character-claim-banner">
         <p>
-          This character is unclaimed. Log in and claim it to edit your sheet.
+          {isDm
+            ? "This character is unclaimed. Claim it to control them during combat and on their character sheet."
+            : "This character is unclaimed. Log in and claim it to edit your sheet."}
         </p>
         <button
           type="button"

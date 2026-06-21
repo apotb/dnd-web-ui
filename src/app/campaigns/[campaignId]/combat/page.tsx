@@ -49,6 +49,7 @@ export default async function CombatPage({
       characters={characters}
       enemies={enemies}
       isDm={access.isDm}
+      userId={access.user?.id ?? null}
     />
   );
 }

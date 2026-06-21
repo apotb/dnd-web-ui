@@ -21,16 +21,28 @@ export default async function CharacterDetailPage({
 
   if (access.canEdit) {
     return (
-      <section className="retro-box character-sheet-wrap">
-        <CharacterSheetViewer
-          character={character}
-          campaignId={campaignId}
-          classes={classes}
-          isDm={access.isDm}
-          canEdit
-          canDelete={access.isDm}
-        />
-      </section>
+      <>
+        {access.canClaim ? (
+          <CharacterClaimBanner
+            characterId={character.id}
+            characterName={character.name}
+            campaignId={campaignId}
+            isLoggedIn={!!access.user}
+            canClaim={access.canClaim}
+            isDm={access.isDm}
+          />
+        ) : null}
+        <section className="retro-box character-sheet-wrap">
+          <CharacterSheetViewer
+            character={character}
+            campaignId={campaignId}
+            classes={classes}
+            isDm={access.isDm}
+            canEdit
+            canDelete={access.isDm}
+          />
+        </section>
+      </>
     );
   }
 
@@ -42,6 +54,7 @@ export default async function CharacterDetailPage({
         campaignId={campaignId}
         isLoggedIn={!!access.user}
         canClaim={access.canClaim}
+        isDm={access.isDm}
       />
       <section className="retro-box character-sheet-wrap">
         <CharacterSheet

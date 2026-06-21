@@ -34,12 +34,13 @@ function canEditCharacter(
 function canClaimCharacter(
   character: ParsedCharacter,
   userId: string | null,
-  userOwnedCharacterId: string | null
+  userOwnedCharacterId: string | null,
+  isDm: boolean
 ) {
   return (
     !!userId &&
     character.owner_user_id === null &&
-    userOwnedCharacterId === null
+    (isDm || userOwnedCharacterId === null)
   );
 }
 
@@ -125,7 +126,8 @@ export function CharacterSheetsList({
     ? canClaimCharacter(
         selectedCharacter,
         userId,
-        userOwnedCharacter?.id ?? null
+        userOwnedCharacter?.id ?? null,
+        isDm
       )
     : false;
 
@@ -162,13 +164,14 @@ export function CharacterSheetsList({
 
           {selectedCharacter ? (
             <>
-              {!selectedCanEdit ? (
+              {selectedCanClaim ? (
                 <CharacterClaimBanner
                   characterId={selectedCharacter.id}
                   characterName={selectedCharacter.name}
                   campaignId={campaignId}
                   isLoggedIn={!!userId}
                   canClaim={selectedCanClaim}
+                  isDm={isDm}
                 />
               ) : null}
               <section className="retro-box character-sheet-wrap">

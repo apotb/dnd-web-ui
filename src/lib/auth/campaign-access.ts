@@ -120,7 +120,7 @@ export async function getCharacterAccess(
   const canClaim =
     !!access.user &&
     character.owner_user_id === null &&
-    ownedCharacter === null;
+    (access.isDm || ownedCharacter === null);
   const canEdit = access.isDm || isOwner;
 
   return {

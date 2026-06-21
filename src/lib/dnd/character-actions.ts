@@ -43,24 +43,6 @@ export const ACTION_COST_LABELS: Record<ActionCost, string> = {
 
 const CORE_ACTIONS: CharacterActionEntry[] = [
   {
-    id: "core:attack",
-    name: "Attack",
-    cost: "action",
-    description:
-      "Make one melee or ranged attack with a weapon, an unarmed strike, or a natural weapon.",
-    source: "core",
-    sourceLabel: "Standard",
-  },
-  {
-    id: "core:cast-spell",
-    name: "Cast a Spell",
-    cost: "action",
-    description:
-      "Cast a spell with a casting time of 1 action, or use a longer casting time if the spell requires it.",
-    source: "core",
-    sourceLabel: "Standard",
-  },
-  {
     id: "core:dash",
     name: "Dash",
     cost: "action",
@@ -158,6 +140,17 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
     sourceLabel: "Standard",
   },
 ];
+
+const NON_COMBAT_PANEL_ACTION_IDS = new Set([
+  "core:move",
+  "core:interact",
+  "core:opportunity-attack",
+]);
+
+/** Standard actions shown in the combat action panel (excludes movement, interact, OA). */
+export function getStandardCombatActions(): CharacterActionEntry[] {
+  return CORE_ACTIONS.filter((action) => !NON_COMBAT_PANEL_ACTION_IDS.has(action.id));
+}
 
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-");

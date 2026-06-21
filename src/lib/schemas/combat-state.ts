@@ -24,6 +24,67 @@ export const combatInitiativeSchema = z.object({
   order: z.array(z.string()).default([]),
 });
 
+export const combatTurnSchema = z.object({
+  active: z.boolean().default(false),
+  index: z.number().int().min(0).default(0),
+  round: z.number().int().min(1).default(1),
+  movementUsedFeet: z.number().int().min(0).default(0),
+  dashUsed: z.boolean().default(false),
+  /** Main-hand weapon attack used this turn; unlocks off-hand two-weapon fighting. */
+  actionUsedForTwoWeapon: z.boolean().default(false),
+  /** Standard action consumed this turn. */
+  actionUsed: z.boolean().default(false),
+  /** Bonus action consumed this turn. */
+  bonusActionUsed: z.boolean().default(false),
+  /** Disengage action used this turn; movement does not provoke opportunity attacks. */
+  disengageUsed: z.boolean().default(false),
+});
+
+export const pendingAttackTargetSchema = z.object({
+  tokenId: z.string(),
+  label: z.string(),
+  ac: z.number().int().optional(),
+  currentHp: z.number().int().optional(),
+  maxHp: z.number().int().optional(),
+  damageTakenBefore: z.number().int().min(0).default(0),
+  requiresSave: z.boolean().default(false),
+  saveSubmitted: z.boolean().default(false),
+  needsDmSave: z.boolean().default(false),
+  attackRoll: z.number().int().min(1).max(20).nullable().optional(),
+  attackTotal: z.number().int().nullable().optional(),
+  hit: z.boolean().nullable().optional(),
+  critical: z.boolean().nullable().optional(),
+  damageText: z.string().optional(),
+  damageRolls: z.array(z.number().int().min(1)).optional(),
+  damageAmount: z.number().int().min(0).nullable().optional(),
+  saveRoll: z.number().int().min(1).max(20).nullable().optional(),
+  saveTotal: z.number().int().nullable().optional(),
+  saveSucceeded: z.boolean().nullable().optional(),
+  finalDamage: z.number().int().min(0).nullable().optional(),
+});
+
+export const pendingAttackSchema = z.object({
+  id: z.string(),
+  attackerTokenId: z.string(),
+  optionId: z.string(),
+  optionName: z.string(),
+  actionCost: z.enum(["action", "bonus-action", "reaction"]),
+  isOpportunityAttack: z.boolean().default(false),
+  rollType: z.enum(["attack", "save", "auto"]),
+  attackBonus: z.number().int().optional(),
+  saveDc: z.number().int().optional(),
+  saveAbility: z.string().optional(),
+  damageType: z.string().optional(),
+  damageDice: z.string().optional(),
+  isMainHandWeapon: z.boolean().default(false),
+  isAoe: z.boolean().default(false),
+  aoeCenter: z.object({ x: z.number().int(), y: z.number().int() }).optional(),
+  aoeShape: z.enum(["radius", "cone", "cube"]).optional(),
+  status: z.enum(["awaiting-saves", "awaiting-dm-review"]),
+  targets: z.array(pendingAttackTargetSchema),
+  narration: z.string().default(""),
+});
+
 export const combatTokenSchema = z.object({
   id: z.string(),
   kind: z.enum(TOKEN_KINDS),
@@ -39,6 +100,7 @@ export const combatTokenSchema = z.object({
   placed: z.boolean().default(false),
   currentHp: z.number().int().optional(),
   maxHp: z.number().int().optional(),
+  damageTaken: z.number().int().min(0).default(0),
 });
 
 export const combatStateSchema = z.object({
@@ -49,20 +111,96 @@ export const combatStateSchema = z.object({
   tokens: z.array(combatTokenSchema).default([]),
   excludedPartyCharacterIds: z.array(z.string()).default([]),
   initiative: combatInitiativeSchema.default({ status: "none", results: {}, order: [] }),
+  turn: combatTurnSchema.default({
+    active: false,
+    index: 0,
+    round: 1,
+    movementUsedFeet: 0,
+    dashUsed: false,
+    actionUsedForTwoWeapon: false,
+    actionUsed: false,
+    bonusActionUsed: false,
+    disengageUsed: false,
+  }),
+  pendingAttack: pendingAttackSchema.nullable().default(null),
+  pendingOpportunityAttacks: z
+    .object({
+      provokingTokenId: z.string(),
+      pendingAttackerTokenIds: z.array(z.string()),
+    })
+    .nullable()
+    .default(null),
 });
 
 export type CombatToken = z.infer<typeof combatTokenSchema>;
+export type PendingAttackTarget = z.infer<typeof pendingAttackTargetSchema>;
+export type PendingAttack = z.infer<typeof pendingAttackSchema>;
 export type CombatInitiative = z.infer<typeof combatInitiativeSchema>;
+export type CombatTurn = z.infer<typeof combatTurnSchema>;
 export type InitiativeTokenResult = z.infer<typeof initiativeTokenResultSchema>;
 export type CombatState = z.infer<typeof combatStateSchema>;
+
+const DEFAULT_TURN: CombatTurn = {
+  active: false,
+  index: 0,
+  round: 1,
+  movementUsedFeet: 0,
+  dashUsed: false,
+  actionUsedForTwoWeapon: false,
+  actionUsed: false,
+  bonusActionUsed: false,
+  disengageUsed: false,
+};
+
+export function normalizeCombatTurn(state: CombatState): CombatState {
+  const order = state.initiative.order;
+  if (state.initiative.status !== "ready" || order.length === 0) {
+    return { ...state, turn: DEFAULT_TURN };
+  }
+
+  if (!state.turn.active) {
+    return {
+      ...state,
+      turn: {
+        active: true,
+        index: 0,
+        round: 1,
+        movementUsedFeet: 0,
+        dashUsed: false,
+        actionUsedForTwoWeapon: false,
+        actionUsed: false,
+        bonusActionUsed: false,
+        disengageUsed: false,
+      },
+    };
+  }
+
+  const index = Math.min(Math.max(0, state.turn.index), order.length - 1);
+  return {
+    ...state,
+    turn: {
+      active: true,
+      index,
+      round: Math.max(1, state.turn.round),
+      movementUsedFeet: Math.max(0, state.turn.movementUsedFeet ?? 0),
+      dashUsed: state.turn.dashUsed ?? false,
+      actionUsedForTwoWeapon: state.turn.actionUsedForTwoWeapon ?? false,
+      actionUsed: state.turn.actionUsed ?? false,
+      bonusActionUsed: state.turn.bonusActionUsed ?? false,
+      disengageUsed: state.turn.disengageUsed ?? false,
+    },
+    pendingAttack: state.pendingAttack ?? null,
+    pendingOpportunityAttacks: state.pendingOpportunityAttacks ?? null,
+  };
+}
 
 export function parseCombatState(input: unknown): CombatState {
   const parsed = combatStateSchema.parse(input ?? {});
 
-  return {
+  return normalizeCombatTurn({
     ...parsed,
     tokens: parsed.tokens.map((token) => clampTokenToGrid(token, parsed)),
-  };
+  });
 }
 
 function clampTokenToGrid(token: CombatToken, state: CombatState): CombatToken {

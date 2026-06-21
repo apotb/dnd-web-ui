@@ -232,6 +232,8 @@ export interface DerivedAttack {
   saveDc?: number;
   /** slug of the catalog item that generated this attack, if any */
   itemId?: string;
+  /** Off-hand weapon attack from two-weapon fighting (bonus action). */
+  isOffHand?: boolean;
 }
 
 export function formatAttackRollLine(attack: DerivedAttack): string {
@@ -360,6 +362,7 @@ export function deriveWeaponAttacks(
         notes: notes.join(", "),
         source: "weapon",
         itemId: invItem.itemId,
+        isOffHand,
       });
     };
 

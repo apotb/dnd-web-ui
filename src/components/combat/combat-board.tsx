@@ -42,7 +42,90 @@ import {
 } from "@/lib/schemas/combat-grid";
 import { AddEnemyDialog } from "@/components/combat/add-enemy-dialog";
 import { AddPartyMemberDialog } from "@/components/combat/add-party-member-dialog";
+import {
+  CombatActionPanel,
+  CombatBonusActionPanel,
+} from "@/components/combat/combat-action-panel";
+import { CombatEndTurnConfirmModal } from "@/components/combat/combat-end-turn-confirm-modal";
+import { CombatEndTurnPanel } from "@/components/combat/combat-end-turn-panel";
+import { CombatMovePanel } from "@/components/combat/combat-move-panel";
+import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
+import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
+import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
+import { CombatRollModal } from "@/components/combat/combat-roll-modal";
+import { CombatOpportunityAttackModal } from "@/components/combat/combat-opportunity-attack-modal";
+import { CombatOpportunityAttackPanel } from "@/components/combat/combat-opportunity-attack-panel";
+import { CombatAttackSubmitModal } from "@/components/combat/combat-attack-submit-modal";
+import type { AttackSubmitValues } from "@/components/combat/combat-attack-submit-modal";
+import { CombatAttackReviewModal } from "@/components/combat/combat-attack-review-modal";
+import { CombatSaveRollModal } from "@/components/combat/combat-save-roll-modal";
+import { CombatDmSaveRollModal } from "@/components/combat/combat-dm-save-roll-modal";
+import { CombatTargetingOverlay } from "@/components/combat/combat-targeting-overlay";
 import { Tooltip } from "@/components/ui/tooltip";
+import {
+  getCombatOptionGroupsForToken,
+  getOpportunityAttackOptionsForCharacter,
+  isAttackTargetingOption,
+  isConfirmActionOption,
+  isDashActionOption,
+  isDisengageActionOption,
+  isHelpActionOption,
+  isImplementedCombatOption,
+  type CombatOption,
+} from "@/lib/combat/combat-options";
+import {
+  recordCombatActionUsed,
+  recordCombatDash,
+  recordCombatDisengage,
+} from "@/lib/combat/combat-action-actions";
+import {
+  cancelCombatAttack,
+  resolveCombatAttack,
+  submitCombatAttack,
+  submitCombatDmSaveRolls,
+  submitCombatSaveRoll,
+} from "@/lib/combat/attack-actions";
+import {
+  buildTargetList,
+  findPlayerSaveTarget,
+  getDmSaveTargets,
+  optionToAttack,
+} from "@/lib/combat/pending-attack-builder";
+import { getTargetingHighlights } from "@/lib/combat/targeting";
+import type { DerivedAttack } from "@/lib/dnd/attacks";
+import {
+  skipCombatOpportunityAttack,
+  submitCombatOpportunityAttack,
+} from "@/lib/combat/opportunity-attack-actions";
+import {
+  findUserOpportunityAttackAttackerToken,
+  hasPendingOpportunityAttacks,
+  isAttackerPendingOpportunityAttack,
+} from "@/lib/combat/opportunity-attacks";
+import {
+  getAdjacentAllyTokens,
+  getOpportunityAttackReactors,
+  getPartyOpportunityAttackReactors,
+} from "@/lib/combat/engagement";
+import { endCombatTurn } from "@/lib/combat/turn-actions";
+import {
+  canUserControlTurn,
+  canUserEndTurn,
+  getCurrentTurnToken,
+  getCurrentTurnTokenId,
+  getNextTurnToken,
+  isBattleActive,
+} from "@/lib/combat/turn";
+import { useCombatCatalog } from "@/lib/combat/use-combat-catalog";
+import {
+  computeReachableDestinations,
+  findDestinationAtCell,
+  getDashPreviewRemainingFeet,
+  getRemainingMovementFeet,
+  getTokenSpeedFt,
+  type ReachableDestination,
+} from "@/lib/combat/movement";
+import { commitCombatMove } from "@/lib/combat/movement-actions";
 
 interface CombatBoardProps {
   campaignId: string;
@@ -50,6 +133,7 @@ interface CombatBoardProps {
   characters: ParsedCharacter[];
   enemies: EnemyRecord[];
   isDm: boolean;
+  userId: string | null;
 }
 
 function tokenColorClass(kind: CombatToken["kind"]): string {
@@ -191,25 +275,71 @@ export function CombatBoard({
   characters,
   enemies,
   isDm,
+  userId,
 }: CombatBoardProps) {
   const enemiesBySlug = useMemo(
     () => Object.fromEntries(enemies.map((enemy) => [enemy.slug, enemy])),
     [enemies]
   );
 
+  const [localCharacters, setLocalCharacters] = useState(characters);
   const charactersById = useMemo(
-    () => Object.fromEntries(characters.map((character) => [character.id, character])),
-    [characters]
+    () => Object.fromEntries(localCharacters.map((character) => [character.id, character])),
+    [localCharacters]
   );
+
+  useEffect(() => {
+    setLocalCharacters(characters);
+  }, [characters]);
 
   const liveState = useRealtimeCombatState(campaignId, initialCombatState);
   const [draft, setDraft] = useState(liveState);
   const [addOpen, setAddOpen] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
   const [startingInitiative, setStartingInitiative] = useState(false);
+  const [endingTurn, setEndingTurn] = useState(false);
+  const [attackTargeting, setAttackTargeting] = useState<{
+    option: CombatOption;
+    attack: DerivedAttack;
+  } | null>(null);
+  const [attackSubmitDraft, setAttackSubmitDraft] = useState<{
+    option: CombatOption;
+    attack: DerivedAttack;
+    targets: CombatToken[];
+    aoeCenter: { x: number; y: number } | null;
+    isOpportunityAttack?: boolean;
+    attackerToken?: CombatToken;
+  } | null>(null);
+  const [hoveredTargetingCell, setHoveredTargetingCell] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [submittingAttack, setSubmittingAttack] = useState(false);
+  const [submittingSave, setSubmittingSave] = useState(false);
+  const [resolvingAttack, setResolvingAttack] = useState(false);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
   const [hoveredTokenId, setHoveredTokenId] = useState<string | null>(null);
+  const [movementMode, setMovementMode] = useState(false);
+  const [hoveredMovementCell, setHoveredMovementCell] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [pendingDashDestination, setPendingDashDestination] =
+    useState<ReachableDestination | null>(null);
+  const [pendingDashActionConfirm, setPendingDashActionConfirm] = useState(false);
+  const [pendingRollOption, setPendingRollOption] = useState<CombatOption | null>(null);
+  const [pendingOpportunityAttackMove, setPendingOpportunityAttackMove] = useState<{
+    destination: ReachableDestination;
+    dashConsumed: boolean;
+    reactorLabels: string[];
+    opportunityAttackerTokenIds?: string[];
+  } | null>(null);
+  const [skippingOpportunityAttack, setSkippingOpportunityAttack] = useState(false);
+  const [helpTargetPickerAllies, setHelpTargetPickerAllies] = useState<
+    CombatToken[] | null
+  >(null);
+  const [endTurnConfirmOpen, setEndTurnConfirmOpen] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const draggingTokenIdRef = useRef<string | null>(null);
@@ -343,6 +473,7 @@ export function CombatBoard({
 
   const handleTokenPointerDown = useCallback(
     (tokenId: string, event: React.PointerEvent<HTMLDivElement>) => {
+      if (isBattleActive(combatStateRef.current)) return;
       if (!isDm) return;
       event.preventDefault();
       event.stopPropagation();
@@ -410,6 +541,637 @@ export function CombatBoard({
     combatState.initiative.status === "none" &&
     combatState.tokens.length > 0 &&
     !startingInitiative;
+
+  const battleActive = isBattleActive(combatState);
+  const currentTurnTokenId = getCurrentTurnTokenId(combatState);
+  const currentTurnToken = getCurrentTurnToken(combatState);
+  const nextTurnToken = getNextTurnToken(combatState);
+  const nextTurnLabel = nextTurnToken?.label ?? "Unknown";
+  const currentTurnCharacter = currentTurnToken?.characterId
+    ? charactersById[currentTurnToken.characterId] ?? null
+    : null;
+  const currentTurnEnemy =
+    currentTurnToken?.enemySlug ? enemiesBySlug[currentTurnToken.enemySlug] ?? null : null;
+
+  const { catalogItems, classCatalog, featureCatalogs } = useCombatCatalog(characters);
+
+  const currentSpeedFt = currentTurnToken
+    ? getTokenSpeedFt(currentTurnToken, currentTurnCharacter, currentTurnEnemy?.data ?? null)
+    : 0;
+  const movementUsedFeet = combatState.turn.movementUsedFeet;
+  const dashUsed = combatState.turn.dashUsed;
+  const actionUsedForTwoWeapon = combatState.turn.actionUsedForTwoWeapon;
+  const actionUsed = combatState.turn.actionUsed;
+  const bonusActionUsed = combatState.turn.bonusActionUsed;
+  const disengageUsed = combatState.turn.disengageUsed;
+  const pendingAttack = combatState.pendingAttack;
+  const pendingOpportunityAttacks = combatState.pendingOpportunityAttacks;
+  const opportunityAttacksPending = hasPendingOpportunityAttacks(combatState);
+  const remainingMovementFeet = getRemainingMovementFeet(
+    currentSpeedFt,
+    movementUsedFeet,
+    dashUsed
+  );
+  const canUseDash = !dashUsed && !actionUsed;
+  const showMovePanel = remainingMovementFeet > 0 || canUseDash;
+  const dashPreviewFeet = getDashPreviewRemainingFeet(
+    currentSpeedFt,
+    movementUsedFeet,
+    dashUsed
+  );
+
+  const currentTurnOptionGroups = useMemo(() => {
+    if (!currentTurnToken) {
+      return { actions: [], bonusActions: [] };
+    }
+    return getCombatOptionGroupsForToken(currentTurnToken, {
+      character: currentTurnCharacter,
+      enemyData: currentTurnEnemy?.data ?? null,
+      catalogItems,
+      classCatalog,
+      featureCatalogs,
+      actionUsedForTwoWeapon,
+      actionUsed,
+      bonusActionUsed,
+      dashUsed,
+      combatState,
+      token: currentTurnToken,
+    });
+  }, [
+    actionUsed,
+    actionUsedForTwoWeapon,
+    bonusActionUsed,
+    catalogItems,
+    classCatalog,
+    combatState,
+    currentTurnCharacter,
+    currentTurnEnemy,
+    currentTurnToken,
+    dashUsed,
+    featureCatalogs,
+  ]);
+
+  const userControlsTurn = canUserControlTurn(
+    userId,
+    isDm,
+    combatState,
+    currentTurnToken,
+    currentTurnCharacter
+  );
+  const userCanEndTurn = canUserEndTurn(
+    userId,
+    isDm,
+    combatState,
+    currentTurnToken,
+    currentTurnCharacter
+  );
+
+  const userOaAttackerToken = useMemo(
+    () =>
+      findUserOpportunityAttackAttackerToken(
+        combatState,
+        charactersById,
+        userId,
+        isDm
+      ),
+    [charactersById, combatState, isDm, userId]
+  );
+
+  const userCanTakeOpportunityAttack = useMemo(() => {
+    if (!userOaAttackerToken || !pendingOpportunityAttacks) return false;
+    if (pendingAttack?.isOpportunityAttack) return false;
+    if (!isAttackerPendingOpportunityAttack(combatState, userOaAttackerToken.id)) {
+      return false;
+    }
+    return true;
+  }, [combatState, pendingAttack, pendingOpportunityAttacks, userOaAttackerToken]);
+
+  const opportunityAttackOptions = useMemo(() => {
+    if (!userOaAttackerToken?.characterId) return [];
+    const character = charactersById[userOaAttackerToken.characterId];
+    if (!character) return [];
+    return getOpportunityAttackOptionsForCharacter(
+      character,
+      catalogItems,
+      classCatalog
+    );
+  }, [catalogItems, charactersById, classCatalog, userOaAttackerToken]);
+
+  const provokingTokenLabel = useMemo(() => {
+    const provokingId = pendingOpportunityAttacks?.provokingTokenId;
+    if (!provokingId) return "An enemy";
+    return combatState.tokens.find((token) => token.id === provokingId)?.label ?? "An enemy";
+  }, [combatState.tokens, pendingOpportunityAttacks?.provokingTokenId]);
+
+  const userOaPendingOptionId =
+    pendingAttack?.isOpportunityAttack &&
+    pendingAttack.attackerTokenId === userOaAttackerToken?.id
+      ? pendingAttack.optionId
+      : null;
+
+  const playerHasPendingAction =
+    pendingAttack != null &&
+    pendingAttack.attackerTokenId === currentTurnTokenId &&
+    !pendingAttack.isOpportunityAttack &&
+    !isDm;
+  const pendingOptionId = playerHasPendingAction ? pendingAttack.optionId : null;
+
+  const enemyTurnBlockedByOpportunityAttacks =
+    opportunityAttacksPending &&
+    currentTurnToken != null &&
+    (currentTurnToken.kind === "enemy" || currentTurnToken.kind === "ally");
+
+  async function handleEndTurn() {
+    if (!userCanEndTurn || endingTurn) return;
+    setEndingTurn(true);
+    setMovementMode(false);
+    const { next, error } = await endCombatTurn(campaignId, combatState, { isDm });
+    setEndingTurn(false);
+    setEndTurnConfirmOpen(false);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+  }
+
+  function clearAttackFlow() {
+    setAttackTargeting(null);
+    setAttackSubmitDraft(null);
+    setHoveredTargetingCell(null);
+  }
+
+  async function handleSelectCombatOption(option: CombatOption) {
+    if (!isImplementedCombatOption(option)) return;
+    if (attackTargeting || movementMode || playerHasPendingAction) return;
+
+    if (isHelpActionOption(option)) {
+      if (!currentTurnToken) return;
+      const allies = getAdjacentAllyTokens(currentTurnToken, combatState).sort((a, b) =>
+        a.label.localeCompare(b.label)
+      );
+      if (allies.length === 0) return;
+      setHelpTargetPickerAllies(allies);
+      return;
+    }
+
+    if (isDisengageActionOption(option)) {
+      const { next, error } = await recordCombatDisengage(campaignId, combatState, {
+        isDm,
+      });
+      if (error) {
+        window.alert(error);
+        return;
+      }
+      if (isDm) {
+        setDraft(next);
+      }
+      return;
+    }
+
+    if (isDashActionOption(option)) {
+      if (dashUsed || combatState.turn.actionUsed) return;
+      setPendingDashActionConfirm(true);
+      return;
+    }
+
+    if (isConfirmActionOption(option)) {
+      setPendingRollOption(option);
+      return;
+    }
+
+    if (isAttackTargetingOption(option) && userControlsTurn && currentTurnToken) {
+      const attack = optionToAttack(option);
+      if (!attack) return;
+      if (pendingAttack) {
+        window.alert("An attack is already being resolved.");
+        return;
+      }
+      setMovementMode(false);
+      clearAttackFlow();
+      setAttackTargeting({ option, attack });
+      return;
+    }
+  }
+
+  const mapSelectionActive = Boolean(attackTargeting || movementMode);
+  const selectedActionOptionId =
+    pendingOptionId ?? attackTargeting?.option.id ?? null;
+  const turnActionsLocked = mapSelectionActive || playerHasPendingAction;
+
+  const targetingHighlights = useMemo(() => {
+    if (!attackTargeting || !currentTurnToken) return null;
+    return getTargetingHighlights(
+      currentTurnToken,
+      combatState,
+      attackTargeting.attack
+    );
+  }, [attackTargeting, combatState, currentTurnToken]);
+
+  const damageTakenByTokenId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const token of combatState.tokens) {
+      map[token.id] = token.damageTaken ?? 0;
+    }
+    return map;
+  }, [combatState.tokens]);
+
+  function openAttackSubmit(
+    targets: CombatToken[],
+    aoeCenter: { x: number; y: number } | null
+  ) {
+    if (!attackTargeting) return;
+    setAttackSubmitDraft({
+      option: attackTargeting.option,
+      attack: attackTargeting.attack,
+      targets,
+      aoeCenter,
+    });
+    setAttackTargeting(null);
+    setHoveredTargetingCell(null);
+  }
+
+  function handleTargetingTokenClick(token: CombatToken) {
+    if (!attackTargeting || !currentTurnToken) return;
+    openAttackSubmit([token], null);
+  }
+
+  function handleTargetingCellClick(cell: { x: number; y: number }) {
+    if (!attackTargeting || !currentTurnToken) return;
+    const targets = buildTargetList(
+      currentTurnToken,
+      combatState,
+      attackTargeting.attack,
+      null,
+      cell,
+      charactersById,
+      enemiesBySlug
+    );
+    openAttackSubmit(targets, cell);
+  }
+
+  async function handleSubmitAttack(values: AttackSubmitValues) {
+    if (!attackSubmitDraft) return;
+    setSubmittingAttack(true);
+
+    const attacker =
+      attackSubmitDraft.attackerToken ??
+      (attackSubmitDraft.isOpportunityAttack ? userOaAttackerToken : currentTurnToken);
+    if (!attacker) {
+      setSubmittingAttack(false);
+      return;
+    }
+
+    const submitFn = attackSubmitDraft.isOpportunityAttack
+      ? submitCombatOpportunityAttack
+      : submitCombatAttack;
+
+    const { next, error } = await submitFn(campaignId, combatState, {
+      isDm,
+      attacker,
+      combatOption: attackSubmitDraft.option,
+      attack: attackSubmitDraft.attack,
+      targets: attackSubmitDraft.targets,
+      aoeCenter: attackSubmitDraft.aoeCenter,
+      submission: values,
+      charactersById,
+      enemiesBySlug,
+    });
+    setSubmittingAttack(false);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+    setAttackSubmitDraft(null);
+  }
+
+  async function handleSelectOpportunityAttackOption(option: CombatOption) {
+    if (!userOaAttackerToken || !pendingOpportunityAttacks) return;
+    const attack = optionToAttack(option);
+    if (!attack) return;
+
+    const provokingToken = combatState.tokens.find(
+      (token) => token.id === pendingOpportunityAttacks.provokingTokenId
+    );
+    if (!provokingToken) return;
+
+    setAttackSubmitDraft({
+      option,
+      attack,
+      targets: [provokingToken],
+      aoeCenter: null,
+      isOpportunityAttack: true,
+      attackerToken: userOaAttackerToken,
+    });
+  }
+
+  async function handleSkipOpportunityAttack() {
+    if (!userOaAttackerToken) return;
+    setSkippingOpportunityAttack(true);
+    const { next, error } = await skipCombatOpportunityAttack(campaignId, combatState, {
+      isDm,
+      attackerTokenId: userOaAttackerToken.id,
+    });
+    setSkippingOpportunityAttack(false);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+  }
+
+  async function handleSubmitPlayerSave(saveRoll: number, saveTotal: number) {
+    if (!pendingAttack || !playerSaveTarget) return;
+    setSubmittingSave(true);
+    const { next, error } = await submitCombatSaveRoll(campaignId, combatState, {
+      isDm,
+      tokenId: playerSaveTarget.tokenId,
+      saveRoll,
+      saveTotal,
+    });
+    setSubmittingSave(false);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+  }
+
+  async function handleSubmitDmSaves(
+    saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number }>
+  ) {
+    if (!pendingAttack) return;
+    setSubmittingSave(true);
+    const { next, error } = await submitCombatDmSaveRolls(
+      campaignId,
+      combatState,
+      saves,
+      isDm
+    );
+    setSubmittingSave(false);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+  }
+
+  async function handleResolveAttack(reviewed: NonNullable<typeof pendingAttack>) {
+    setResolvingAttack(true);
+    const { next, error } = await resolveCombatAttack(
+      campaignId,
+      combatState,
+      reviewed,
+      charactersById,
+      isDm
+    );
+    setResolvingAttack(false);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+      setLocalCharacters((current) =>
+        current.map((character) => {
+          const token = next.tokens.find((t) => t.characterId === character.id);
+          if (token?.currentHp == null) return character;
+          return {
+            ...character,
+            data: {
+              ...character.data,
+              combat: {
+                ...character.data.combat,
+                currentHp: token.currentHp,
+              },
+            },
+          };
+        })
+      );
+    }
+  }
+
+  async function handleRejectAttack() {
+    const { next, error } = await cancelCombatAttack(campaignId, combatState, isDm);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+  }
+
+  const playerSaveTarget = useMemo(() => {
+    if (!pendingAttack || pendingAttack.status !== "awaiting-saves" || !userId) {
+      return null;
+    }
+    return findPlayerSaveTarget(
+      pendingAttack,
+      combatState.tokens,
+      charactersById,
+      userId
+    );
+  }, [pendingAttack, combatState.tokens, charactersById, userId]);
+
+  const dmSaveTargets = useMemo(() => {
+    if (!pendingAttack || !isDm) return [];
+    return getDmSaveTargets(pendingAttack);
+  }, [pendingAttack, isDm]);
+
+  function handleToggleMovementMode() {
+    if (attackTargeting || playerHasPendingAction) return;
+    setMovementMode((value) => !value);
+    setHoveredMovementCell(null);
+  }
+
+  const movementDestinations = useMemo(() => {
+    if (!currentTurnToken || !movementMode || !userControlsTurn) return [];
+    return computeReachableDestinations(currentTurnToken, combatState, {
+      speedFt: currentSpeedFt,
+      usedFeet: movementUsedFeet,
+      dashUsed,
+    });
+  }, [
+    combatState,
+    currentSpeedFt,
+    currentTurnToken,
+    dashUsed,
+    movementMode,
+    movementUsedFeet,
+    userControlsTurn,
+  ]);
+
+  useEffect(() => {
+    if (!showMovePanel) {
+      setMovementMode(false);
+    }
+  }, [showMovePanel]);
+
+  useEffect(() => {
+    if (!playerHasPendingAction) return;
+    setMovementMode(false);
+    clearAttackFlow();
+  }, [playerHasPendingAction]);
+
+  useEffect(() => {
+    setMovementMode(false);
+    setHoveredMovementCell(null);
+    setPendingDashDestination(null);
+    setPendingDashActionConfirm(false);
+    setPendingRollOption(null);
+    setPendingOpportunityAttackMove(null);
+    setHelpTargetPickerAllies(null);
+    setEndTurnConfirmOpen(false);
+    clearAttackFlow();
+  }, [currentTurnTokenId, userControlsTurn]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        clearAttackFlow();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  async function tryCommitMovement(
+    destination: ReachableDestination,
+    dashConsumed: boolean
+  ) {
+    if (!currentTurnToken || !userControlsTurn) return;
+
+    const opportunityAttackReactors = getOpportunityAttackReactors(
+      currentTurnToken,
+      destination,
+      combatState,
+      disengageUsed
+    );
+
+    if (opportunityAttackReactors.length > 0) {
+      const isNpcTurn =
+        currentTurnToken.kind === "enemy" || currentTurnToken.kind === "ally";
+      setPendingOpportunityAttackMove({
+        destination,
+        dashConsumed,
+        reactorLabels: opportunityAttackReactors.map((reactor) => reactor.label),
+        opportunityAttackerTokenIds: isNpcTurn
+          ? getPartyOpportunityAttackReactors(opportunityAttackReactors).map(
+              (reactor) => reactor.id
+            )
+          : undefined,
+      });
+      return;
+    }
+
+    await commitMovementToDestination(destination, dashConsumed);
+  }
+
+  async function commitMovementToDestination(
+    destination: ReachableDestination,
+    dashConsumed: boolean,
+    opportunityAttackerTokenIds?: string[]
+  ) {
+    if (!currentTurnToken || !userControlsTurn) return;
+
+    const { next, error } = await commitCombatMove(campaignId, combatState, {
+      isDm,
+      tokenId: currentTurnToken.id,
+      x: destination.x,
+      y: destination.y,
+      costFeet: destination.costFeet,
+      dashConsumed,
+      opportunityAttackerTokenIds,
+    });
+
+    if (error) {
+      window.alert(error);
+      return;
+    }
+
+    if (isDm) {
+      setDraft(next);
+    }
+  }
+
+  async function handleMovementCellClick(cellX: number, cellY: number) {
+    if (!currentTurnToken || !userControlsTurn || !movementMode) return;
+
+    const destination = findDestinationAtCell(
+      movementDestinations,
+      currentTurnToken,
+      cellX,
+      cellY
+    );
+    if (!destination) return;
+
+    if (destination.zone === "dash" && !dashUsed) {
+      setPendingDashDestination(destination);
+      return;
+    }
+
+    await tryCommitMovement(destination, false);
+  }
+
+  async function handleConfirmDashMove() {
+    if (!pendingDashDestination) return;
+    const destination = pendingDashDestination;
+    setPendingDashDestination(null);
+    await tryCommitMovement(destination, true);
+  }
+
+  async function handleConfirmDashAction() {
+    setPendingDashActionConfirm(false);
+    const { next, error } = await recordCombatDash(campaignId, combatState, { isDm });
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+    setMovementMode(true);
+    clearAttackFlow();
+  }
+
+  async function handleUseStandardAction() {
+    if (!pendingRollOption) return;
+    const { next, error } = await recordCombatActionUsed(campaignId, combatState, {
+      isDm,
+    });
+    setPendingRollOption(null);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+  }
+
+  async function handleConfirmOpportunityAttackMove() {
+    if (!pendingOpportunityAttackMove) return;
+    const { destination, dashConsumed, opportunityAttackerTokenIds } =
+      pendingOpportunityAttackMove;
+    setPendingOpportunityAttackMove(null);
+    await commitMovementToDestination(
+      destination,
+      dashConsumed,
+      opportunityAttackerTokenIds
+    );
+  }
 
   async function handleAddEnemy(enemy: EnemyRecord) {
     const next = addEnemyToState(combatState, enemy);
@@ -571,16 +1333,21 @@ export function CombatBoard({
         (token.kind === "party" && character != null));
 
     const isDragging = draggingTokenId === token.id;
+    const isActiveTurn = battleActive && token.id === currentTurnTokenId;
 
     const style = {
       gridColumn: `${token.x + 1} / span ${token.width}`,
       gridRow: `${token.y + 1} / span ${token.height}`,
     };
 
+    const isAttackTarget =
+      attackTargeting &&
+      targetingHighlights?.validTargets.some((target) => target.id === token.id);
+
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
       >
@@ -655,6 +1422,16 @@ export function CombatBoard({
           className="combat-turn-column"
           aria-label={initiativeTokens.length > 0 ? "Initiative order" : undefined}
         >
+          {battleActive ? (
+            <Tooltip content={`Turn ${combatState.turn.round}`}>
+              <div
+                className="combat-turn-round combat-turn-portrait-wrap-tooltip"
+                aria-label={`Turn ${combatState.turn.round}`}
+              >
+                {combatState.turn.round}
+              </div>
+            </Tooltip>
+          ) : null}
           {initiativeTokens.map((token) => {
             const portraitUrl = resolveTokenPortraitUrl(supabase, token);
             const initiativeResult = combatState.initiative.results[token.id];
@@ -681,7 +1458,10 @@ export function CombatBoard({
             );
 
             return (
-              <div key={token.id} className="combat-turn-portrait-wrap combat-turn-portrait-wrap-tooltip">
+              <div
+                key={token.id}
+                className={`combat-turn-portrait-wrap combat-turn-portrait-wrap-tooltip combat-turn-${token.kind}${token.id === currentTurnTokenId ? " combat-turn-portrait-active" : ""}`}
+              >
                 <Tooltip content={turnTooltip}>{portrait}</Tooltip>
               </div>
             );
@@ -690,8 +1470,8 @@ export function CombatBoard({
 
         <div className="combat-main">
           <div className="combat-board-area">
-            <div className="combat-toolbar">
-              <div>
+            <div className="combat-toolbar combat-toolbar-header">
+              <div className="combat-toolbar-meta">
                 <h2 className="combat-title">Combat</h2>
                 <p className="combat-meta">
                   {isDm ? (
@@ -753,6 +1533,88 @@ export function CombatBoard({
                   )}
                 </p>
               </div>
+              {battleActive ? (
+                <div className="combat-toolbar-panels">
+                  {userCanTakeOpportunityAttack ? (
+                    <CombatOpportunityAttackPanel
+                      provokingLabel={provokingTokenLabel}
+                      options={opportunityAttackOptions}
+                      onSelectOption={(option) => void handleSelectOpportunityAttackOption(option)}
+                      onSkip={() => void handleSkipOpportunityAttack()}
+                      selectedOptionId={selectedActionOptionId}
+                      pendingOptionId={userOaPendingOptionId}
+                      selectionLocked={!!attackSubmitDraft || submittingAttack}
+                      skipping={skippingOpportunityAttack}
+                    />
+                  ) : userControlsTurn ? (
+                    enemyTurnBlockedByOpportunityAttacks ? (
+                      <div className="combat-turn-waiting combat-attack-waiting">
+                        <p className="combat-turn-waiting-text combat-attack-waiting-text">
+                          Waiting for opportunity attacks…
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {showMovePanel ? (
+                          <CombatMovePanel
+                            remainingFeet={remainingMovementFeet}
+                            speedFeet={currentSpeedFt}
+                            dashAvailableFeet={dashPreviewFeet}
+                            dashUsed={dashUsed}
+                            movementMode={movementMode}
+                            disabled={
+                              !!attackTargeting ||
+                              playerHasPendingAction ||
+                              enemyTurnBlockedByOpportunityAttacks
+                            }
+                            onToggleMovementMode={handleToggleMovementMode}
+                          />
+                        ) : null}
+                        {currentTurnOptionGroups.actions.length > 0 ? (
+                          <CombatActionPanel
+                            key={currentTurnTokenId ?? "no-turn"}
+                            options={currentTurnOptionGroups.actions}
+                            onSelectOption={handleSelectCombatOption}
+                            selectedOptionId={selectedActionOptionId}
+                            pendingOptionId={pendingOptionId}
+                            selectionLocked={turnActionsLocked}
+                          />
+                        ) : null}
+                        {currentTurnOptionGroups.bonusActions.length > 0 ? (
+                          <CombatBonusActionPanel
+                            options={currentTurnOptionGroups.bonusActions}
+                            onSelectOption={handleSelectCombatOption}
+                            selectedOptionId={selectedActionOptionId}
+                            pendingOptionId={pendingOptionId}
+                            selectionLocked={turnActionsLocked}
+                          />
+                        ) : null}
+                        {userCanEndTurn ? (
+                          <CombatEndTurnPanel
+                            nextTurnLabel={nextTurnLabel}
+                            onSelectEndTurn={() => setEndTurnConfirmOpen(true)}
+                            endingTurn={endingTurn}
+                            disabled={turnActionsLocked || opportunityAttacksPending}
+                          />
+                        ) : null}
+                      </>
+                    )
+                  ) : opportunityAttacksPending ? (
+                    <div className="combat-turn-waiting combat-attack-waiting">
+                      <p className="combat-turn-waiting-text combat-attack-waiting-text">
+                        Waiting for opportunity attacks…
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="combat-turn-waiting combat-attack-waiting">
+                      <p className="combat-turn-waiting-text combat-attack-waiting-text">
+                        Waiting for {currentTurnToken?.label ?? "the active combatant"}&apos;s
+                        turn
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
 
             {isDm ? (
@@ -825,7 +1687,7 @@ export function CombatBoard({
             <div className="combat-grid-shell">
               <div
                 ref={gridRef}
-                className={`combat-grid${draggingTokenId ? " combat-grid-dragging" : ""}`}
+                className={`combat-grid${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}`}
                 style={{
                   ["--grid-width" as string]: combatState.gridWidth,
                   ["--grid-height" as string]: combatState.gridHeight,
@@ -858,6 +1720,38 @@ export function CombatBoard({
                   />
                 ) : null}
                 {combatState.tokens.map((token) => renderToken(token))}
+                {attackTargeting && currentTurnToken && userControlsTurn && targetingHighlights ? (
+                  <CombatTargetingOverlay
+                    gridWidth={combatState.gridWidth}
+                    gridHeight={combatState.gridHeight}
+                    attacker={currentTurnToken}
+                    attack={attackTargeting.attack}
+                    state={combatState}
+                    validTargets={targetingHighlights.validTargets}
+                    validCells={targetingHighlights.validCells}
+                    hoveredCell={hoveredTargetingCell}
+                    previewCenter={null}
+                    onTargetClick={handleTargetingTokenClick}
+                    onCellClick={handleTargetingCellClick}
+                    onCellHover={setHoveredTargetingCell}
+                    onCancel={clearAttackFlow}
+                  />
+                ) : null}
+                {movementMode && currentTurnToken && userControlsTurn ? (
+                  <CombatMovementOverlay
+                    gridWidth={combatState.gridWidth}
+                    gridHeight={combatState.gridHeight}
+                    token={currentTurnToken}
+                    destinations={movementDestinations}
+                    hoveredCell={hoveredMovementCell}
+                    remainingFeet={remainingMovementFeet}
+                    speedFeet={currentSpeedFt}
+                    usedFeet={movementUsedFeet}
+                    dashUsed={dashUsed}
+                    onCellClick={(cellX, cellY) => void handleMovementCellClick(cellX, cellY)}
+                    onCellHover={setHoveredMovementCell}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
@@ -877,6 +1771,88 @@ export function CombatBoard({
         presentCharacterIds={presentCharacterIds}
         onConfirm={handleAddPartyMembers}
       />
+      {attackSubmitDraft ? (
+        <CombatAttackSubmitModal
+          attack={attackSubmitDraft.attack}
+          optionName={attackSubmitDraft.option.name}
+          targets={attackSubmitDraft.targets}
+          damageTakenByTokenId={damageTakenByTokenId}
+          submitting={submittingAttack}
+          onCancel={() => setAttackSubmitDraft(null)}
+          onSubmit={(values) => void handleSubmitAttack(values)}
+        />
+      ) : null}
+      {playerSaveTarget && pendingAttack ? (
+        <CombatSaveRollModal
+          target={playerSaveTarget}
+          saveAbility={pendingAttack.saveAbility}
+          saveDc={pendingAttack.saveDc}
+          submitting={submittingSave}
+          onCancel={() => {}}
+          onSubmit={(saveRoll, saveTotal) => void handleSubmitPlayerSave(saveRoll, saveTotal)}
+        />
+      ) : null}
+      {isDm && dmSaveTargets.length > 0 && pendingAttack ? (
+        <CombatDmSaveRollModal
+          targets={dmSaveTargets}
+          saveAbility={pendingAttack.saveAbility}
+          saveDc={pendingAttack.saveDc}
+          submitting={submittingSave}
+          onCancel={() => {}}
+          onSubmit={(saves) => void handleSubmitDmSaves(saves)}
+        />
+      ) : null}
+      {isDm && pendingAttack?.status === "awaiting-dm-review" ? (
+        <CombatAttackReviewModal
+          pending={pendingAttack}
+          submitting={resolvingAttack}
+          onCancel={() => void handleRejectAttack()}
+          onConfirm={(reviewed) => void handleResolveAttack(reviewed)}
+        />
+      ) : null}
+      {endTurnConfirmOpen ? (
+        <CombatEndTurnConfirmModal
+          nextTurnLabel={nextTurnLabel}
+          endingTurn={endingTurn}
+          onCancel={() => setEndTurnConfirmOpen(false)}
+          onConfirm={() => void handleEndTurn()}
+        />
+      ) : null}
+      {helpTargetPickerAllies ? (
+        <CombatHelpTargetModal
+          allies={helpTargetPickerAllies}
+          resolvePortraitUrl={(token) => resolveTokenPortraitUrl(supabase, token)}
+          onSelect={() => setHelpTargetPickerAllies(null)}
+          onCancel={() => setHelpTargetPickerAllies(null)}
+        />
+      ) : null}
+      {pendingDashDestination ? (
+        <CombatDashConfirmModal
+          onConfirm={() => void handleConfirmDashMove()}
+          onCancel={() => setPendingDashDestination(null)}
+        />
+      ) : null}
+      {pendingDashActionConfirm ? (
+        <CombatDashConfirmModal
+          message="Use Dash? This will consume your action and grant extra movement equal to your speed."
+          onConfirm={() => void handleConfirmDashAction()}
+          onCancel={() => setPendingDashActionConfirm(false)}
+        />
+      ) : null}
+      {pendingRollOption ? (
+        <CombatRollModal
+          option={pendingRollOption}
+          onCancel={() => setPendingRollOption(null)}
+          onUse={() => void handleUseStandardAction()}
+        />
+      ) : null}
+      {pendingOpportunityAttackMove ? (
+        <CombatOpportunityAttackModal
+          reactorLabels={pendingOpportunityAttackMove.reactorLabels}
+          onConfirm={() => void handleConfirmOpportunityAttackMove()}
+          onCancel={() => setPendingOpportunityAttackMove(null)}
+        />
+      ) : null}
     </div>
   );
 }

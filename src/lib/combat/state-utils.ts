@@ -1,5 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { sortInitiativeTokenIds } from "@/lib/combat/initiative";
+import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { DEFAULT_GRID_SIZE, DEFAULT_TILE_FEET, MAX_GRID_SIZE, MAX_TILE_FEET, MIN_GRID_SIZE, MIN_TILE_FEET } from "@/lib/schemas/combat-grid";
 import {
@@ -83,6 +84,9 @@ export function createDefaultCombatState(
     tokens: [],
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    pendingAttack: null,
+    pendingOpportunityAttacks: null,
   };
 
   return {
@@ -307,13 +311,19 @@ export function removeTokenFromState(state: CombatState, tokenId: string): Comba
   }
 
   const tokens = relabelEnemyTokens(state.tokens.filter((entry) => entry.id !== tokenId));
-  const initiative = clearTokenFromInitiative(state.initiative, tokenId, tokens);
+  const { initiative, turn } = clearTokenFromInitiative(
+    state.initiative,
+    tokenId,
+    tokens,
+    state.turn
+  );
 
   return {
     ...state,
     excludedPartyCharacterIds,
     tokens,
     initiative,
+    turn,
   };
 }
 
@@ -324,34 +334,56 @@ export function removeEnemyFromState(state: CombatState, tokenId: string): Comba
 function clearTokenFromInitiative(
   initiative: CombatState["initiative"],
   tokenId: string,
-  tokens: CombatToken[]
-): CombatState["initiative"] {
-  if (initiative.status === "none") return initiative;
+  tokens: CombatToken[],
+  turn: CombatState["turn"]
+): { initiative: CombatState["initiative"]; turn: CombatState["turn"] } {
+  if (initiative.status === "none") {
+    return {
+      initiative,
+      turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    };
+  }
 
   const { [tokenId]: _removed, ...results } = initiative.results;
   const order = initiative.order.filter((id) => id !== tokenId);
 
+  if (order.length === 0) {
+    return {
+      initiative: { status: "none", results: {}, order: [] },
+      turn: { active: false, index: 0, round: turn.round, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    };
+  }
+
   if (initiative.status === "ready") {
     return {
-      status: "ready",
-      results,
-      order,
+      initiative: {
+        status: "ready",
+        results,
+        order,
+      },
+      turn: adjustTurnAfterTokenRemoved(turn, tokenId, order),
     };
   }
 
   const allCollected = tokens.every((token) => results[token.id] != null);
   if (allCollected && tokens.length > 0) {
     return {
-      status: "ready",
-      results,
-      order: sortInitiativeTokenIds(tokens, results),
+      initiative: {
+        status: "ready",
+        results,
+        order: sortInitiativeTokenIds(tokens, results),
+      },
+      turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
     };
   }
 
   return {
-    status: "collecting",
-    results,
-    order: [],
+    initiative: {
+      status: "collecting",
+      results,
+      order: [],
+    },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
   };
 }
 
@@ -420,6 +452,9 @@ export function resetCombatBoard(
     tokens: [],
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    pendingAttack: null,
+    pendingOpportunityAttacks: null,
   };
 
   return {

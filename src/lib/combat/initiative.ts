@@ -116,6 +116,7 @@ export function finalizeInitiativeIfReady(state: CombatState): CombatState {
       status: "ready",
       order: sortInitiativeTokenIds(state.tokens, state.initiative.results),
     },
+    turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
   };
 }
 
@@ -123,6 +124,7 @@ export function clearInitiativeState(state: CombatState): CombatState {
   return {
     ...state,
     initiative: { status: "none", results: {}, order: [] },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
   };
 }
 
@@ -176,6 +178,7 @@ export function startInitiativeCollection(
       results,
       order: [],
     },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
   };
 }
 
