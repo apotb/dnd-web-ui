@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const BUCKET = "combat-content";
+const SRD_MONSTER_IMAGE_BASE = "https://www.dnd5eapi.co/api/images/monsters";
 
 const ALLOWED_TYPES = new Set([
   "image/jpeg",
@@ -11,11 +12,18 @@ const ALLOWED_TYPES = new Set([
 
 const MAX_BYTES = 15 * 1024 * 1024;
 
+export function srdMonsterPortraitUrl(slug: string): string {
+  return `${SRD_MONSTER_IMAGE_BASE}/${slug}.png`;
+}
+
 export function resolveCombatImageUrl(
   supabase: SupabaseClient,
   imagePath: string | null | undefined
 ): string | null {
   if (!imagePath) return null;
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    return imagePath;
+  }
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(imagePath);
   return data.publicUrl;
 }
@@ -108,6 +116,9 @@ export async function removeCombatImage(
   imagePath: string | null | undefined
 ): Promise<string | null> {
   if (!imagePath) return null;
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    return null;
+  }
   const { error } = await supabase.storage.from(BUCKET).remove([imagePath]);
   return error?.message ?? null;
 }
