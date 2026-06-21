@@ -4,13 +4,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   addEnemyToState,
-  clearEnemiesFromState,
-  removeEnemyFromState,
+  addPartyMembersToState,
+  removeTokenFromState,
+  resetCombatBoard,
   syncPartyTokens,
   updateGridInState,
   updateTokenInState,
   type EnemyRecord,
 } from "@/lib/combat/state-utils";
+import { clearCampaignInitiativeRolls } from "@/lib/combat/initiative-actions";
+import {
+  finalizeInitiativeIfReady,
+  formatInitiativeResultTooltip,
+  getPartyInitiativeModifierForCharacter,
+  startInitiativeCollection,
+} from "@/lib/combat/initiative";
+import { saveCharacterData } from "@/lib/character/save-character-data";
 import {
   removeCombatImage,
   resolveCombatImageUrl,
@@ -32,6 +41,8 @@ import {
   MIN_TILE_FEET,
 } from "@/lib/schemas/combat-grid";
 import { AddEnemyDialog } from "@/components/combat/add-enemy-dialog";
+import { AddPartyMemberDialog } from "@/components/combat/add-party-member-dialog";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface CombatBoardProps {
   campaignId: string;
@@ -194,6 +205,8 @@ export function CombatBoard({
   const liveState = useRealtimeCombatState(campaignId, initialCombatState);
   const [draft, setDraft] = useState(liveState);
   const [addOpen, setAddOpen] = useState(false);
+  const [addPartyOpen, setAddPartyOpen] = useState(false);
+  const [startingInitiative, setStartingInitiative] = useState(false);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
   const [hoveredTokenId, setHoveredTokenId] = useState<string | null>(null);
@@ -370,9 +383,33 @@ export function CombatBoard({
     [beginTokenDrag, isDm]
   );
 
+  const presentCharacterIds = useMemo(
+    () =>
+      new Set(
+        combatState.tokens
+          .filter((token) => token.kind === "party" && token.characterId)
+          .map((token) => token.characterId!)
+      ),
+    [combatState.tokens]
+  );
+
+  const initiativeTokens = useMemo(() => {
+    if (combatState.initiative.status !== "ready") return [];
+    const tokensById = new Map(combatState.tokens.map((token) => [token.id, token]));
+    return combatState.initiative.order
+      .map((tokenId) => tokensById.get(tokenId))
+      .filter((token): token is CombatToken => token != null);
+  }, [combatState.initiative.order, combatState.initiative.status, combatState.tokens]);
+
   const selectedToken = selectedTokenId
     ? combatState.tokens.find((token) => token.id === selectedTokenId) ?? null
     : null;
+
+  const canStartInitiative =
+    isDm &&
+    combatState.initiative.status === "none" &&
+    combatState.tokens.length > 0 &&
+    !startingInitiative;
 
   async function handleAddEnemy(enemy: EnemyRecord) {
     const next = addEnemyToState(combatState, enemy);
@@ -380,25 +417,94 @@ export function CombatBoard({
     setAddOpen(false);
   }
 
+  async function handleAddPartyMembers(selected: ParsedCharacter[]) {
+    const next = addPartyMembersToState(combatState, selected);
+    await persist(next);
+  }
+
   async function handleRemoveSelected() {
-    if (!selectedToken || selectedToken.kind !== "enemy") return;
-    if (!window.confirm(`Remove ${selectedToken.label} from the board?`)) return;
-    const next = removeEnemyFromState(combatState, selectedToken.id);
+    if (!selectedToken) return;
+    const label = selectedToken.label;
+    if (!window.confirm(`Remove ${label} from the board?`)) return;
+    const next = removeTokenFromState(combatState, selectedToken.id);
     await persist(next);
     setSelectedTokenId(null);
   }
 
-  async function handleClearEnemies() {
+  async function handleResetBoard() {
     if (
       !window.confirm(
-        "Remove all enemies from the board?\n\nParty tokens will stay in place."
+        "Reset the combat board?\n\nAll enemies will be removed, initiative will clear, and every party member will return to default starting positions."
       )
     ) {
       return;
     }
-    const next = clearEnemiesFromState(combatState, characters);
+
+    await clearCampaignInitiativeRolls(
+      campaignId,
+      characters.map((character) => character.id)
+    );
+    const next = resetCombatBoard(combatState, characters);
     await persist(next);
     setSelectedTokenId(null);
+  }
+
+  async function handleStartInitiative() {
+    if (combatState.initiative.status !== "none") return;
+    if (combatState.tokens.length === 0) {
+      window.alert("Add at least one combatant before starting initiative.");
+      return;
+    }
+
+    setStartingInitiative(true);
+
+    let next = startInitiativeCollection(combatState, characters, enemiesBySlug);
+    next = finalizeInitiativeIfReady(next);
+    const persistError = await persistCombatState(campaignId, next);
+    if (persistError) {
+      setStartingInitiative(false);
+      window.alert(persistError);
+      return;
+    }
+    setDraft(next);
+
+    if (next.initiative.status !== "collecting") {
+      setStartingInitiative(false);
+      return;
+    }
+
+    const claimedNeedingRolls = next.tokens
+      .filter((token) => {
+        if (token.kind !== "party" || !token.characterId) return false;
+        if (next.initiative.results[token.id]) return false;
+        const character = charactersById[token.characterId];
+        return !!character?.owner_user_id;
+      })
+      .map((token) => charactersById[token.characterId!])
+      .filter(Boolean);
+
+    await Promise.all(
+      claimedNeedingRolls.map(async (character) => {
+        const modifier = getPartyInitiativeModifierForCharacter(character);
+        await saveCharacterData(
+          character.id,
+          {
+            ...character.data,
+            combat: {
+              ...character.data.combat,
+              pendingInitiativeRoll: {
+                tokenId: character.id,
+                modifier,
+              },
+            },
+          },
+          undefined,
+          { isDm: true, originalData: character.data }
+        );
+      })
+    );
+
+    setStartingInitiative(false);
   }
 
   async function handleBackgroundUpload(file: File) {
@@ -461,7 +567,8 @@ export function CombatBoard({
       : "";
     const isExpanded =
       isHovered &&
-      ((isDm && enemy) || (token.kind === "party" && character != null));
+      ((token.kind === "enemy" && enemy != null) ||
+        (token.kind === "party" && character != null));
 
     const isDragging = draggingTokenId === token.id;
 
@@ -544,7 +651,42 @@ export function CombatBoard({
   return (
     <div className="combat-stage">
       <div className="combat-layout">
-        <div className="combat-turn-column" aria-hidden="true" />
+        <div
+          className="combat-turn-column"
+          aria-label={initiativeTokens.length > 0 ? "Initiative order" : undefined}
+        >
+          {initiativeTokens.map((token) => {
+            const portraitUrl = resolveTokenPortraitUrl(supabase, token);
+            const initiativeResult = combatState.initiative.results[token.id];
+            const turnTooltip =
+              isDm && initiativeResult
+                ? formatInitiativeResultTooltip(token.label, initiativeResult)
+                : token.label;
+
+            const portrait = portraitUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={portraitUrl}
+                alt={token.label}
+                className="combat-turn-portrait"
+                draggable={false}
+              />
+            ) : (
+              <div
+                className="combat-turn-portrait combat-turn-portrait-fallback"
+                aria-label={token.label}
+              >
+                {token.label.slice(0, 1)}
+              </div>
+            );
+
+            return (
+              <div key={token.id} className="combat-turn-portrait-wrap combat-turn-portrait-wrap-tooltip">
+                <Tooltip content={turnTooltip}>{portrait}</Tooltip>
+              </div>
+            );
+          })}
+        </div>
 
         <div className="combat-main">
           <div className="combat-board-area">
@@ -611,19 +753,37 @@ export function CombatBoard({
                   )}
                 </p>
               </div>
-              {isDm ? (
+            </div>
+
+            {isDm ? (
+              <div className="combat-toolbar combat-toolbar-actions-row">
+                <input
+                  ref={backgroundInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void handleBackgroundUpload(file);
+                  }}
+                />
                 <div className="combat-toolbar-actions">
-                  <input
-                    ref={backgroundInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    hidden
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      if (file) void handleBackgroundUpload(file);
-                    }}
-                  />
+                  <button
+                    type="button"
+                    className="candy-btn candy-btn-danger"
+                    onClick={() => void handleResetBoard()}
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    className="candy-btn candy-btn-success"
+                    onClick={() => void handleStartInitiative()}
+                    disabled={!canStartInitiative}
+                  >
+                    {startingInitiative ? "Starting…" : "Start"}
+                  </button>
                   <button
                     type="button"
                     className="candy-btn"
@@ -640,6 +800,13 @@ export function CombatBoard({
                       Remove background
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className="candy-btn"
+                    onClick={() => setAddPartyOpen(true)}
+                  >
+                    Add party member
+                  </button>
                   <button type="button" className="candy-btn" onClick={() => setAddOpen(true)}>
                     Add enemy
                   </button>
@@ -647,20 +814,13 @@ export function CombatBoard({
                     type="button"
                     className="candy-btn"
                     onClick={handleRemoveSelected}
-                    disabled={!selectedToken || selectedToken.kind !== "enemy"}
+                    disabled={!selectedToken}
                   >
                     Remove
                   </button>
-                  <button
-                    type="button"
-                    className="candy-btn candy-btn-danger"
-                    onClick={handleClearEnemies}
-                  >
-                    Reset
-                  </button>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
 
             <div className="combat-grid-shell">
               <div
@@ -709,6 +869,13 @@ export function CombatBoard({
         onOpenChange={setAddOpen}
         enemies={enemies}
         onSelect={handleAddEnemy}
+      />
+      <AddPartyMemberDialog
+        open={addPartyOpen}
+        onOpenChange={setAddPartyOpen}
+        characters={characters}
+        presentCharacterIds={presentCharacterIds}
+        onConfirm={handleAddPartyMembers}
       />
     </div>
   );

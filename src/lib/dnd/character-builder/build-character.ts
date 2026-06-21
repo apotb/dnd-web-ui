@@ -550,6 +550,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       currentHp: maxHp,
       tempHp: 0,
       initiativeBonus: 0,
+      pendingInitiativeRoll: null,
       speed,
       hitDice: `1d${cls?.hitDie ?? 8}`,
       deathSaves: { successes: 0, failures: 0 },

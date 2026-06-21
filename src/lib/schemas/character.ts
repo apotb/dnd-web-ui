@@ -110,6 +110,13 @@ export const combatStatsSchema = z.object({
       spell: z.string().default(""),
     })
     .default({ active: false, spell: "" }),
+  pendingInitiativeRoll: z
+    .object({
+      tokenId: z.string(),
+      modifier: z.number(),
+    })
+    .nullable()
+    .default(null),
 });
 
 export const attackSchema = z.object({

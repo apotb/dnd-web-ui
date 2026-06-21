@@ -2182,6 +2182,46 @@ html.campaign-bg-active .retro-back-link {
   max-width: 360px;
 }
 
+.initiative-roll-modal {
+  margin-bottom: 0;
+}
+
+.initiative-roll-modal .retro-box-title {
+  text-align: center;
+}
+
+.initiative-roll-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.initiative-roll-input {
+  width: 72px;
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.initiative-roll-mod,
+.initiative-roll-total {
+  font-weight: 700;
+  line-height: 1;
+}
+
+.initiative-roll-mod {
+  cursor: help;
+}
+
+.initiative-roll-modal .supply-picker-actions {
+  justify-content: center;
+}
+
+.initiative-roll-modal .retro-muted {
+  text-align: center;
+}
+
 .death-scene-modal {
   max-width: 360px;
 }
@@ -2225,6 +2265,11 @@ html.campaign-bg-active .retro-back-link {
 .supply-picker-modal {
   max-width: 360px;
   width: 100%;
+}
+
+.supply-picker-modal.initiative-roll-modal {
+  width: max-content;
+  max-width: min(240px, calc(100vw - 40px));
 }
 
 .supply-picker-summary {
@@ -2287,6 +2332,111 @@ html.campaign-bg-active .retro-back-link {
 
 .candy-btn-danger {
   color: #b91c1c;
+}
+
+.candy-btn-success {
+  color: #15803d;
+}
+
+.combat-toolbar-actions-row {
+  justify-content: flex-start;
+}
+
+.combat-turn-column {
+  width: 56px;
+  flex-shrink: 0;
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 8px;
+  background: #16161f;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  overflow-y: auto;
+}
+
+.combat-turn-portrait-wrap {
+  flex-shrink: 0;
+}
+
+.combat-turn-portrait-wrap-tooltip {
+  cursor: help;
+}
+
+.combat-turn-portrait {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid rgba(148, 163, 184, 0.45);
+  display: block;
+}
+
+.combat-turn-portrait-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #334155;
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.add-party-member-modal {
+  max-width: 420px;
+}
+
+.add-party-member-summary {
+  margin-bottom: 12px;
+}
+
+.add-party-member-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.add-party-member-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid #000;
+  background: #fff;
+  cursor: pointer;
+}
+
+.add-party-member-item:hover {
+  background: #ffe8a3;
+}
+
+.add-party-member-portrait {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid #000;
+}
+
+.add-party-member-portrait-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ddd;
+  font-weight: 700;
+}
+
+.add-party-member-name {
+  font-weight: 700;
+}
+
+.add-party-member-actions {
+  justify-content: space-between;
 }
 
 .combat-stage {
@@ -2352,14 +2502,6 @@ html.campaign-bg-active .retro-back-link {
   display: flex;
   gap: 12px;
   min-height: 70vh;
-}
-
-.combat-turn-column {
-  width: 56px;
-  flex-shrink: 0;
-  border: 1px dashed rgba(148, 163, 184, 0.45);
-  border-radius: 8px;
-  background: #16161f;
 }
 
 .combat-main {

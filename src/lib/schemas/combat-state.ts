@@ -11,6 +11,19 @@ import {
 export const TOKEN_KINDS = ["party", "enemy", "ally"] as const;
 export type TokenKind = (typeof TOKEN_KINDS)[number];
 
+export const initiativeTokenResultSchema = z.object({
+  total: z.number().int(),
+  roll: z.number().int().min(1).max(20),
+  modifier: z.number().int(),
+  dexMod: z.number().int(),
+});
+
+export const combatInitiativeSchema = z.object({
+  status: z.enum(["none", "collecting", "ready"]).default("none"),
+  results: z.record(z.string(), initiativeTokenResultSchema).default({}),
+  order: z.array(z.string()).default([]),
+});
+
 export const combatTokenSchema = z.object({
   id: z.string(),
   kind: z.enum(TOKEN_KINDS),
@@ -34,9 +47,13 @@ export const combatStateSchema = z.object({
   tileFeet: z.number().int().min(MIN_TILE_FEET).max(MAX_TILE_FEET).default(DEFAULT_TILE_FEET),
   backgroundPath: z.string().nullable().default(null),
   tokens: z.array(combatTokenSchema).default([]),
+  excludedPartyCharacterIds: z.array(z.string()).default([]),
+  initiative: combatInitiativeSchema.default({ status: "none", results: {}, order: [] }),
 });
 
 export type CombatToken = z.infer<typeof combatTokenSchema>;
+export type CombatInitiative = z.infer<typeof combatInitiativeSchema>;
+export type InitiativeTokenResult = z.infer<typeof initiativeTokenResultSchema>;
 export type CombatState = z.infer<typeof combatStateSchema>;
 
 export function parseCombatState(input: unknown): CombatState {

@@ -1,4 +1,5 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { sortInitiativeTokenIds } from "@/lib/combat/initiative";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { DEFAULT_GRID_SIZE, DEFAULT_TILE_FEET, MAX_GRID_SIZE, MAX_TILE_FEET, MIN_GRID_SIZE, MIN_TILE_FEET } from "@/lib/schemas/combat-grid";
 import {
@@ -80,6 +81,8 @@ export function createDefaultCombatState(
     tileFeet: DEFAULT_TILE_FEET,
     backgroundPath: null,
     tokens: [],
+    excludedPartyCharacterIds: [],
+    initiative: { status: "none", results: {}, order: [] },
   };
 
   return {
@@ -292,14 +295,120 @@ export function addEnemyToState(state: CombatState, enemy: EnemyRecord): CombatS
   };
 }
 
-export function removeEnemyFromState(state: CombatState, tokenId: string): CombatState {
+export function removeTokenFromState(state: CombatState, tokenId: string): CombatState {
+  const token = state.tokens.find((entry) => entry.id === tokenId);
+  if (!token) return state;
+
+  let excludedPartyCharacterIds = state.excludedPartyCharacterIds;
+  if (token.kind === "party" && token.characterId) {
+    if (!excludedPartyCharacterIds.includes(token.characterId)) {
+      excludedPartyCharacterIds = [...excludedPartyCharacterIds, token.characterId];
+    }
+  }
+
+  const tokens = relabelEnemyTokens(state.tokens.filter((entry) => entry.id !== tokenId));
+  const initiative = clearTokenFromInitiative(state.initiative, tokenId, tokens);
+
   return {
     ...state,
-    tokens: relabelEnemyTokens(state.tokens.filter((token) => token.id !== tokenId)),
+    excludedPartyCharacterIds,
+    tokens,
+    initiative,
   };
 }
 
-export function clearEnemiesFromState(
+export function removeEnemyFromState(state: CombatState, tokenId: string): CombatState {
+  return removeTokenFromState(state, tokenId);
+}
+
+function clearTokenFromInitiative(
+  initiative: CombatState["initiative"],
+  tokenId: string,
+  tokens: CombatToken[]
+): CombatState["initiative"] {
+  if (initiative.status === "none") return initiative;
+
+  const { [tokenId]: _removed, ...results } = initiative.results;
+  const order = initiative.order.filter((id) => id !== tokenId);
+
+  if (initiative.status === "ready") {
+    return {
+      status: "ready",
+      results,
+      order,
+    };
+  }
+
+  const allCollected = tokens.every((token) => results[token.id] != null);
+  if (allCollected && tokens.length > 0) {
+    return {
+      status: "ready",
+      results,
+      order: sortInitiativeTokenIds(tokens, results),
+    };
+  }
+
+  return {
+    status: "collecting",
+    results,
+    order: [],
+  };
+}
+
+export function addPartyMembersToState(
+  state: CombatState,
+  characters: ParsedCharacter[]
+): CombatState {
+  if (characters.length === 0) return state;
+
+  const excluded = new Set(state.excludedPartyCharacterIds);
+  for (const character of characters) {
+    excluded.delete(character.id);
+  }
+
+  let workingState: CombatState = {
+    ...state,
+    excludedPartyCharacterIds: [...excluded],
+    tokens: [...state.tokens],
+  };
+  const addedTokens: CombatToken[] = [];
+
+  for (const character of characters) {
+    const alreadyOnBoard = workingState.tokens.some(
+      (token) => token.kind === "party" && token.characterId === character.id
+    );
+    if (alreadyOnBoard) continue;
+
+    const width = 1;
+    const height = 1;
+    const { x, y } = findPartySpawnSlot(workingState, width, height);
+    const token = combatTokenSchema.parse({
+      id: character.id,
+      kind: "party",
+      name: character.name,
+      label: character.name,
+      characterId: character.id,
+      portraitPath: character.data.basicInfo.portrait || null,
+      x,
+      y,
+      width,
+      height,
+      placed: true,
+    });
+    addedTokens.push(token);
+    workingState = {
+      ...workingState,
+      tokens: [...workingState.tokens, token],
+    };
+  }
+
+  return {
+    ...workingState,
+    tokens: relabelEnemyTokens(workingState.tokens),
+  };
+}
+
+export function resetCombatBoard(
   state: CombatState,
   characters: ParsedCharacter[]
 ): CombatState {
@@ -309,6 +418,8 @@ export function clearEnemiesFromState(
     tileFeet: state.tileFeet,
     backgroundPath: state.backgroundPath ?? null,
     tokens: [],
+    excludedPartyCharacterIds: [],
+    initiative: { status: "none", results: {}, order: [] },
   };
 
   return {
@@ -317,17 +428,27 @@ export function clearEnemiesFromState(
   };
 }
 
+export function clearEnemiesFromState(
+  state: CombatState,
+  characters: ParsedCharacter[]
+): CombatState {
+  return resetCombatBoard(state, characters);
+}
+
 export function syncPartyTokens(
   state: CombatState,
   characters: ParsedCharacter[]
 ): CombatState {
+  const excluded = new Set(state.excludedPartyCharacterIds);
   const existingParty = new Map(
     state.tokens
       .filter((token) => token.kind === "party" && token.characterId)
       .map((token) => [token.characterId!, token])
   );
   const nonParty = state.tokens.filter((token) => token.kind !== "party");
-  const sorted = [...characters].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...characters]
+    .filter((character) => !excluded.has(character.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   let workingState: CombatState = { ...state, tokens: [...nonParty] };
   const partyTokens: CombatToken[] = [];
