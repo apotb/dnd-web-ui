@@ -48,7 +48,7 @@ export default async function CampaignLayout({
 
   return (
     <div className="campaign-page-frame">
-      <RetroShell>
+        <RetroShell>
         <CampaignNav
           campaignId={campaignId}
           campaignName={access.campaign.name}

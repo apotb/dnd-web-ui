@@ -15,17 +15,9 @@ import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
 import { migrateLanguageChoices } from "@/lib/character/language-choices";
 import { syncSpellcastingFromClass } from "@/lib/dnd/spellcasting";
 import { levelFromXp, xpForLevel } from "@/lib/dnd/xp";
-import {
-  combatantDataSchema,
-  stripDmNotesFromCombatantData,
-  type CombatantData,
-} from "@/lib/schemas/combat";
-import type { Character, EncounterCombatant } from "@/lib/types/database";
+import type { Character } from "@/lib/types/database";
 
 export type ParsedCharacter = Omit<Character, "data"> & { data: CharacterData };
-export type ParsedCombatant = Omit<EncounterCombatant, "data"> & {
-  data: CombatantData;
-};
 
 // ---------------------------------------------------------------------------
 // Name → catalog slug mapping for migrating existing saves.
@@ -330,17 +322,6 @@ export function parseCharacterRow(row: Character, isDm: boolean): ParsedCharacte
   return {
     ...row,
     data: isDm ? data : stripDmNotesFromCharacterData(data),
-  };
-}
-
-export function parseCombatantRow(
-  row: EncounterCombatant,
-  isDm: boolean
-): ParsedCombatant {
-  const data = combatantDataSchema.parse(row.data);
-  return {
-    ...row,
-    data: isDm ? data : stripDmNotesFromCombatantData(data),
   };
 }
 

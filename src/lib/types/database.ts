@@ -16,6 +16,7 @@ export interface Campaign {
   world_data: Json;
   maps_data: Json;
   notables_data: Json;
+  combat_state: Json;
   is_main: boolean;
   created_at: string;
   updated_at: string;
@@ -40,13 +41,12 @@ export interface Character {
   updated_at: string;
 }
 
-export interface Encounter {
+export interface Enemy {
   id: string;
-  campaign_id: string;
+  slug: string;
   name: string;
-  round: number;
-  current_turn_index: number;
-  active: boolean;
+  source: string;
+  data: Json;
   created_at: string;
   updated_at: string;
 }
@@ -65,18 +65,6 @@ export interface Item {
   properties: Json;
   requires_attunement: boolean;
   is_magic: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface EncounterCombatant {
-  id: string;
-  encounter_id: string;
-  character_id: string | null;
-  data: Json;
-  initiative: number;
-  sort_order: number;
-  visible_to_players: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +111,7 @@ export type Database = {
           world_data?: Json;
           maps_data?: Json;
           notables_data?: Json;
+          combat_state?: Json;
           is_main?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -179,35 +168,18 @@ export type Database = {
         Update: Partial<Item>;
         Relationships: [];
       };
-      encounters: {
-        Row: Encounter;
+      enemies: {
+        Row: Enemy;
         Insert: {
           id?: string;
-          campaign_id: string;
-          name?: string;
-          round?: number;
-          current_turn_index?: number;
-          active?: boolean;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Encounter>;
-        Relationships: [];
-      };
-      encounter_combatants: {
-        Row: EncounterCombatant;
-        Insert: {
-          id?: string;
-          encounter_id: string;
-          character_id?: string | null;
+          slug: string;
+          name: string;
+          source?: string;
           data?: Json;
-          initiative?: number;
-          sort_order?: number;
-          visible_to_players?: boolean;
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<EncounterCombatant>;
+        Update: Partial<Enemy>;
         Relationships: [];
       };
       campaign_notebooks: {

@@ -416,3 +416,22 @@ export async function deleteLanguageEntry(slug: string): Promise<{ error?: strin
   const { error } = await supabase.from("languages").delete().eq("slug", slug);
   return { error: error?.message };
 }
+
+export async function upsertEnemyEntry(
+  slug: string,
+  name: string,
+  source: string,
+  data: unknown
+): Promise<{ error?: string }> {
+  const supabase = await createServerClient();
+  const { error } = await supabase
+    .from("enemies")
+    .upsert({ slug, name, source, data }, { onConflict: "slug" });
+  return { error: error?.message };
+}
+
+export async function deleteEnemyEntry(slug: string): Promise<{ error?: string }> {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("enemies").delete().eq("slug", slug);
+  return { error: error?.message };
+}

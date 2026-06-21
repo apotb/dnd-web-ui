@@ -155,6 +155,14 @@ html[data-campaign-bg-transitions] .campaign-bg {
   background: rgba(192, 192, 192, 0.12);
 }
 
+.campaign-page-frame:has(.combat-stage) .campaign-bg-scrim {
+  background: rgba(10, 10, 16, 0.82);
+}
+
+.campaign-page-frame:has(.combat-stage) .campaign-bg-image {
+  opacity: 0.25;
+}
+
 html.campaign-bg-active .retro-header-row,
 html.campaign-bg-active .nav-row-primary {
   padding: 4px 6px;
@@ -770,7 +778,12 @@ html.campaign-bg-active .retro-muted {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: center top;
+}
+
+.portrait-cover-top {
+  object-fit: cover;
+  object-position: center top;
 }
 
 .character-portrait-placeholder {
@@ -2055,6 +2068,15 @@ html.campaign-bg-active .retro-back-link {
   pointer-events: auto;
 }
 
+/* Combat board is wider than the content column — keep supply icons in the margin */
+.campaign-page-frame:has(.combat-stage) .campaign-notifications-rail {
+  transform: translateX(
+    calc(
+      100% + 16px + max(0px, (min(1120px, 100vw - 32px) - min(720px, calc(100vw - 40px))) / 2)
+    )
+  );
+}
+
 .campaign-notifications {
   display: flex;
   flex-direction: column;
@@ -2259,4 +2281,489 @@ html.campaign-bg-active .retro-back-link {
 .supply-picker-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+/* ── Combat board (VTT) ─────────────────────────────────────────────────── */
+
+.candy-btn-danger {
+  color: #b91c1c;
+}
+
+.combat-stage {
+  background: #101018;
+  border: 2px solid #000;
+  padding: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
+  width: min(1120px, calc(100vw - 32px));
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+.combat-stage .page-title {
+  background: transparent;
+  box-shadow: none;
+}
+
+.combat-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.combat-meta {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2em;
+}
+
+.combat-meta-input {
+  width: 3.2em;
+  padding: 2px 4px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 4px;
+  background: #1e293b;
+  color: #f1f5f9;
+  font: inherit;
+  font-size: inherit;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.combat-meta-input::-webkit-outer-spin-button,
+.combat-meta-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.combat-meta-input-feet {
+  width: 2.6em;
+}
+
+.combat-meta-sep {
+  user-select: none;
+}
+
+.combat-layout {
+  display: flex;
+  gap: 12px;
+  min-height: 70vh;
+}
+
+.combat-turn-column {
+  width: 56px;
+  flex-shrink: 0;
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 8px;
+  background: #16161f;
+}
+
+.combat-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.combat-board-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.combat-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: #16161f;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+}
+
+.combat-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.combat-resize-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.combat-grid-shell {
+  flex: 1;
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background: #0a0a10;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  overflow: visible;
+}
+
+.combat-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-width), 1fr);
+  grid-template-rows: repeat(var(--grid-height), 1fr);
+  width: min(100%, 70vh);
+  aspect-ratio: var(--grid-width) / var(--grid-height);
+  max-height: 70vh;
+  background-color: #1a1a28;
+  border: 2px solid rgba(248, 250, 252, 0.35);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 8px 32px rgba(0, 0, 0, 0.55);
+  overflow: visible;
+}
+
+.combat-grid-dragging .combat-token:not(.combat-token-dragging) {
+  pointer-events: none;
+}
+
+.combat-grid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.2) 1px, transparent 1px);
+  background-size:
+    calc(100% / var(--grid-width)) calc(100% / var(--grid-height)),
+    calc(100% / var(--grid-width)) calc(100% / var(--grid-height));
+}
+
+.combat-grid-background {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.combat-token-on-grid {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+  box-sizing: border-box;
+  overflow: visible;
+  min-width: 0;
+  min-height: 0;
+}
+
+.combat-token {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  position: relative;
+}
+
+.combat-token-dm {
+  cursor: pointer;
+}
+
+.combat-token-dm.combat-token-dragging {
+  cursor: grabbing;
+}
+
+.combat-token-dm .combat-token-label {
+  pointer-events: auto;
+}
+
+.combat-token-badge {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  container-type: size;
+}
+
+.combat-token-badge-expanded::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  transform: translateX(-50%);
+  width: max(160px, 160%);
+  height: 96px;
+  pointer-events: none;
+}
+
+.combat-token:active,
+.combat-token-dragging {
+  cursor: grabbing;
+}
+
+.combat-token-dragging {
+  z-index: 10;
+}
+
+.combat-token-selected {
+  z-index: 6;
+}
+
+.combat-token-expanded {
+  z-index: 8;
+}
+
+.combat-token-selected .combat-token-badge {
+  outline: 2px solid #fbbf24;
+  outline-offset: 1px;
+  border-radius: 50%;
+}
+
+.combat-token-portrait {
+  width: min(92cqw, 92cqh);
+  height: min(92cqw, 92cqh);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center top;
+  border: 2px solid currentColor;
+  background: #111;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  flex-shrink: 0;
+}
+
+.combat-token-portrait-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: clamp(0.65rem, 40%, 1.1rem);
+  color: #f8fafc;
+}
+
+.combat-token-label {
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 2px - 1.3em - 6px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 5;
+  font-size: clamp(12px, 34%, 16px);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 3px 10px;
+  border-radius: 5px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: none;
+}
+
+.combat-token-label-expanded {
+  gap: 2px;
+  padding-bottom: 8px;
+  min-width: 96px;
+}
+
+.combat-token-label-expanded .combat-token-label-portrait,
+.combat-token-label-expanded .combat-token-label-portrait-fallback {
+  margin-bottom: 4px;
+}
+
+.combat-token-label-portrait {
+  width: 96px;
+  height: 96px;
+  min-width: 96px;
+  min-height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center top;
+  border: 2px solid currentColor;
+  background: #111;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  flex-shrink: 0;
+  aspect-ratio: 1;
+}
+
+.combat-token-label-portrait-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 2rem;
+  color: #f8fafc;
+}
+
+.combat-token-party .combat-token-label-portrait-fallback {
+  background: #1e3a5f;
+  color: #dbeafe;
+}
+
+.combat-token-enemy .combat-token-label-portrait-fallback {
+  background: #450a0a;
+  color: #fecaca;
+}
+
+.combat-token-ally .combat-token-label-portrait-fallback {
+  background: #14532d;
+  color: #dcfce7;
+}
+
+.combat-token-label-name {
+  display: block;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: inherit;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.combat-token-label-detail {
+  display: block;
+  font-size: max(0.92em, 11px);
+  font-weight: 500;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.combat-token-party {
+  color: #3b82f6;
+}
+
+.combat-token-party .combat-token-portrait,
+.combat-token-party .combat-token-portrait-fallback {
+  border-color: #3b82f6;
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.combat-token-party .combat-token-portrait-fallback {
+  background: #1e3a5f;
+  color: #dbeafe;
+}
+
+.combat-token-party .combat-token-label {
+  background: rgba(30, 58, 95, 0.95);
+  border: 1px solid rgba(59, 130, 246, 0.55);
+  color: #dbeafe;
+}
+
+.combat-token-enemy {
+  color: #ef4444;
+}
+
+.combat-token-enemy .combat-token-portrait,
+.combat-token-enemy .combat-token-portrait-fallback {
+  border-color: #ef4444;
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.combat-token-enemy .combat-token-portrait-fallback {
+  background: #450a0a;
+  color: #fecaca;
+}
+
+.combat-token-enemy .combat-token-label {
+  background: rgba(69, 10, 10, 0.95);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #fecaca;
+}
+
+.combat-token-ally {
+  color: #22c55e;
+}
+
+.combat-token-ally .combat-token-portrait,
+.combat-token-ally .combat-token-portrait-fallback {
+  border-color: #22c55e;
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.combat-token-ally .combat-token-portrait-fallback {
+  background: #14532d;
+  color: #dcfce7;
+}
+
+.combat-token-ally .combat-token-label {
+  background: rgba(20, 83, 45, 0.95);
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  color: #dcfce7;
+}
+
+.combat-enemy-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.combat-enemy-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #000;
+  background: #fff;
+  cursor: pointer;
+  text-align: center;
+}
+
+.combat-enemy-picker-item:hover {
+  background: #ffe8a3;
+}
+
+.combat-enemy-picker-portrait {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center top;
+  border: 2px solid #ef4444;
+}
+
+.combat-enemy-picker-portrait-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #171722;
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.combat-enemy-picker-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.combat-enemy-picker-meta {
+  font-size: 0.75rem;
+  opacity: 0.75;
 }
