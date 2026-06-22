@@ -8,6 +8,7 @@ import {
   type CharacterActionEntry,
 } from "@/lib/dnd/character-actions";
 import {
+  deriveUnarmedStrike,
   formatAttackRollLine,
   getAllAttacks,
   type DerivedAttack,
@@ -19,7 +20,7 @@ import {
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { EnemyData, EnemyNamedBlock } from "@/lib/schemas/enemy";
-import type { Item } from "@/lib/schemas/item";
+import { getWeaponProperties, type Item } from "@/lib/schemas/item";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { canUseHelpAction, isTokenEngaged } from "@/lib/combat/engagement";
 import { parseAttackRangeSpec } from "@/lib/combat/targeting";
@@ -245,9 +246,33 @@ function buildStandardActionOptions(
     }));
 }
 
-export function isMeleeOpportunityAttack(attack: DerivedAttack): boolean {
+const MELEE_REACH_FT = 10;
+
+function isMeleeAttackRange(attack: DerivedAttack): boolean {
   const spec = parseAttackRangeSpec(attack);
-  return !spec.isAoe && spec.maxFt <= 5;
+  return !spec.isAoe && spec.maxFt <= MELEE_REACH_FT;
+}
+
+export function isMeleeOpportunityAttack(
+  attack: DerivedAttack,
+  catalogItems: Record<string, Item> = {}
+): boolean {
+  if (attack.isOffHand) return false;
+
+  if (attack.source === "weapon" && attack.itemId) {
+    const catalogItem = catalogItems[attack.itemId];
+    const weaponProps = catalogItem ? getWeaponProperties(catalogItem) : null;
+    if (weaponProps) {
+      return weaponProps.weaponRange === "melee";
+    }
+  }
+
+  if (attack.source === "cantrip" || attack.source === "spell") {
+    if (attack.rollType === "save" || attack.rollType === "auto") return false;
+    return isMeleeAttackRange(attack);
+  }
+
+  return isMeleeAttackRange(attack);
 }
 
 export function getOpportunityAttackOptionsForCharacter(
@@ -255,9 +280,12 @@ export function getOpportunityAttackOptionsForCharacter(
   catalogItems: Record<string, Item>,
   classCatalog: PhbClass[]
 ): CombatOption[] {
-  const attacks = getAllAttacks(character.data, catalogItems, classCatalog);
+  const attacks = [
+    ...getAllAttacks(character.data, catalogItems, classCatalog),
+    deriveUnarmedStrike(character.data),
+  ];
   return attacks
-    .filter((attack) => !attack.isOffHand && isMeleeOpportunityAttack(attack))
+    .filter((attack) => isMeleeOpportunityAttack(attack, catalogItems))
     .map((attack) => attackToCombatOption(attack, character.data, "attack"));
 }
 

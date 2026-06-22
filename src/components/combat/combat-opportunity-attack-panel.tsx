@@ -68,7 +68,7 @@ export function CombatOpportunityAttackPanel({
     <section className="combat-attack-panel combat-opportunity-attack-panel" aria-label="Opportunity Attack">
       <div className="combat-attack-header">
         <h3 className="combat-attack-title">Opportunity Attack</h3>
-        <p className="combat-attack-subtitle retro-muted">
+        <p className="combat-attack-subtitle">
           {provokingLabel} moved away. Make a melee attack or skip.
         </p>
       </div>

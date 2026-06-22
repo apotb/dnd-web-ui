@@ -5,7 +5,12 @@ import {
   type AttackSubmissionInput,
 } from "@/lib/combat/pending-attack-builder";
 import type { CombatOption } from "@/lib/combat/combat-options";
-import { skipOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
+import {
+  canSkipOpportunityAttackAction,
+  hasSubmittedOpportunityAttack,
+  skipOpportunityAttackForAttacker,
+} from "@/lib/combat/opportunity-attacks";
+import { canSubmitOpportunityAttack } from "@/lib/combat/attack-resolution";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import type { EnemyData } from "@/lib/schemas/enemy";
@@ -27,7 +32,10 @@ export async function submitCombatOpportunityAttack(
     enemiesBySlug: Record<string, { data: EnemyData }>;
   }
 ): Promise<{ next: CombatState; error?: string }> {
-  if (state.pendingAttack) {
+  if (!canSubmitOpportunityAttack(state, options.attacker.id)) {
+    if (hasSubmittedOpportunityAttack(state, options.attacker.id)) {
+      return { next: state, error: "Your opportunity attack is already pending." };
+    }
     return { next: state, error: "An attack is already pending." };
   }
 
@@ -69,6 +77,17 @@ export async function skipCombatOpportunityAttack(
     attackerTokenId: string;
   }
 ): Promise<{ next: CombatState; error?: string }> {
+  if (state.pendingAttack != null) {
+    if (hasSubmittedOpportunityAttack(state, options.attackerTokenId)) {
+      return { next: state, error: "Your opportunity attack is already pending." };
+    }
+    return { next: state, error: "An attack is already pending." };
+  }
+
+  if (!canSkipOpportunityAttackAction(state, options.attackerTokenId)) {
+    return { next: state, error: "No opportunity attack to skip." };
+  }
+
   const next = skipOpportunityAttackForAttacker(state, options.attackerTokenId);
 
   if (next.pendingOpportunityAttacks === state.pendingOpportunityAttacks) {

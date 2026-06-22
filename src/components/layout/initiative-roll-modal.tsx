@@ -9,6 +9,7 @@ import {
   getExhaustionAbilityCheckSheetNote,
 } from "@/lib/dnd/exhaustion";
 import type { CharacterData } from "@/lib/schemas/character";
+import { parseD20Roll, sanitizeDieRollInput } from "@/lib/dnd/dice";
 import { Tooltip } from "@/components/ui/tooltip";
 
 interface InitiativeRollModalProps {
@@ -36,14 +37,13 @@ export function InitiativeRollModal({
     formatInitiativeTooltip(data),
     getExhaustionAbilityCheckSheetNote(data)
   );
-  const rollValue = parseInt(roll, 10);
-  const hasValidRoll =
-    Number.isFinite(rollValue) && rollValue >= 1 && rollValue <= 20;
+  const rollValue = parseD20Roll(roll);
+  const hasValidRoll = rollValue != null;
   const rollTotal = hasValidRoll ? rollValue + modifier : null;
 
   async function submit() {
-    const rollValue = parseInt(roll, 10);
-    if (!Number.isFinite(rollValue) || rollValue < 1 || rollValue > 20) {
+    const parsedRoll = parseD20Roll(roll);
+    if (parsedRoll == null) {
       setMessage("Enter a d20 roll from 1 to 20.");
       return;
     }
@@ -51,7 +51,7 @@ export function InitiativeRollModal({
     setSaving(true);
     setMessage(null);
 
-    const { error } = await submitInitiativeRoll(campaignId, characterId, rollValue);
+    const { error } = await submitInitiativeRoll(campaignId, characterId, parsedRoll);
     setSaving(false);
 
     if (error) {
@@ -70,15 +70,15 @@ export function InitiativeRollModal({
           <input
             id="initiative-roll"
             className="candy-input initiative-roll-input"
-            type="number"
-            min={1}
-            max={20}
+            type="text"
+            inputMode="numeric"
             placeholder="d20"
             value={roll}
-            onChange={(event) => setRoll(event.target.value)}
+            onChange={(event) => setRoll(sanitizeDieRollInput(event.target.value, 20))}
             disabled={saving}
             autoFocus
             aria-label="d20 roll"
+            aria-invalid={roll.trim().length > 0 && !hasValidRoll}
           />
           <Tooltip content={initiativeTooltip}>
             <span className="initiative-roll-mod">{formatModifier(modifier)}</span>
@@ -93,7 +93,7 @@ export function InitiativeRollModal({
             type="button"
             className="candy-btn"
             onClick={submit}
-            disabled={saving || !roll}
+            disabled={saving || !hasValidRoll}
           >
             {saving ? "..." : "Continue"}
           </button>

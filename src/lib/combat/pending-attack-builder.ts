@@ -5,8 +5,10 @@ import {
   transitionToDmReview,
 } from "@/lib/combat/attack-resolution";
 import {
+  findHostileTargetAtCell,
   getAoePreviewTargets,
   getValidHostileTargets,
+  isTokenOnGrid,
   parseAttackRangeSpec,
 } from "@/lib/combat/targeting";
 import type { CombatOption } from "@/lib/combat/combat-options";
@@ -93,7 +95,14 @@ export function buildTargetList(
   }
 
   if (targetToken) {
-    return [targetToken];
+    return isTokenValidSingleTarget(attacker, targetToken, attack, state)
+      ? [targetToken]
+      : [];
+  }
+
+  if (aoeCenter && !spec.isAoe) {
+    const cellTarget = findHostileTargetAtCell(attacker, aoeCenter, state, attack);
+    if (cellTarget) return [cellTarget];
   }
 
   return [];
@@ -265,7 +274,8 @@ export function isTokenValidSingleTarget(
   attack: DerivedAttack,
   state: CombatState
 ): boolean {
-  if (!target.placed || target.id === attacker.id) return false;
+  if (!isTokenOnGrid(target, state)) return false;
+  if (target.id === attacker.id) return false;
   if (!isHostileToken(attacker, target) && attack.rollType !== "save") return false;
   const spec = parseAttackRangeSpec(attack);
   if (spec.isAoe) return false;

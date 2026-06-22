@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { parseD20Roll, SaveRollField } from "@/components/combat/combat-roll-fields";
 import type { PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatSaveRollModalProps {
@@ -27,7 +28,9 @@ export function CombatSaveRollModal({
 }: CombatSaveRollModalProps) {
   const [saveRoll, setSaveRoll] = useState("");
   const [saveMod, setSaveMod] = useState("");
-  const saveTotal = parseIntOrZero(saveRoll) + parseIntOrZero(saveMod);
+  const saveRollValue = parseD20Roll(saveRoll);
+  const saveTotal = (saveRollValue ?? 0) + parseIntOrZero(saveMod);
+  const canSubmit = saveRollValue != null;
 
   return (
     <div className="supply-picker-overlay" onClick={onCancel}>
@@ -44,13 +47,9 @@ export function CombatSaveRollModal({
         <div className="combat-attack-submit-fields">
           <label className="combat-attack-submit-field">
             <span>d20 roll</span>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              className="candy-input"
+            <SaveRollField
               value={saveRoll}
-              onChange={(event) => setSaveRoll(event.target.value)}
+              onChange={setSaveRoll}
               disabled={submitting}
             />
           </label>
@@ -75,8 +74,11 @@ export function CombatSaveRollModal({
             <button
               type="button"
               className="candy-btn"
-              onClick={() => onSubmit(parseIntOrZero(saveRoll), saveTotal)}
-              disabled={submitting || !saveRoll.trim()}
+              onClick={() => {
+                if (saveRollValue == null) return;
+                onSubmit(saveRollValue, saveTotal);
+              }}
+              disabled={submitting || !canSubmit}
             >
               {submitting ? "Submitting…" : "Submit save"}
             </button>

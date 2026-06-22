@@ -103,6 +103,20 @@ export const combatTokenSchema = z.object({
   damageTaken: z.number().int().min(0).default(0),
 });
 
+export const pendingOpportunityAttacksSchema = z.object({
+  provokingTokenId: z.string(),
+  pendingAttackerTokenIds: z.array(z.string()),
+  /** Present when movement is deferred until OAs resolve; omitted on legacy states. */
+  destination: z
+    .object({
+      x: z.number(),
+      y: z.number(),
+    })
+    .nullish(),
+  costFeet: z.number().nullish(),
+  dashConsumed: z.boolean().nullish(),
+});
+
 export const combatStateSchema = z.object({
   gridWidth: z.number().int().min(MIN_GRID_SIZE).max(MAX_GRID_SIZE).default(DEFAULT_GRID_SIZE),
   gridHeight: z.number().int().min(MIN_GRID_SIZE).max(MAX_GRID_SIZE).default(DEFAULT_GRID_SIZE),
@@ -123,16 +137,11 @@ export const combatStateSchema = z.object({
     disengageUsed: false,
   }),
   pendingAttack: pendingAttackSchema.nullable().default(null),
-  pendingOpportunityAttacks: z
-    .object({
-      provokingTokenId: z.string(),
-      pendingAttackerTokenIds: z.array(z.string()),
-    })
-    .nullable()
-    .default(null),
+  pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
 });
 
 export type CombatToken = z.infer<typeof combatTokenSchema>;
+export type PendingOpportunityAttacks = z.infer<typeof pendingOpportunityAttacksSchema>;
 export type PendingAttackTarget = z.infer<typeof pendingAttackTargetSchema>;
 export type PendingAttack = z.infer<typeof pendingAttackSchema>;
 export type CombatInitiative = z.infer<typeof combatInitiativeSchema>;

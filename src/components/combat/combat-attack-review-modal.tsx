@@ -7,6 +7,8 @@ import {
   damageRollsToInputValues,
   getDamageSubmitValues,
   HitRollField,
+  parseD20Roll,
+  SaveRollField,
 } from "@/components/combat/combat-roll-fields";
 import {
   computeDamageApplied,
@@ -95,7 +97,7 @@ export function CombatAttackReviewModal({
     const target = draft.targets.find((entry) => entry.tokenId === tokenId);
     if (!target) return;
 
-    const roll = parseOptionalInt(value);
+    const roll = parseD20Roll(value);
     if (roll != null && target.ac != null) {
       const hitResult = computeHitFromRoll(roll, attackBonus, target.ac);
       updateTarget(tokenId, {
@@ -201,15 +203,11 @@ export function CombatAttackReviewModal({
               <div className="combat-attack-review-fields">
                 <label className="combat-attack-submit-field">
                   <span>Save roll (d20)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    className="candy-input"
-                    value={target.saveRoll ?? ""}
-                    onChange={(event) =>
+                  <SaveRollField
+                    value={target.saveRoll?.toString() ?? ""}
+                    onChange={(value) =>
                       updateTarget(target.tokenId, {
-                        saveRoll: parseInt(event.target.value, 10) || null,
+                        saveRoll: parseD20Roll(value),
                       })
                     }
                     disabled={submitting}
@@ -290,7 +288,6 @@ export function CombatAttackReviewModal({
         onClick={(event) => event.stopPropagation()}
       >
         <p className="retro-box-title">Review attack — {pending.optionName}</p>
-        <p className="retro-muted">Adjust rolls, hit/miss, and damage before applying.</p>
 
         <div className="combat-attack-review-targets">{targetSections}</div>
 

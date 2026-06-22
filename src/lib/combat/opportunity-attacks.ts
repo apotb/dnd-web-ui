@@ -11,6 +11,25 @@ export function canAdvanceTurnWithOpportunityAttacks(state: CombatState): boolea
   return !hasPendingOpportunityAttacks(state);
 }
 
+export function hasPendingOpportunityAttackMove(state: CombatState): boolean {
+  return state.pendingOpportunityAttacks?.destination != null;
+}
+
+export function finalizePendingOpportunityAttackMove(state: CombatState): CombatState {
+  const pending = state.pendingOpportunityAttacks;
+  if (!pending?.destination) {
+    return { ...state, pendingOpportunityAttacks: null };
+  }
+
+  return applyCombatMove(
+    { ...state, pendingOpportunityAttacks: null },
+    pending.provokingTokenId,
+    pending.destination,
+    pending.costFeet ?? 0,
+    pending.dashConsumed ?? false
+  );
+}
+
 export function applyCombatMoveWithOpportunityAttacks(
   state: CombatState,
   tokenId: string,
@@ -19,16 +38,18 @@ export function applyCombatMoveWithOpportunityAttacks(
   dashConsumed: boolean,
   opportunityAttackerTokenIds: string[]
 ): CombatState {
-  const moved = applyCombatMove(state, tokenId, destination, costFeet, dashConsumed);
   if (opportunityAttackerTokenIds.length === 0) {
-    return moved;
+    return applyCombatMove(state, tokenId, destination, costFeet, dashConsumed);
   }
 
   return {
-    ...moved,
+    ...state,
     pendingOpportunityAttacks: {
       provokingTokenId: tokenId,
       pendingAttackerTokenIds: opportunityAttackerTokenIds,
+      destination,
+      costFeet,
+      dashConsumed,
     },
   };
 }
@@ -74,6 +95,25 @@ export function isAttackerPendingOpportunityAttack(
   );
 }
 
+export function hasSubmittedOpportunityAttack(
+  state: CombatState,
+  attackerTokenId: string
+): boolean {
+  return (
+    state.pendingAttack?.isOpportunityAttack === true &&
+    state.pendingAttack.attackerTokenId === attackerTokenId
+  );
+}
+
+export function canSkipOpportunityAttackAction(
+  state: CombatState,
+  attackerTokenId: string
+): boolean {
+  if (!isAttackerPendingOpportunityAttack(state, attackerTokenId)) return false;
+  if (hasSubmittedOpportunityAttack(state, attackerTokenId)) return false;
+  return true;
+}
+
 export function completeOpportunityAttackForAttacker(
   state: CombatState,
   attackerTokenId: string
@@ -86,7 +126,7 @@ export function completeOpportunityAttackForAttacker(
   );
 
   if (pendingAttackerTokenIds.length === 0) {
-    return { ...state, pendingOpportunityAttacks: null };
+    return finalizePendingOpportunityAttackMove(state);
   }
 
   return {

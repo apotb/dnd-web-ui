@@ -4,11 +4,15 @@ import { useEffect, useState } from "react";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import type { CombatToken } from "@/lib/schemas/combat-state";
 import {
+  areDamageRollsComplete,
   DamageRollField,
   emptyDamageRolls,
   getDamageSubmitValues,
   HitRollField,
+  isD20RollComplete,
+  parseD20Roll,
 } from "@/components/combat/combat-roll-fields";
+import { parseDamageNotation } from "@/lib/dnd/dice";
 
 export interface AttackSubmitValues {
   attackRoll?: number | null;
@@ -64,12 +68,46 @@ export function CombatAttackSubmitModal({
     Record<string, { attackRoll: string; damageAmount: string }>
   >({});
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   useEffect(() => {
     setDamageRolls(emptyDamageRolls(attack.damageDice));
     setDamageFallbackTotal("");
   }, [attack.damageDice]);
 
+  const hasParsedDamage = parseDamageNotation(attack.damageDice) != null;
+  const sharedDamageComplete =
+    hasParsedDamage
+      ? areDamageRollsComplete(attack.damageDice, damageRolls)
+      : parseOptionalInt(damageFallbackTotal) != null;
+
+  const singleTargetReady =
+    isSave ||
+    (isAuto
+      ? sharedDamageComplete
+      : isD20RollComplete(attackRoll) && sharedDamageComplete);
+
+  const multiTargetReady =
+    sharedDamageComplete &&
+    targets.every((target) => {
+      const entry = perTargetRolls[target.id] ?? { attackRoll: "", damageAmount: "" };
+      return isD20RollComplete(entry.attackRoll);
+    });
+
+  const canSubmit = isSave
+    ? sharedDamageComplete
+    : multiTarget
+      ? multiTargetReady
+      : singleTargetReady;
+
   function handleSubmit() {
+    setSubmitError(null);
+
+    if (!canSubmit) {
+      setSubmitError("Enter valid die rolls for each field (d20: 1–20, damage dice: 1–sides).");
+      return;
+    }
+
     const sharedDamage = getDamageSubmitValues(
       attack.damageDice,
       damageRolls,
@@ -85,7 +123,7 @@ export function CombatAttackSubmitModal({
           };
           return {
             tokenId: target.id,
-            attackRoll: parseOptionalInt(entry.attackRoll),
+            attackRoll: parseD20Roll(entry.attackRoll),
             damageText: sharedDamage.damageText,
             damageRolls: sharedDamage.damageRolls,
             damageAmount: parseOptionalInt(entry.damageAmount) ?? sharedDamage.damageAmount,
@@ -96,7 +134,7 @@ export function CombatAttackSubmitModal({
     }
 
     onSubmit({
-      attackRoll: isSave || isAuto ? null : parseOptionalInt(attackRoll),
+      attackRoll: isSave || isAuto ? null : parseD20Roll(attackRoll),
       ...sharedDamage,
     });
   }
@@ -208,6 +246,8 @@ export function CombatAttackSubmitModal({
           </div>
         ) : null}
 
+        {submitError ? <p className="retro-muted">{submitError}</p> : null}
+
         <div className="supply-picker-actions combat-roll-actions">
           <button type="button" className="candy-btn" onClick={onCancel} disabled={submitting}>
             Cancel
@@ -217,7 +257,7 @@ export function CombatAttackSubmitModal({
               type="button"
               className="candy-btn"
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || !canSubmit}
             >
               {submitting ? "Submitting…" : "Submit"}
             </button>

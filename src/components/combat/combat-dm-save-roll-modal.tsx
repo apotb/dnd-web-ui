@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { parseD20Roll, SaveRollField } from "@/components/combat/combat-roll-fields";
 import type { PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatDmSaveRollModalProps {
@@ -33,12 +34,17 @@ export function CombatDmSaveRollModal({
     onSubmit(
       targets.map((target) => {
         const entry = rolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
-        const saveRoll = parseIntOrZero(entry.saveRoll);
+        const saveRoll = parseD20Roll(entry.saveRoll) ?? 0;
         const saveTotal = saveRoll + parseIntOrZero(entry.saveMod);
         return { tokenId: target.tokenId, saveRoll, saveTotal };
       })
     );
   }
+
+  const allSavesValid = targets.every((target) => {
+    const entry = rolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
+    return parseD20Roll(entry.saveRoll) != null;
+  });
 
   return (
     <div className="supply-picker-overlay" onClick={onCancel}>
@@ -55,22 +61,19 @@ export function CombatDmSaveRollModal({
         <div className="combat-dm-save-roll-list">
           {targets.map((target) => {
             const entry = rolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
-            const total = parseIntOrZero(entry.saveRoll) + parseIntOrZero(entry.saveMod);
+            const saveRollValue = parseD20Roll(entry.saveRoll);
+            const total = (saveRollValue ?? 0) + parseIntOrZero(entry.saveMod);
             return (
               <div key={target.tokenId} className="combat-attack-submit-target-block">
                 <strong>{target.label}</strong>
                 <label className="combat-attack-submit-field">
                   <span>d20</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    className="candy-input"
+                  <SaveRollField
                     value={entry.saveRoll}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setRolls((current) => ({
                         ...current,
-                        [target.tokenId]: { ...entry, saveRoll: event.target.value },
+                        [target.tokenId]: { ...entry, saveRoll: value },
                       }))
                     }
                     disabled={submitting}
@@ -106,7 +109,7 @@ export function CombatDmSaveRollModal({
               type="button"
               className="candy-btn"
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || !allSavesValid}
             >
               {submitting ? "Submitting…" : "Submit saves"}
             </button>

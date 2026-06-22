@@ -98,8 +98,10 @@ import {
   submitCombatOpportunityAttack,
 } from "@/lib/combat/opportunity-attack-actions";
 import {
+  canSkipOpportunityAttackAction,
   findUserOpportunityAttackAttackerToken,
   hasPendingOpportunityAttacks,
+  hasSubmittedOpportunityAttack,
   isAttackerPendingOpportunityAttack,
 } from "@/lib/combat/opportunity-attacks";
 import {
@@ -216,6 +218,33 @@ function positionFromPointer(
   const cellY = Math.floor(((clientY - content.top) / content.height) * state.gridHeight);
 
   return clampTokenPosition(token, cellX, cellY, state);
+}
+
+function gridCellFromPointer(
+  clientX: number,
+  clientY: number,
+  gridEl: HTMLElement,
+  state: CombatState
+): { x: number; y: number } | null {
+  const rect = gridEl.getBoundingClientRect();
+  const content = getGridContentBox(gridEl, rect);
+
+  if (!isInsideContent(clientX, clientY, content)) {
+    return null;
+  }
+
+  const x = Math.floor(
+    ((clientX - content.left) / content.width) * state.gridWidth
+  );
+  const y = Math.floor(
+    ((clientY - content.top) / content.height) * state.gridHeight
+  );
+
+  if (x < 0 || y < 0 || x >= state.gridWidth || y >= state.gridHeight) {
+    return null;
+  }
+
+  return { x, y };
 }
 
 function findTokenAtPointer(
@@ -336,6 +365,8 @@ export function CombatBoard({
     opportunityAttackerTokenIds?: string[];
   } | null>(null);
   const [skippingOpportunityAttack, setSkippingOpportunityAttack] = useState(false);
+  const [userOaLocked, setUserOaLocked] = useState(false);
+  const prevUserOaSubmittedPendingRef = useRef(false);
   const [helpTargetPickerAllies, setHelpTargetPickerAllies] = useState<
     CombatToken[] | null
   >(null);
@@ -344,6 +375,8 @@ export function CombatBoard({
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const draggingTokenIdRef = useRef<string | null>(null);
   const combatStateRef = useRef<CombatState>(initialCombatState);
+  const attackTargetingRef = useRef(attackTargeting);
+  attackTargetingRef.current = attackTargeting;
   const supabase = useMemo(() => createClient(), []);
 
   const combatState = isDm ? draft : liveState;
@@ -637,14 +670,67 @@ export function CombatBoard({
     [charactersById, combatState, isDm, userId]
   );
 
-  const userCanTakeOpportunityAttack = useMemo(() => {
-    if (!userOaAttackerToken || !pendingOpportunityAttacks) return false;
-    if (pendingAttack?.isOpportunityAttack) return false;
-    if (!isAttackerPendingOpportunityAttack(combatState, userOaAttackerToken.id)) {
-      return false;
+  const userOaSubmittedPending = useMemo(
+    () =>
+      userOaAttackerToken != null &&
+      hasSubmittedOpportunityAttack(combatState, userOaAttackerToken.id),
+    [combatState, userOaAttackerToken]
+  );
+
+  const userOaBusy = useMemo(
+    () =>
+      userOaLocked ||
+      userOaSubmittedPending ||
+      !!attackSubmitDraft?.isOpportunityAttack ||
+      skippingOpportunityAttack ||
+      submittingAttack,
+    [
+      attackSubmitDraft,
+      skippingOpportunityAttack,
+      submittingAttack,
+      userOaLocked,
+      userOaSubmittedPending,
+    ]
+  );
+
+  useEffect(() => {
+    if (!userOaAttackerToken) {
+      setUserOaLocked(false);
+      prevUserOaSubmittedPendingRef.current = false;
+      return;
     }
-    return true;
-  }, [combatState, pendingAttack, pendingOpportunityAttacks, userOaAttackerToken]);
+
+    const stillQueued = isAttackerPendingOpportunityAttack(
+      combatState,
+      userOaAttackerToken.id
+    );
+
+    if (
+      prevUserOaSubmittedPendingRef.current &&
+      !userOaSubmittedPending &&
+      stillQueued
+    ) {
+      setUserOaLocked(false);
+    }
+
+    if (!stillQueued) {
+      setUserOaLocked(false);
+    } else if (userOaSubmittedPending) {
+      setUserOaLocked(true);
+    }
+
+    prevUserOaSubmittedPendingRef.current = userOaSubmittedPending;
+  }, [combatState, userOaAttackerToken, userOaSubmittedPending]);
+
+  const userCanTakeOpportunityAttack = useMemo(() => {
+    if (!userOaAttackerToken || !pendingOpportunityAttacks || userOaBusy) return false;
+    return canSkipOpportunityAttackAction(combatState, userOaAttackerToken.id);
+  }, [
+    combatState,
+    pendingOpportunityAttacks,
+    userOaAttackerToken,
+    userOaBusy,
+  ]);
 
   const opportunityAttackOptions = useMemo(() => {
     if (!userOaAttackerToken?.characterId) return [];
@@ -663,6 +749,18 @@ export function CombatBoard({
     return combatState.tokens.find((token) => token.id === provokingId)?.label ?? "An enemy";
   }, [combatState.tokens, pendingOpportunityAttacks?.provokingTokenId]);
 
+  const pendingOpportunityMovePreview = useMemo(() => {
+    const pending = pendingOpportunityAttacks;
+    if (!pending?.destination) return null;
+    const token = combatState.tokens.find((entry) => entry.id === pending.provokingTokenId);
+    if (!token) return null;
+    return {
+      token,
+      x: pending.destination.x,
+      y: pending.destination.y,
+    };
+  }, [combatState.tokens, pendingOpportunityAttacks]);
+
   const userOaPendingOptionId =
     pendingAttack?.isOpportunityAttack &&
     pendingAttack.attackerTokenId === userOaAttackerToken?.id
@@ -680,6 +778,9 @@ export function CombatBoard({
     opportunityAttacksPending &&
     currentTurnToken != null &&
     (currentTurnToken.kind === "enemy" || currentTurnToken.kind === "ally");
+
+  const provokingMovePending =
+    pendingOpportunityAttacks?.provokingTokenId === currentTurnToken?.id;
 
   async function handleEndTurn() {
     if (!userCanEndTurn || endingTurn) return;
@@ -770,6 +871,46 @@ export function CombatBoard({
     );
   }, [attackTargeting, combatState, currentTurnToken]);
 
+  const hoveredTargetToken = useMemo(() => {
+    if (!hoveredTokenId) return null;
+    return combatState.tokens.find((token) => token.id === hoveredTokenId) ?? null;
+  }, [combatState.tokens, hoveredTokenId]);
+
+  const hoveredTargetDetail = useMemo(() => {
+    if (!attackTargeting || !hoveredTargetToken) return null;
+
+    if (!isDm && hoveredTargetToken.kind === "enemy") {
+      const damageTaken = hoveredTargetToken.damageTaken ?? 0;
+      return damageTaken > 0 ? `Damage taken: ${damageTaken}` : null;
+    }
+
+    if (hoveredTargetToken.kind === "party") {
+      const character = hoveredTargetToken.characterId
+        ? charactersById[hoveredTargetToken.characterId]
+        : null;
+      if (!character) return null;
+      return `HP ${character.data.combat.currentHp}/${character.data.combat.maxHp} · AC ${character.data.combat.ac}`;
+    }
+
+    const enemy = hoveredTargetToken.enemySlug
+      ? enemiesBySlug[hoveredTargetToken.enemySlug]?.data
+      : null;
+    if (isDm && enemy) {
+      const currentHp =
+        hoveredTargetToken.currentHp ?? enemy.hitPoints.average;
+      const maxHp = hoveredTargetToken.maxHp ?? enemy.hitPoints.average;
+      return `HP ${currentHp}/${maxHp} · AC ${enemy.armorClass.value}`;
+    }
+
+    return null;
+  }, [
+    attackTargeting,
+    charactersById,
+    enemiesBySlug,
+    hoveredTargetToken,
+    isDm,
+  ]);
+
   const damageTakenByTokenId = useMemo(() => {
     const map: Record<string, number> = {};
     for (const token of combatState.tokens) {
@@ -782,7 +923,7 @@ export function CombatBoard({
     targets: CombatToken[],
     aoeCenter: { x: number; y: number } | null
   ) {
-    if (!attackTargeting) return;
+    if (!attackTargeting || targets.length === 0) return;
     setAttackSubmitDraft({
       option: attackTargeting.option,
       attack: attackTargeting.attack,
@@ -793,13 +934,9 @@ export function CombatBoard({
     setHoveredTargetingCell(null);
   }
 
-  function handleTargetingTokenClick(token: CombatToken) {
-    if (!attackTargeting || !currentTurnToken) return;
-    openAttackSubmit([token], null);
-  }
+  function handleTargetingAtCell(cell: { x: number; y: number }) {
+    if (!attackTargeting || !currentTurnToken || !targetingHighlights) return;
 
-  function handleTargetingCellClick(cell: { x: number; y: number }) {
-    if (!attackTargeting || !currentTurnToken) return;
     const targets = buildTargetList(
       currentTurnToken,
       combatState,
@@ -809,7 +946,42 @@ export function CombatBoard({
       charactersById,
       enemiesBySlug
     );
-    openAttackSubmit(targets, cell);
+
+    if (targets.length === 0) return;
+
+    openAttackSubmit(
+      targets,
+      targetingHighlights.spec.isAoe ? cell : null
+    );
+  }
+
+  function handleTargetingPointerLeave() {
+    clearTokenHover();
+    setHoveredTargetingCell(null);
+  }
+
+  const handleTargetingAtCellRef = useRef(handleTargetingAtCell);
+  handleTargetingAtCellRef.current = handleTargetingAtCell;
+
+  function handleGridTargetingPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    if (!attackTargetingRef.current) return;
+
+    const grid = gridRef.current;
+    if (!grid?.contains(event.target as Node)) return;
+
+    const target = event.target as HTMLElement;
+    if (target.closest(".combat-targeting-banner")) return;
+
+    const cell = gridCellFromPointer(
+      event.clientX,
+      event.clientY,
+      grid,
+      combatStateRef.current
+    );
+    if (!cell) return;
+
+    handleTargetingAtCellRef.current(cell);
   }
 
   async function handleSubmitAttack(values: AttackSubmitValues) {
@@ -841,8 +1013,14 @@ export function CombatBoard({
     });
     setSubmittingAttack(false);
     if (error) {
+      if (attackSubmitDraft.isOpportunityAttack) {
+        setUserOaLocked(false);
+      }
       window.alert(error);
       return;
+    }
+    if (attackSubmitDraft.isOpportunityAttack) {
+      setUserOaLocked(true);
     }
     if (isDm) {
       setDraft(next);
@@ -851,7 +1029,7 @@ export function CombatBoard({
   }
 
   async function handleSelectOpportunityAttackOption(option: CombatOption) {
-    if (!userOaAttackerToken || !pendingOpportunityAttacks) return;
+    if (!userOaAttackerToken || !pendingOpportunityAttacks || userOaBusy) return;
     const attack = optionToAttack(option);
     if (!attack) return;
 
@@ -871,14 +1049,16 @@ export function CombatBoard({
   }
 
   async function handleSkipOpportunityAttack() {
-    if (!userOaAttackerToken) return;
+    if (!userOaAttackerToken || userOaBusy) return;
     setSkippingOpportunityAttack(true);
+    setUserOaLocked(true);
     const { next, error } = await skipCombatOpportunityAttack(campaignId, combatState, {
       isDm,
       attackerTokenId: userOaAttackerToken.id,
     });
     setSkippingOpportunityAttack(false);
     if (error) {
+      setUserOaLocked(false);
       window.alert(error);
       return;
     }
@@ -991,7 +1171,14 @@ export function CombatBoard({
   }, [pendingAttack, isDm]);
 
   function handleToggleMovementMode() {
-    if (attackTargeting || playerHasPendingAction) return;
+    if (
+      attackTargeting ||
+      playerHasPendingAction ||
+      provokingMovePending ||
+      pendingOpportunityAttackMove
+    ) {
+      return;
+    }
     setMovementMode((value) => !value);
     setHoveredMovementCell(null);
   }
@@ -1026,6 +1213,12 @@ export function CombatBoard({
   }, [playerHasPendingAction]);
 
   useEffect(() => {
+    if (!provokingMovePending && !pendingOpportunityAttackMove) return;
+    setMovementMode(false);
+    setHoveredMovementCell(null);
+  }, [pendingOpportunityAttackMove, provokingMovePending]);
+
+  useEffect(() => {
     setMovementMode(false);
     setHoveredMovementCell(null);
     setPendingDashDestination(null);
@@ -1051,7 +1244,7 @@ export function CombatBoard({
     destination: ReachableDestination,
     dashConsumed: boolean
   ) {
-    if (!currentTurnToken || !userControlsTurn) return;
+    if (!currentTurnToken || !userControlsTurn || provokingMovePending) return;
 
     const opportunityAttackReactors = getOpportunityAttackReactors(
       currentTurnToken,
@@ -1063,6 +1256,8 @@ export function CombatBoard({
     if (opportunityAttackReactors.length > 0) {
       const isNpcTurn =
         currentTurnToken.kind === "enemy" || currentTurnToken.kind === "ally";
+      setMovementMode(false);
+      setHoveredMovementCell(null);
       setPendingOpportunityAttackMove({
         destination,
         dashConsumed,
@@ -1327,9 +1522,10 @@ export function CombatBoard({
           .filter(Boolean)
           .join(" ")
       : "";
+    const enemyDamageTaken = token.damageTaken ?? 0;
     const isExpanded =
       isHovered &&
-      ((token.kind === "enemy" && enemy != null) ||
+      ((token.kind === "enemy" && (isDm ? enemy != null : true)) ||
         (token.kind === "party" && character != null));
 
     const isDragging = draggingTokenId === token.id;
@@ -1397,6 +1593,11 @@ export function CombatBoard({
                 </span>
               </>
             ) : null}
+            {isExpanded && !isDm && token.kind === "enemy" && enemyDamageTaken > 0 ? (
+              <span className="combat-token-label-detail">
+                Damage taken: {enemyDamageTaken}
+              </span>
+            ) : null}
             {isExpanded && isDm && enemy ? (
               <>
                 <span className="combat-token-label-detail">
@@ -1410,6 +1611,36 @@ export function CombatBoard({
               </>
             ) : null}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderPendingMoveGhost() {
+    const preview = pendingOpportunityMovePreview;
+    if (!preview) return null;
+    const { token, x, y } = preview;
+    const portraitUrl = resolveTokenPortraitUrl(supabase, token);
+
+    return (
+      <div
+        key={`${token.id}-pending-move`}
+        className={`combat-token combat-token-on-grid combat-token-pending-move ${tokenColorClass(token.kind)}`}
+        style={{
+          gridColumn: `${x + 1} / span ${token.width}`,
+          gridRow: `${y + 1} / span ${token.height}`,
+        }}
+        aria-hidden
+      >
+        <div className="combat-token-badge">
+          {portraitUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={portraitUrl} alt="" className="combat-token-portrait" draggable={false} />
+          ) : (
+            <div className="combat-token-portrait combat-token-portrait-fallback">
+              {token.label.slice(0, 1)}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1535,7 +1766,13 @@ export function CombatBoard({
               </div>
               {battleActive ? (
                 <div className="combat-toolbar-panels">
-                  {userCanTakeOpportunityAttack ? (
+                  {userOaSubmittedPending ? (
+                    <div className="combat-turn-waiting combat-attack-waiting">
+                      <p className="combat-turn-waiting-text combat-attack-waiting-text">
+                        Opportunity attack pending review…
+                      </p>
+                    </div>
+                  ) : userCanTakeOpportunityAttack ? (
                     <CombatOpportunityAttackPanel
                       provokingLabel={provokingTokenLabel}
                       options={opportunityAttackOptions}
@@ -1543,7 +1780,7 @@ export function CombatBoard({
                       onSkip={() => void handleSkipOpportunityAttack()}
                       selectedOptionId={selectedActionOptionId}
                       pendingOptionId={userOaPendingOptionId}
-                      selectionLocked={!!attackSubmitDraft || submittingAttack}
+                      selectionLocked={userOaBusy}
                       skipping={skippingOpportunityAttack}
                     />
                   ) : userControlsTurn ? (
@@ -1565,7 +1802,9 @@ export function CombatBoard({
                             disabled={
                               !!attackTargeting ||
                               playerHasPendingAction ||
-                              enemyTurnBlockedByOpportunityAttacks
+                              enemyTurnBlockedByOpportunityAttacks ||
+                              provokingMovePending ||
+                              !!pendingOpportunityAttackMove
                             }
                             onToggleMovementMode={handleToggleMovementMode}
                           />
@@ -1695,6 +1934,9 @@ export function CombatBoard({
                 onPointerMove={(event) => {
                   updateHoverFromPointer(event.clientX, event.clientY);
                 }}
+                onPointerUpCapture={
+                  attackTargeting ? handleGridTargetingPointerUp : undefined
+                }
                 onPointerLeave={() => {
                   clearTokenHover();
                 }}
@@ -1720,6 +1962,7 @@ export function CombatBoard({
                   />
                 ) : null}
                 {combatState.tokens.map((token) => renderToken(token))}
+                {renderPendingMoveGhost()}
                 {attackTargeting && currentTurnToken && userControlsTurn && targetingHighlights ? (
                   <CombatTargetingOverlay
                     gridWidth={combatState.gridWidth}
@@ -1731,8 +1974,10 @@ export function CombatBoard({
                     validCells={targetingHighlights.validCells}
                     hoveredCell={hoveredTargetingCell}
                     previewCenter={null}
-                    onTargetClick={handleTargetingTokenClick}
-                    onCellClick={handleTargetingCellClick}
+                    hoveredTokenLabel={hoveredTargetToken?.label ?? null}
+                    hoveredTokenDetail={hoveredTargetDetail}
+                    onPointerMove={updateHoverFromPointer}
+                    onPointerLeave={handleTargetingPointerLeave}
                     onCellHover={setHoveredTargetingCell}
                     onCancel={clearAttackFlow}
                   />

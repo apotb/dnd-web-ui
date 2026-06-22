@@ -163,7 +163,7 @@ const OFFENSIVE_SPELL_METADATA: Record<string, OffensiveSpellMeta> = {
   },
   "magic-missile": {
     rollType: "auto",
-    damageDice: "3×(1d4+1)",
+    damageDice: "3d4+3",
     damageType: "force",
     range: "120 ft",
     notes: "+1 dart per slot above 1st; each dart hits automatically",
@@ -406,7 +406,7 @@ function buildOffensiveSpellEntry(
   if (meta.eldritchBlast) {
     const beams = eldritchBlastBeamCount(characterLevel);
     if (beams > 1) {
-      damageDice = `${beams}×${meta.damageDice}`;
+      damageDice = `${beams}d10`;
       noteParts.push(`${beams} beams`);
     }
   } else if (meta.cantripScaling || spell.level === 0) {

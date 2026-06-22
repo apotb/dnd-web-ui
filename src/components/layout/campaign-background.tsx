@@ -9,8 +9,9 @@ function readEnabled(): boolean {
   if (typeof window === "undefined") return true;
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) return stored === "true";
-    return document.documentElement.dataset.campaignBg !== "off";
+    if (stored === "false") return false;
+    if (stored === "true") return true;
+    return true;
   } catch {
     return true;
   }

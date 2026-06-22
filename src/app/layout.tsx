@@ -14,25 +14,13 @@ export const metadata: Metadata = {
   description: "Live D&D party sheet",
 };
 
-const campaignBackgroundInitScript = `(function(){try{var s=localStorage.getItem("campaign-background-enabled");var e=s!=="false";document.documentElement.classList.toggle("campaign-bg-active",e);document.documentElement.dataset.campaignBg=e?"on":"off";}catch(x){document.documentElement.dataset.campaignBg="on";}})();`;
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${courier.variable} h-full campaign-bg-active`}
-      data-campaign-bg="on"
-      suppressHydrationWarning
-    >
-      <head>
-        <script
-          dangerouslySetInnerHTML={{ __html: campaignBackgroundInitScript }}
-        />
-      </head>
+    <html lang="en" className={`${courier.variable} h-full`} suppressHydrationWarning>
       <body className="retro-body">
         <CampaignBackground />
         <div className="retro-page">{children}</div>

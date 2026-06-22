@@ -19,8 +19,10 @@ interface CombatTargetingOverlayProps {
   validCells: Array<{ x: number; y: number }>;
   hoveredCell: { x: number; y: number } | null;
   previewCenter: { x: number; y: number } | null;
-  onTargetClick: (token: CombatToken) => void;
-  onCellClick: (cell: { x: number; y: number }) => void;
+  hoveredTokenLabel?: string | null;
+  hoveredTokenDetail?: string | null;
+  onPointerMove: (clientX: number, clientY: number) => void;
+  onPointerLeave: () => void;
   onCellHover: (cell: { x: number; y: number } | null) => void;
   onCancel: () => void;
 }
@@ -35,8 +37,10 @@ export function CombatTargetingOverlay({
   validCells,
   hoveredCell,
   previewCenter,
-  onTargetClick,
-  onCellClick,
+  hoveredTokenLabel = null,
+  hoveredTokenDetail = null,
+  onPointerMove,
+  onPointerLeave,
   onCellHover,
   onCancel,
 }: CombatTargetingOverlayProps) {
@@ -60,6 +64,37 @@ export function CombatTargetingOverlay({
 
   const highlightCells = spec.isAoe ? aoeHoverCells : aoePreviewCells;
 
+  function handleOverlayPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    onPointerMove(event.clientX, event.clientY);
+
+    const target = event.target as HTMLElement;
+    if (target.closest(".combat-targeting-banner")) {
+      onCellHover(null);
+      return;
+    }
+
+    const overlay = event.currentTarget;
+    const rect = overlay.getBoundingClientRect();
+    const x = Math.floor(
+      ((event.clientX - rect.left) / rect.width) * gridWidth
+    );
+    const y = Math.floor(
+      ((event.clientY - rect.top) / rect.height) * gridHeight
+    );
+
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) {
+      onCellHover(null);
+      return;
+    }
+
+    onCellHover({ x, y });
+  }
+
+  function handleOverlayPointerLeave() {
+    onPointerLeave();
+    onCellHover(null);
+  }
+
   return (
     <div
       className="combat-targeting-overlay"
@@ -67,7 +102,8 @@ export function CombatTargetingOverlay({
         ["--grid-width" as string]: gridWidth,
         ["--grid-height" as string]: gridHeight,
       }}
-      onMouseLeave={() => onCellHover(null)}
+      onPointerMove={handleOverlayPointerMove}
+      onPointerLeave={handleOverlayPointerLeave}
     >
       {Array.from({ length: gridHeight }).flatMap((_, y) =>
         Array.from({ length: gridWidth }).map((_, x) => {
@@ -77,37 +113,44 @@ export function CombatTargetingOverlay({
           if (!isValidCell && !isAoeHighlight) return null;
 
           return (
-            <button
+            <div
               key={key}
-              type="button"
               className={`combat-targeting-cell${
                 isAoeHighlight ? " combat-targeting-cell-aoe-preview" : ""
               }`}
               style={{ gridColumn: x + 1, gridRow: y + 1 }}
-              aria-label={`Target tile ${x + 1}, ${y + 1}`}
-              onMouseEnter={() => onCellHover({ x, y })}
-              onClick={() => onCellClick({ x, y })}
+              aria-hidden
             />
           );
         })
       )}
 
       {validTargets.map((token) => (
-        <button
+        <div
           key={token.id}
-          type="button"
           className="combat-targeting-token-highlight"
           style={{
             gridColumn: `${token.x + 1} / span ${token.width}`,
             gridRow: `${token.y + 1} / span ${token.height}`,
           }}
-          aria-label={`Target ${token.label}`}
-          onClick={() => onTargetClick(token)}
+          aria-hidden
         />
       ))}
 
       <div className="combat-targeting-banner">
-        <span>Select a target for {attack.name}</span>
+        <div className="combat-targeting-banner-text">
+          <span>
+            {validTargets.length === 0 && validCells.length === 0
+              ? `No targets in range for ${attack.name}`
+              : `Select a target for ${attack.name}`}
+          </span>
+          {hoveredTokenLabel ? (
+            <span className="combat-targeting-banner-hover">
+              {hoveredTokenLabel}
+              {hoveredTokenDetail ? ` · ${hoveredTokenDetail}` : ""}
+            </span>
+          ) : null}
+        </div>
         <button type="button" className="candy-btn" onClick={onCancel}>
           Cancel
         </button>

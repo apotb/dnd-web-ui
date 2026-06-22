@@ -26,8 +26,9 @@ export function CombatOpportunityAttackModal({
       >
         <p className="retro-box-title">Opportunity attacks?</p>
         <p className="retro-muted">
-          Leaving engagement may provoke opportunity attacks from {reactorList}. Use the
-          Disengage action instead to move without provoking attacks this turn.
+          Leaving engagement may provoke opportunity attacks from {reactorList}. The move will
+          complete after those attacks are resolved. Use the Disengage action instead to move
+          without provoking attacks this turn.
         </p>
         <div
           className="supply-picker-actions"

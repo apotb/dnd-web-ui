@@ -1,6 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyHpDamage } from "@/lib/character/combat-derivation";
-import { completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
+import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
 import { isBattleActive, isDmControlledToken } from "@/lib/combat/turn";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type {
@@ -225,11 +225,10 @@ export function canSubmitOpportunityAttack(
   state: CombatState,
   attackerTokenId: string
 ): boolean {
-  if (!isBattleActive(state) || state.pendingAttack) return false;
-  return (
-    state.pendingOpportunityAttacks?.pendingAttackerTokenIds.includes(attackerTokenId) ??
-    false
-  );
+  if (!isBattleActive(state)) return false;
+  if (!canSkipOpportunityAttackAction(state, attackerTokenId)) return false;
+  if (state.pendingAttack != null) return false;
+  return true;
 }
 
 export function transitionToDmReview(pending: PendingAttack): PendingAttack {

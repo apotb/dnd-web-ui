@@ -1,6 +1,14 @@
 "use client";
 
-import { parseDamageNotation, sumDamageRollValues } from "@/lib/dnd/dice";
+import {
+  areDamageRollsComplete,
+  isD20RollComplete,
+  parseDamageNotation,
+  parseD20Roll,
+  parseDieRoll,
+  sanitizeDieRollInput,
+  sumDamageRollValues,
+} from "@/lib/dnd/dice";
 
 function parseOptionalInt(value: string): number | null {
   const trimmed = value.trim();
@@ -29,7 +37,7 @@ export function HitRollField({
   attackBonus,
   disabled = false,
 }: HitRollFieldProps) {
-  const roll = parseOptionalInt(value);
+  const roll = parseD20Roll(value);
   const total = roll != null ? roll + attackBonus : null;
   const bonus = formatRollBonus(attackBonus);
 
@@ -38,15 +46,15 @@ export function HitRollField({
       <span>Roll for hit</span>
       <div className="combat-roll-row">
         <input
-          type="number"
-          min={1}
-          max={20}
+          type="text"
+          inputMode="numeric"
           className="candy-input combat-roll-input"
           placeholder="d20"
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(sanitizeDieRollInput(event.target.value, 20))}
           disabled={disabled}
           aria-label="d20 roll"
+          aria-invalid={value.trim().length > 0 && !isD20RollComplete(value)}
         />
         <span className="combat-roll-sep">{bonus.sign}</span>
         <span className="combat-roll-mod">{bonus.amount}</span>
@@ -80,9 +88,7 @@ export function DamageRollField({
 }: DamageRollFieldProps) {
   const parsed = parseDamageNotation(damageDice);
   const rolledTotal =
-    parsed != null
-      ? sumDamageRollValues(rolls, parsed.modifier, parseOptionalInt)
-      : null;
+    parsed != null ? sumDamageRollValues(rolls, parsed.dice, parsed.modifier) : null;
   const total = rolledTotal ?? knownTotal ?? parseOptionalInt(fallbackTotal);
   const modifier = parsed ? formatRollBonus(parsed.modifier) : null;
 
@@ -111,19 +117,22 @@ export function DamageRollField({
           <span key={index} className="combat-roll-row-item">
             {index > 0 ? <span className="combat-roll-sep">+</span> : null}
             <input
-              type="number"
-              min={1}
-              max={sides}
+              type="text"
+              inputMode="numeric"
               className="candy-input combat-roll-input"
               placeholder={`d${sides}`}
               value={rolls[index] ?? ""}
               onChange={(event) => {
                 const next = [...rolls];
-                next[index] = event.target.value;
+                next[index] = sanitizeDieRollInput(event.target.value, sides);
                 onRollsChange(next);
               }}
               disabled={disabled}
               aria-label={`d${sides} roll`}
+              aria-invalid={
+                (rolls[index] ?? "").trim().length > 0 &&
+                parseDieRoll(rolls[index] ?? "", sides) == null
+              }
             />
           </span>
         ))}
@@ -148,9 +157,14 @@ export function getDamageSubmitValues(
   fallbackTotal: string
 ): { damageText: string; damageRolls: number[]; damageAmount: number | null } {
   const parsed = parseDamageNotation(damageDice);
-  const damageRolls = rolls
-    .map((value) => parseOptionalInt(value))
-    .filter((value): value is number => value != null);
+  const damageRolls =
+    parsed != null
+      ? parsed.dice
+          .map((sides, index) => parseDieRoll(rolls[index] ?? "", sides))
+          .filter((value): value is number => value != null)
+      : rolls
+          .map((value) => parseOptionalInt(value))
+          .filter((value): value is number => value != null);
 
   if (!parsed) {
     return {
@@ -163,7 +177,7 @@ export function getDamageSubmitValues(
   return {
     damageText: parsed.notation,
     damageRolls,
-    damageAmount: sumDamageRollValues(rolls, parsed.modifier, parseOptionalInt),
+    damageAmount: sumDamageRollValues(rolls, parsed.dice, parsed.modifier),
   };
 }
 
@@ -182,6 +196,8 @@ export function damageRollsToInputValues(
     rolls?.[index] != null ? String(rolls[index]) : ""
   );
 }
+
+export { areDamageRollsComplete, isD20RollComplete, parseD20Roll, sanitizeDieRollInput };
 
 interface DamageAppliedFieldProps {
   computedDamage: number;
@@ -222,5 +238,27 @@ export function DamageAppliedField({
         />
       </div>
     </div>
+  );
+}
+
+interface SaveRollFieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+export function SaveRollField({ value, onChange, disabled = false }: SaveRollFieldProps) {
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      className="candy-input combat-roll-input"
+      placeholder="d20"
+      value={value}
+      onChange={(event) => onChange(sanitizeDieRollInput(event.target.value, 20))}
+      disabled={disabled}
+      aria-label="d20 save roll"
+      aria-invalid={value.trim().length > 0 && !isD20RollComplete(value)}
+    />
   );
 }

@@ -131,12 +131,12 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
     };
   }
 
-  const ftMatch = range.match(/^(\d+)\s*ft$/);
+  const ftMatch = range.match(/^(\d+)\s*(?:ft|feet)$/);
   if (ftMatch) {
     return {
       maxFt: parseInt(ftMatch[1], 10),
       isAoe: false,
-      requiresPrimaryTarget: attack.rollType === "attack" || attack.rollType == null,
+      requiresPrimaryTarget: true,
     };
   }
 
@@ -147,20 +147,52 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
   };
 }
 
+export function isTokenOnGrid(token: CombatToken, state: CombatState): boolean {
+  if (token.width <= 0 || token.height <= 0) return false;
+  return (
+    token.x >= 0 &&
+    token.y >= 0 &&
+    token.x + token.width <= state.gridWidth &&
+    token.y + token.height <= state.gridHeight
+  );
+}
+
 export function getValidHostileTargets(
   attacker: CombatToken,
   state: CombatState,
   maxRangeFt: number
 ): CombatToken[] {
-  if (!attacker.placed) return [];
+  if (!isTokenOnGrid(attacker, state)) return [];
 
   return state.tokens.filter(
     (token) =>
-      token.placed &&
+      isTokenOnGrid(token, state) &&
       token.id !== attacker.id &&
       isHostileToken(attacker, token) &&
       distanceFeetBetweenTokens(attacker, token, state.tileFeet) <= maxRangeFt
   );
+}
+
+export function findHostileTargetAtCell(
+  attacker: CombatToken,
+  cell: GridPosition,
+  state: CombatState,
+  attack: DerivedAttack
+): CombatToken | null {
+  const spec = parseAttackRangeSpec(attack);
+  if (spec.isAoe) return null;
+
+  const validIds = new Set(
+    getValidHostileTargets(attacker, state, spec.maxFt).map((token) => token.id)
+  );
+
+  for (const token of state.tokens) {
+    if (!validIds.has(token.id)) continue;
+    if (!tokenOccupiesCell(token, cell)) continue;
+    return token;
+  }
+
+  return null;
 }
 
 function cellsInRadius(
@@ -309,7 +341,7 @@ export function getPlacableAoeCells(
   state: CombatState,
   spec: AttackRangeSpec
 ): GridPosition[] {
-  if (!attacker.placed) return [];
+  if (!isTokenOnGrid(attacker, state)) return [];
 
   const cells: GridPosition[] = [];
   for (let y = 0; y < state.gridHeight; y++) {
@@ -341,10 +373,20 @@ export function getTargetingHighlights(
     };
   }
 
+  const validTargets = getValidHostileTargets(attacker, state, spec.maxFt);
+  const validCells: GridPosition[] = [];
+  for (const token of validTargets) {
+    for (let dy = 0; dy < token.height; dy++) {
+      for (let dx = 0; dx < token.width; dx++) {
+        validCells.push({ x: token.x + dx, y: token.y + dy });
+      }
+    }
+  }
+
   return {
     spec,
-    validTargets: getValidHostileTargets(attacker, state, spec.maxFt),
-    validCells: [],
+    validTargets,
+    validCells,
   };
 }
 
