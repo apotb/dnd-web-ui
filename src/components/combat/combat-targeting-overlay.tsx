@@ -7,6 +7,7 @@ import {
   type AttackRangeSpec,
 } from "@/lib/combat/targeting";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
+import { formatAmmunitionLine } from "@/lib/dnd/ammunition";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 
 interface CombatTargetingOverlayProps {
@@ -45,6 +46,10 @@ export function CombatTargetingOverlay({
   onCancel,
 }: CombatTargetingOverlayProps) {
   const spec: AttackRangeSpec = useMemo(() => parseAttackRangeSpec(attack), [attack]);
+  const ammunitionLine =
+    attack.ammunitionName != null && attack.ammunitionRemaining != null
+      ? formatAmmunitionLine(attack.ammunitionName, attack.ammunitionRemaining)
+      : null;
   const validCellSet = useMemo(
     () => new Set(validCells.map((cell) => `${cell.x},${cell.y}`)),
     [validCells]
@@ -144,6 +149,9 @@ export function CombatTargetingOverlay({
               ? `No targets in range for ${attack.name}`
               : `Select a target for ${attack.name}`}
           </span>
+          {ammunitionLine ? (
+            <span className="combat-targeting-banner-hover">{ammunitionLine}</span>
+          ) : null}
           {hoveredTokenLabel ? (
             <span className="combat-targeting-banner-hover">
               {hoveredTokenLabel}

@@ -7,6 +7,13 @@ import { getEffectiveWeaponProficiencies } from "@/lib/character/class-derivatio
 import type { CharacterData, Spell } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
 import type { PhbClass } from "@/lib/dnd/phb/types";
+import {
+  countAmmunitionInInventory,
+  formatAmmunitionLine,
+  getAmmunitionDisplayName,
+  getAmmunitionSlugForWeapon,
+  weaponUsesAmmunition,
+} from "@/lib/dnd/ammunition";
 import { getWeaponProperties } from "@/lib/schemas/item";
 import {
   getAbilityModifiers,
@@ -234,6 +241,12 @@ export interface DerivedAttack {
   itemId?: string;
   /** Off-hand weapon attack from two-weapon fighting (bonus action). */
   isOffHand?: boolean;
+  /** Catalog slug of ammunition consumed per attack, if any. */
+  ammunitionItemId?: string;
+  /** Display name of the ammunition type. */
+  ammunitionName?: string;
+  /** Remaining ammunition in inventory when the attack was derived. */
+  ammunitionRemaining?: number;
 }
 
 export function formatAttackRollLine(attack: DerivedAttack): string {
@@ -243,6 +256,27 @@ export function formatAttackRollLine(attack: DerivedAttack): string {
     return `DC ${attack.saveDc}${ability} save`;
   }
   return `${formatModifier(attack.attackBonus)} to hit`;
+}
+
+/** Single-line attack summary for combat submit/review UI. */
+export function formatAttackDescriptionBlurb(attack: DerivedAttack): string {
+  const notes = attack.notes.trim();
+  if (notes && /\b(?:Melee|Ranged) (?:Weapon|Spell) Attack:/i.test(notes)) {
+    return notes;
+  }
+
+  const parts: string[] = [];
+  const rollLine = formatAttackRollLine(attack);
+  if (rollLine) parts.push(rollLine);
+  if (attack.damageDice || attack.damageType) {
+    parts.push(`${attack.damageDice} ${attack.damageType}`.trim());
+  }
+  if (attack.range) parts.push(attack.range);
+  if (attack.ammunitionName != null && attack.ammunitionRemaining != null) {
+    parts.push(formatAmmunitionLine(attack.ammunitionName, attack.ammunitionRemaining));
+  }
+  if (notes) parts.push(notes);
+  return parts.join(" · ");
 }
 
 /** Return true if the character is proficient with a given catalog item weapon. */
@@ -337,6 +371,19 @@ export function deriveWeaponAttacks(
 
     const baseName = invItem.name || catalogItem.name;
 
+    const usesAmmunition = isRanged && weaponUsesAmmunition(catalogItem);
+    const ammunitionItemId = usesAmmunition
+      ? getAmmunitionSlugForWeapon(catalogItem.slug)
+      : null;
+    const ammunitionName =
+      ammunitionItemId != null
+        ? getAmmunitionDisplayName(ammunitionItemId, catalogItems)
+        : undefined;
+    const ammunitionRemaining =
+      ammunitionItemId != null
+        ? countAmmunitionInInventory(character.inventory.items, ammunitionItemId)
+        : undefined;
+
     const addAttack = (isOffHand: boolean) => {
       const includeMod = !isOffHand || twf;
       const damageDiceStr = wp.damage
@@ -363,6 +410,9 @@ export function deriveWeaponAttacks(
         source: "weapon",
         itemId: invItem.itemId,
         isOffHand,
+        ammunitionItemId: ammunitionItemId ?? undefined,
+        ammunitionName,
+        ammunitionRemaining,
       });
     };
 

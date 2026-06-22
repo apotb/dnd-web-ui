@@ -16,6 +16,7 @@ import {
   formatDamageAppliedBreakdown,
   resolveFinalDamageApplied,
 } from "@/lib/combat/attack-resolution";
+import { formatAmmunitionConsumptionLine } from "@/lib/dnd/ammunition";
 import type { PendingAttack, PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatAttackReviewModalProps {
@@ -314,6 +315,15 @@ export function CombatAttackReviewModal({
         onClick={(event) => event.stopPropagation()}
       >
         <p className="retro-box-title">Review attack — {pending.optionName}</p>
+
+        {pending.ammunitionItemName ? (
+          <p className="retro-muted combat-attack-submit-ammo">
+            {formatAmmunitionConsumptionLine(
+              pending.ammunitionItemName,
+              pending.ammunitionQuantity ?? 1
+            )}
+          </p>
+        ) : null}
 
         <div className="combat-attack-review-targets">{targetSections}</div>
 

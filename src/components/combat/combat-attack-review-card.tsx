@@ -17,6 +17,7 @@ import {
   resolveFinalDamageApplied,
 } from "@/lib/combat/attack-resolution";
 import { getDmSaveTargets } from "@/lib/combat/pending-attack-builder";
+import { formatAmmunitionConsumptionLine } from "@/lib/dnd/ammunition";
 import type { PendingAttack, PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatAttackReviewCardProps {
@@ -365,6 +366,14 @@ export function CombatAttackReviewCard({
         <span className={`combat-attack-review-status combat-attack-review-status-${pending.status}`}>
           {statusLabel}
         </span>
+        {pending.ammunitionItemName ? (
+          <span className="retro-muted">
+            {formatAmmunitionConsumptionLine(
+              pending.ammunitionItemName,
+              pending.ammunitionQuantity ?? 1
+            )}
+          </span>
+        ) : null}
       </div>
 
       {isAwaitingSaves && dmSaveTargets.length > 0 ? (

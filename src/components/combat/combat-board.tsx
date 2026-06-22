@@ -562,7 +562,6 @@ export function CombatBoard({
 
   const handleTokenPointerDown = useCallback(
     (tokenId: string, event: React.PointerEvent<HTMLDivElement>) => {
-      if (isBattleActive(combatStateRef.current)) return;
       if (!isDm) return;
       event.preventDefault();
       event.stopPropagation();
@@ -1085,6 +1084,14 @@ export function CombatBoard({
               currentHp: token?.currentHp ?? update.currentHp,
               tempHp: update.tempHp,
             },
+            ...(update.inventoryItems != null
+              ? {
+                  inventory: {
+                    ...character.data.inventory,
+                    items: update.inventoryItems,
+                  },
+                }
+              : {}),
           },
         };
       })

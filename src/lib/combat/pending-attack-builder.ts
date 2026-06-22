@@ -15,6 +15,7 @@ import {
 import type { CombatOption } from "@/lib/combat/combat-options";
 import { isMainHandWeaponAttackOption } from "@/lib/combat/combat-options";
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { findAmmunitionStack } from "@/lib/dnd/ammunition";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type {
@@ -74,6 +75,31 @@ function resolveTokenContext(
   const character = token.characterId ? charactersById[token.characterId] ?? null : null;
   const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
   return { character, enemyData };
+}
+
+function resolvePendingAmmunition(
+  attack: DerivedAttack,
+  attacker: CombatToken,
+  charactersById: Record<string, ParsedCharacter>
+): Pick<
+  PendingAttack,
+  "ammunitionInventoryItemId" | "ammunitionItemName" | "ammunitionQuantity"
+> {
+  if (!attack.ammunitionItemId || !attacker.characterId) return {};
+
+  const character = charactersById[attacker.characterId];
+  if (!character) return {};
+
+  const stack = findAmmunitionStack(
+    character.data.inventory.items,
+    attack.ammunitionItemId
+  );
+
+  return {
+    ammunitionInventoryItemId: stack?.id,
+    ammunitionItemName: attack.ammunitionName,
+    ammunitionQuantity: 1,
+  };
 }
 
 export function buildTargetList(
@@ -200,6 +226,7 @@ export function createPendingAttack(
     damageDice: attack.damageDice,
     isMainHandWeapon: isMainHandWeaponAttackOption(option),
     isAoe: spec.isAoe,
+    ...resolvePendingAmmunition(attack, attacker, charactersById),
     aoeCenter: aoeCenter ?? undefined,
     aoeShape: spec.aoeShape,
     status,

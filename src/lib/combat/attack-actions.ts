@@ -1,7 +1,7 @@
 "use client";
 
 import { hasSubmittedOpportunityAttack } from "@/lib/combat/opportunity-attacks";
-import { applyResolvedAttack, canSubmitOpportunityAttack } from "@/lib/combat/attack-resolution";
+import { applyResolvedAttack, canSubmitOpportunityAttack, type CharacterHpUpdate } from "@/lib/combat/attack-resolution";
 import {
   applyDmSaveRolls,
   applySaveRoll,
@@ -25,11 +25,7 @@ import { persistCombatState } from "@/lib/hooks/use-realtime-combat-state";
 import { canUserActForToken } from "@/lib/combat/turn";
 import { createClient } from "@/lib/supabase/client";
 
-export type CharacterHpUpdate = {
-  characterId: string;
-  currentHp: number;
-  tempHp: number;
-};
+export type { CharacterHpUpdate } from "@/lib/combat/attack-resolution";
 
 async function persistOrRpc(
   campaignId: string,
@@ -83,6 +79,14 @@ async function persistCharacterHpUpdates(
           currentHp: update.currentHp,
           tempHp: update.tempHp,
         },
+        ...(update.inventoryItems != null
+          ? {
+              inventory: {
+                ...character.data.inventory,
+                items: update.inventoryItems,
+              },
+            }
+          : {}),
       },
       undefined,
       { isDm: true, originalData: character.data }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DerivedAttack } from "@/lib/dnd/attacks";
+import { formatAttackDescriptionBlurb, type DerivedAttack } from "@/lib/dnd/attacks";
 import type { CombatToken } from "@/lib/schemas/combat-state";
 import {
   areDamageRollsComplete,
@@ -58,6 +58,7 @@ export function CombatAttackSubmitModal({
   const isSave = rollType === "save";
   const isAuto = rollType === "auto";
   const multiTarget = targets.length > 1 && !isSave;
+  const attackDescriptionBlurb = formatAttackDescriptionBlurb(attack);
 
   const [attackRoll, setAttackRoll] = useState("");
   const [damageRolls, setDamageRolls] = useState<string[]>(() =>
@@ -148,6 +149,11 @@ export function CombatAttackSubmitModal({
         <p className="retro-box-title">{optionName}</p>
 
         <div className="combat-attack-submit-targets">
+          {attackDescriptionBlurb ? (
+            <div className="combat-attack-submit-target">
+              <span className="retro-muted">Attack: {attackDescriptionBlurb}</span>
+            </div>
+          ) : null}
           {targets.map((target) => (
             <div key={target.id} className="combat-attack-submit-target">
               <strong>{target.label}</strong>

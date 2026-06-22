@@ -1,6 +1,7 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyHpDamage } from "@/lib/character/combat-derivation";
 import { parseDamageNotation } from "@/lib/dnd/dice";
+import { consumeInventoryItem } from "@/lib/dnd/supplies";
 import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
 import {
   hasPendingAttackForAttacker,
@@ -14,6 +15,7 @@ import type {
   PendingAttack,
   PendingAttackTarget,
 } from "@/lib/schemas/combat-state";
+import type { InventoryItem } from "@/lib/schemas/character";
 
 export function getTokenAc(
   token: CombatToken,
@@ -71,6 +73,7 @@ export interface CharacterHpUpdate {
   characterId: string;
   currentHp: number;
   tempHp: number;
+  inventoryItems?: InventoryItem[];
 }
 
 export function applyResolvedAttack(
@@ -82,6 +85,23 @@ export function applyResolvedAttack(
   characterUpdates: CharacterHpUpdate[];
 } {
   const characterUpdates: CharacterHpUpdate[] = [];
+
+  function upsertCharacterUpdate(
+    characterId: string,
+    patch: Partial<CharacterHpUpdate> & Pick<CharacterHpUpdate, "currentHp" | "tempHp">
+  ) {
+    const existing = characterUpdates.find((entry) => entry.characterId === characterId);
+    if (existing) {
+      Object.assign(existing, patch);
+      return;
+    }
+    characterUpdates.push({
+      characterId,
+      currentHp: patch.currentHp,
+      tempHp: patch.tempHp,
+      inventoryItems: patch.inventoryItems,
+    });
+  }
 
   const tokens = state.tokens.map((token) => {
     const target = pending.targets.find((entry) => entry.tokenId === token.id);
@@ -96,8 +116,7 @@ export function applyResolvedAttack(
       if (!combat) {
         const currentHp = token.currentHp ?? 0;
         const nextHp = Math.max(0, currentHp - damage);
-        characterUpdates.push({
-          characterId: token.characterId,
+        upsertCharacterUpdate(token.characterId, {
           currentHp: nextHp,
           tempHp: 0,
         });
@@ -107,8 +126,7 @@ export function applyResolvedAttack(
       const tempHp = combat.tempHp;
       const maxHp = token.maxHp ?? combat.maxHp;
       const result = applyHpDamage({ ...combat, currentHp, tempHp, maxHp }, damage);
-      characterUpdates.push({
-        characterId: token.characterId,
+      upsertCharacterUpdate(token.characterId, {
         currentHp: result.currentHp,
         tempHp: result.tempHp,
       });
@@ -128,6 +146,28 @@ export function applyResolvedAttack(
       damageTaken,
     };
   });
+
+  const attacker = state.tokens.find((token) => token.id === pending.attackerTokenId);
+  if (
+    attacker?.characterId &&
+    pending.ammunitionInventoryItemId &&
+    pending.ammunitionQuantity
+  ) {
+    const character = charactersById[attacker.characterId];
+    if (character) {
+      const inventoryItems = consumeInventoryItem(
+        character.data.inventory.items,
+        pending.ammunitionInventoryItemId
+      );
+      const combat = character.data.combat;
+      const attackerToken = tokens.find((token) => token.id === attacker.id);
+      upsertCharacterUpdate(attacker.characterId, {
+        currentHp: attackerToken?.currentHp ?? combat.currentHp,
+        tempHp: combat.tempHp,
+        inventoryItems,
+      });
+    }
+  }
 
   let turn = { ...state.turn };
   if (!pending.isOpportunityAttack) {
