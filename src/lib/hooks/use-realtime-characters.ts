@@ -14,7 +14,8 @@ export function useRealtimeCharacters(
 
   useEffect(() => {
     setCharacters(initialCharacters);
-  }, [initialCharacters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialCharacters read at campaign switch
+  }, [campaignId]);
 
   useEffect(() => {
     const supabase = createClient();

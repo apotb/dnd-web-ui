@@ -3532,20 +3532,18 @@ html.campaign-bg-active .retro-back-link {
   cursor: grabbing;
 }
 
-.combat-token-dm.combat-token-hp-clickable {
-  cursor: pointer;
-}
-
-.combat-hp-adjust-modal {
-  max-width: 360px;
-}
-
-.combat-hp-adjust-current {
-  margin: 0 0 12px;
-}
-
-.combat-hp-adjust-actions {
-  margin-top: 4px;
+.combat-toolbar-actions .combat-hp-amount-input {
+  width: 4.5rem;
+  min-width: 4.5rem;
+  max-width: 4.5rem;
+  flex: 0 0 auto;
+  align-self: stretch;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid #000;
+  font: inherit;
+  line-height: 1.2;
+  box-sizing: border-box;
 }
 
 .combat-token-dm .combat-token-label {
@@ -3592,7 +3590,7 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .combat-token-selected .combat-token-badge {
-  outline: 2px solid #fbbf24;
+  outline: 2px solid #f97316;
   outline-offset: 1px;
   border-radius: 50%;
 }

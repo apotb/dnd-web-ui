@@ -2,10 +2,10 @@ import type { ParsedCharacter } from "@/lib/character/utils";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 
-export interface TokenHpOverlay {
-  currentHp: number;
-  maxHp: number;
-  damageTaken?: number;
+export function parsePositiveHpAmount(value: string): number | null {
+  const parsed = parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
 }
 
 export function combatTokenHpFingerprint(state: CombatState): string {
@@ -56,44 +56,6 @@ export function mergeLiveStatePreservingTokenHp(
       };
     }),
   };
-}
-
-export function applyTokenHpOverlays(
-  state: CombatState,
-  overlays: ReadonlyMap<string, TokenHpOverlay>
-): CombatState {
-  if (overlays.size === 0) return state;
-
-  return {
-    ...state,
-    tokens: state.tokens.map((token) => {
-      const overlay = overlays.get(token.id);
-      if (!overlay) return token;
-      return {
-        ...token,
-        currentHp: overlay.currentHp,
-        maxHp: overlay.maxHp,
-        damageTaken: overlay.damageTaken ?? token.damageTaken,
-      };
-    }),
-  };
-}
-
-export function reconcileTokenHpOverlays(
-  liveState: CombatState,
-  overlays: Map<string, TokenHpOverlay>
-): boolean {
-  let changed = false;
-
-  for (const [tokenId, overlay] of overlays) {
-    const liveToken = liveState.tokens.find((token) => token.id === tokenId);
-    if (liveToken?.currentHp === overlay.currentHp) {
-      overlays.delete(tokenId);
-      changed = true;
-    }
-  }
-
-  return changed;
 }
 
 export function applyHpDelta(currentHp: number, maxHp: number, delta: number): number {

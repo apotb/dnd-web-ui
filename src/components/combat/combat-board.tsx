@@ -22,12 +22,10 @@ import {
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import {
   applyHpDelta,
-  applyTokenHpOverlays,
   combatTokenHpFingerprint,
   getTokenHpDisplay,
   mergeLiveStatePreservingTokenHp,
-  reconcileTokenHpOverlays,
-  type TokenHpOverlay,
+  parsePositiveHpAmount,
 } from "@/lib/combat/hp-adjust";
 import {
   removeCombatImage,
@@ -42,6 +40,7 @@ import {
   persistCombatState,
   useRealtimeCombatState,
 } from "@/lib/hooks/use-realtime-combat-state";
+import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import {
   MAX_GRID_SIZE,
@@ -61,7 +60,6 @@ import { CombatMovePanel } from "@/components/combat/combat-move-panel";
 import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
 import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
-import { CombatHpAdjustModal } from "@/components/combat/combat-hp-adjust-modal";
 import { CombatRollModal } from "@/components/combat/combat-roll-modal";
 import { CombatOpportunityAttackModal } from "@/components/combat/combat-opportunity-attack-modal";
 import { CombatOpportunityAttackPanel } from "@/components/combat/combat-opportunity-attack-panel";
@@ -328,15 +326,16 @@ export function CombatBoard({
     [enemies]
   );
 
-  const [localCharacters, setLocalCharacters] = useState(characters);
+  const liveCharacters = useRealtimeCharacters(campaignId, characters, isDm);
+  const [localCharacters, setLocalCharacters] = useState(liveCharacters);
   const charactersById = useMemo(
     () => Object.fromEntries(localCharacters.map((character) => [character.id, character])),
     [localCharacters]
   );
 
   useEffect(() => {
-    setLocalCharacters(characters);
-  }, [campaignId]);
+    setLocalCharacters(liveCharacters);
+  }, [liveCharacters]);
 
   const liveState = useRealtimeCombatState(campaignId, initialCombatState);
   const [draft, setDraft] = useState(liveState);
@@ -388,13 +387,8 @@ export function CombatBoard({
   const [helpTargetPickerAllies, setHelpTargetPickerAllies] = useState<
     CombatToken[] | null
   >(null);
-  const [hpAdjustTokenId, setHpAdjustTokenId] = useState<string | null>(null);
-  const [hpAdjustLiveHp, setHpAdjustLiveHp] = useState<{
-    currentHp: number;
-    maxHp: number;
-  } | null>(null);
-  const [submittingHpAdjust, setSubmittingHpAdjust] = useState(false);
-  const [hpOverlayVersion, setHpOverlayVersion] = useState(0);
+  const [hpAmount, setHpAmount] = useState("1");
+  const [applyingHp, setApplyingHp] = useState(false);
   const [endTurnConfirmOpen, setEndTurnConfirmOpen] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
@@ -404,17 +398,9 @@ export function CombatBoard({
   attackTargetingRef.current = attackTargeting;
   const supabase = useMemo(() => createClient(), []);
 
-  const tokenHpOverlaysRef = useRef<Map<string, TokenHpOverlay>>(new Map());
   const awaitingPersistFingerprintRef = useRef<string | null>(null);
-  const lastLocalCombatWriteAtRef = useRef(0);
-  const hpAdjustTokenIdRef = useRef<string | null>(null);
-  hpAdjustTokenIdRef.current = hpAdjustTokenId;
 
-  const combatState = useMemo(() => {
-    void hpOverlayVersion;
-    const base = isDm ? draft : liveState;
-    return applyTokenHpOverlays(base, tokenHpOverlaysRef.current);
-  }, [draft, hpOverlayVersion, isDm, liveState]);
+  const combatState = isDm ? draft : liveState;
 
   combatStateRef.current = combatState;
 
@@ -422,10 +408,6 @@ export function CombatBoard({
     () => resolveCombatImageUrl(supabase, combatState.backgroundPath),
     [combatState.backgroundPath, supabase]
   );
-
-  const bumpHpOverlay = useCallback(() => {
-    setHpOverlayVersion((version) => version + 1);
-  }, []);
 
   const characterRosterKey = useMemo(
     () =>
@@ -437,15 +419,15 @@ export function CombatBoard({
   );
 
   const persist = useCallback(
-    async (next: CombatState) => {
-      if (!isDm) return;
-      lastLocalCombatWriteAtRef.current = Date.now();
+    async (next: CombatState): Promise<string | null> => {
+      if (!isDm) return null;
       awaitingPersistFingerprintRef.current = combatTokenHpFingerprint(next);
       setDraft(next);
       const error = await persistCombatState(campaignId, next);
       if (error) {
         awaitingPersistFingerprintRef.current = null;
       }
+      return error;
     },
     [campaignId, isDm]
   );
@@ -472,42 +454,30 @@ export function CombatBoard({
     setHoveredTokenId(token?.id ?? null);
   }, []);
 
-  function shouldPreserveCombatTokenHpOverlay(): boolean {
-    return (
-      tokenHpOverlaysRef.current.size > 0 ||
-      hpAdjustTokenIdRef.current != null ||
-      awaitingPersistFingerprintRef.current != null ||
-      Date.now() - lastLocalCombatWriteAtRef.current < 5000
-    );
-  }
-
   useEffect(() => {
     if (!isDm) return;
     if (draggingTokenIdRef.current) return;
 
-    if (reconcileTokenHpOverlays(liveState, tokenHpOverlaysRef.current)) {
-      bumpHpOverlay();
-    }
-
-    const awaited = awaitingPersistFingerprintRef.current;
-    if (awaited && combatTokenHpFingerprint(liveState) === awaited) {
-      awaitingPersistFingerprintRef.current = null;
-    }
-
     setDraft((prev) => {
-      if (combatTokenHpFingerprint(liveState) === combatTokenHpFingerprint(prev)) {
-        return prev;
+      const awaited = awaitingPersistFingerprintRef.current;
+      const liveHp = combatTokenHpFingerprint(liveState);
+      const prevHp = combatTokenHpFingerprint(prev);
+
+      if (awaited && liveHp === awaited) {
+        awaitingPersistFingerprintRef.current = null;
       }
 
-      const localSource = applyTokenHpOverlays(prev, tokenHpOverlaysRef.current);
+      if (liveHp === prevHp) {
+        return liveState;
+      }
 
-      if (shouldPreserveCombatTokenHpOverlay()) {
-        return mergeLiveStatePreservingTokenHp(localSource, liveState);
+      if (awaitingPersistFingerprintRef.current != null) {
+        return mergeLiveStatePreservingTokenHp(prev, liveState);
       }
 
       return liveState;
     });
-  }, [bumpHpOverlay, isDm, liveState]);
+  }, [isDm, liveState]);
 
   useEffect(() => {
     if (!isDm) return;
@@ -655,19 +625,7 @@ export function CombatBoard({
     ? combatState.tokens.find((token) => token.id === selectedTokenId) ?? null
     : null;
 
-  const hpAdjustToken = hpAdjustTokenId
-    ? combatState.tokens.find((token) => token.id === hpAdjustTokenId) ?? null
-    : null;
-
-  function openHpAdjustForToken(tokenId: string) {
-    const token = combatStateRef.current.tokens.find((entry) => entry.id === tokenId);
-    if (!token) return;
-    const character = token.characterId ? charactersById[token.characterId] ?? null : null;
-    const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
-    const display = getTokenHpDisplay(token, character, enemyData);
-    setHpAdjustTokenId(tokenId);
-    setHpAdjustLiveHp({ currentHp: display.currentHp, maxHp: display.maxHp });
-  }
+  const hpAmountValid = parsePositiveHpAmount(hpAmount) != null;
 
   const canStartInitiative =
     isDm &&
@@ -1406,7 +1364,6 @@ export function CombatBoard({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         clearAttackFlow();
-        setHpAdjustTokenId(null);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -1544,68 +1501,50 @@ export function CombatBoard({
     );
   }
 
-  async function handleApplyHpAdjust(delta: number) {
-    if (!hpAdjustTokenId || delta === 0) return;
+  async function handleApplyHpToSelected(sign: 1 | -1) {
+    if (!selectedToken) return;
+    const amount = parsePositiveHpAmount(hpAmount);
+    if (amount == null) return;
 
-    const previousState = combatStateRef.current;
-    const token = previousState.tokens.find((entry) => entry.id === hpAdjustTokenId);
-    if (!token) return;
-
+    const delta = sign * amount;
+    const token = selectedToken;
     const character = token.characterId ? charactersById[token.characterId] ?? null : null;
     const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
     const { currentHp, maxHp } = getTokenHpDisplay(token, character, enemyData);
     const nextHp = applyHpDelta(currentHp, maxHp, delta);
     const damageDelta = delta < 0 ? -delta : 0;
-    const previousLocalCharacters =
-      token.kind === "party" && character ? localCharacters : null;
 
-    const adjustingToken = token;
-
-    const next = updateTokenInState(previousState, adjustingToken.id, {
+    const next = updateTokenInState(combatState, token.id, {
       currentHp: nextHp,
       maxHp,
-      damageTaken: (adjustingToken.damageTaken ?? 0) + damageDelta,
+      damageTaken: (token.damageTaken ?? 0) + damageDelta,
     });
 
-    function rollback() {
-      awaitingPersistFingerprintRef.current = null;
-      tokenHpOverlaysRef.current.delete(adjustingToken.id);
-      bumpHpOverlay();
-      setDraft(previousState);
-      combatStateRef.current = previousState;
-      if (previousLocalCharacters) {
-        setLocalCharacters(previousLocalCharacters);
-      }
-      const rollbackCharacter = adjustingToken.characterId
-        ? previousLocalCharacters?.find((entry) => entry.id === adjustingToken.characterId) ??
-          charactersById[adjustingToken.characterId] ??
-          null
-        : null;
-      setHpAdjustLiveHp(
-        getTokenHpDisplay(adjustingToken, rollbackCharacter, enemyData)
-      );
+    setApplyingHp(true);
+
+    const persistError = await persist(next);
+    if (persistError) {
+      setApplyingHp(false);
+      window.alert(persistError);
+      return;
     }
-
-    const nextDamageTaken = (adjustingToken.damageTaken ?? 0) + damageDelta;
-
-    // Optimistic UI — update board + modal immediately, persist in background.
-    lastLocalCombatWriteAtRef.current = Date.now();
-    awaitingPersistFingerprintRef.current = combatTokenHpFingerprint(next);
-    tokenHpOverlaysRef.current.set(adjustingToken.id, {
-      currentHp: nextHp,
-      maxHp,
-      damageTaken: nextDamageTaken,
-    });
-    bumpHpOverlay();
-    setHpAdjustLiveHp({ currentHp: nextHp, maxHp });
-    setDraft(next);
-    combatStateRef.current = next;
 
     if (token.kind === "party" && character) {
       const nextCombat = {
         ...character.data.combat,
         currentHp: nextHp,
       };
+      const error = await saveCharacterData(
+        character.id,
+        { ...character.data, combat: nextCombat },
+        undefined,
+        { isDm: true, originalData: character.data }
+      );
+      if (error) {
+        setApplyingHp(false);
+        window.alert(error);
+        return;
+      }
       setLocalCharacters((current) =>
         current.map((entry) =>
           entry.id === character.id
@@ -1621,45 +1560,13 @@ export function CombatBoard({
       );
     }
 
-    setSubmittingHpAdjust(true);
-
-    if (token.kind === "party" && character) {
-      const nextCombat = {
-        ...character.data.combat,
-        currentHp: nextHp,
-      };
-      const error = await saveCharacterData(
-        character.id,
-        { ...character.data, combat: nextCombat },
-        undefined,
-        { isDm: true, originalData: character.data }
-      );
-      if (error) {
-        setSubmittingHpAdjust(false);
-        rollback();
-        window.alert(error);
-        return;
-      }
-    }
-
-    const persistError = await persistCombatState(campaignId, next);
-    setSubmittingHpAdjust(false);
-
-    if (persistError) {
-      rollback();
-      window.alert(persistError);
-    }
+    setApplyingHp(false);
   }
 
   function handleTokenClick(tokenId: string, event: React.MouseEvent) {
-    if (!isDm || !battleActive || attackTargeting || movementMode || draggingTokenId) return;
+    if (!isDm || attackTargeting || movementMode || draggingTokenId) return;
     event.stopPropagation();
-    openHpAdjustForToken(tokenId);
-  }
-
-  function handleCloseHpAdjust() {
-    setHpAdjustTokenId(null);
-    setHpAdjustLiveHp(null);
+    setSelectedTokenId(tokenId);
   }
 
   async function handleAddEnemy(enemy: EnemyRecord) {
@@ -1837,7 +1744,7 @@ export function CombatBoard({
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isDm && battleActive && !attackTargeting && !movementMode ? " combat-token-hp-clickable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -2226,6 +2133,31 @@ export function CombatBoard({
                   <button
                     type="button"
                     className="candy-btn"
+                    disabled={!selectedToken || !hpAmountValid || applyingHp}
+                    onClick={() => void handleApplyHpToSelected(1)}
+                  >
+                    {applyingHp ? "…" : "Heal"}
+                  </button>
+                  <input
+                    type="number"
+                    className="candy-input combat-hp-amount-input"
+                    min={1}
+                    value={hpAmount}
+                    onChange={(event) => setHpAmount(event.target.value)}
+                    disabled={!selectedToken || applyingHp}
+                    aria-label="HP amount"
+                  />
+                  <button
+                    type="button"
+                    className="candy-btn"
+                    disabled={!selectedToken || !hpAmountValid || applyingHp}
+                    onClick={() => void handleApplyHpToSelected(-1)}
+                  >
+                    {applyingHp ? "…" : "Damage"}
+                  </button>
+                  <button
+                    type="button"
+                    className="candy-btn"
                     onClick={handleRemoveSelected}
                     disabled={!selectedToken}
                   >
@@ -2342,16 +2274,6 @@ export function CombatBoard({
         presentCharacterIds={presentCharacterIds}
         onConfirm={handleAddPartyMembers}
       />
-      {hpAdjustToken && hpAdjustLiveHp ? (
-        <CombatHpAdjustModal
-          tokenLabel={hpAdjustToken.label}
-          currentHp={hpAdjustLiveHp.currentHp}
-          maxHp={hpAdjustLiveHp.maxHp}
-          submitting={submittingHpAdjust}
-          onCancel={handleCloseHpAdjust}
-          onApply={(delta) => void handleApplyHpAdjust(delta)}
-        />
-      ) : null}
       {attackSubmitDraft ? (
         <CombatAttackSubmitModal
           attack={attackSubmitDraft.attack}
