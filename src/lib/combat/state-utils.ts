@@ -85,7 +85,7 @@ export function createDefaultCombatState(
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
     turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
-    pendingAttack: null,
+    pendingAttacks: [],
     pendingOpportunityAttacks: null,
   };
 
@@ -453,7 +453,7 @@ export function resetCombatBoard(
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
     turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
-    pendingAttack: null,
+    pendingAttacks: [],
     pendingOpportunityAttacks: null,
   };
 
@@ -498,6 +498,9 @@ export function syncPartyTokens(
           name: character.name,
           label: character.name,
           portraitPath: character.data.basicInfo.portrait || existing.portraitPath,
+          // Prefer character sheet HP when resyncing roster metadata (e.g. after DM HP adjust).
+          currentHp: character.data.combat.currentHp ?? existing.currentHp,
+          maxHp: character.data.combat.maxHp ?? existing.maxHp,
         },
         workingState
       );

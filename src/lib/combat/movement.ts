@@ -160,14 +160,20 @@ export function canEndFootprintAt(
 export function getMovementBudgetFeet(
   speedFt: number,
   usedFeet: number,
-  dashUsed: boolean
+  dashUsed: boolean,
+  actionUsed = false
 ): { normalRemainingFeet: number; maxRemainingFeet: number } {
-  const maxTotalFeet = dashUsed ? speedFt * 2 : speedFt * 2;
+  const canExtendWithDash = !dashUsed && !actionUsed;
+  const maxTotalFeet = dashUsed ? speedFt * 2 : canExtendWithDash ? speedFt * 2 : speedFt;
   const maxRemainingFeet = Math.max(0, maxTotalFeet - usedFeet);
   const normalRemainingFeet = dashUsed
     ? maxRemainingFeet
     : Math.max(0, speedFt - usedFeet);
   return { normalRemainingFeet, maxRemainingFeet };
+}
+
+export function canUseDashMovement(dashUsed: boolean, actionUsed: boolean): boolean {
+  return !dashUsed && !actionUsed;
 }
 
 export function computeReachableDestinations(
@@ -177,14 +183,17 @@ export function computeReachableDestinations(
     speedFt: number;
     usedFeet: number;
     dashUsed: boolean;
+    actionUsed?: boolean;
   }
 ): ReachableDestination[] {
-  const { speedFt, usedFeet, dashUsed } = options;
+  const { speedFt, usedFeet, dashUsed, actionUsed = false } = options;
+  const canExtendWithDash = canUseDashMovement(dashUsed, actionUsed);
   const tileFeet = state.tileFeet;
   const { normalRemainingFeet, maxRemainingFeet } = getMovementBudgetFeet(
     speedFt,
     usedFeet,
-    dashUsed
+    dashUsed,
+    actionUsed
   );
 
   if (maxRemainingFeet <= 0) return [];
@@ -205,7 +214,7 @@ export function computeReachableDestinations(
       canEndFootprintAt(current.x, current.y, token, state)
     ) {
       const zone =
-        !dashUsed && current.costFeet > normalRemainingFeet ? "dash" : "normal";
+        canExtendWithDash && current.costFeet > normalRemainingFeet ? "dash" : "normal";
       if (current.costFeet <= maxRemainingFeet) {
         destinations.push({
           x: current.x,
@@ -323,8 +332,9 @@ export function getRemainingMovementFeet(
 export function getDashPreviewRemainingFeet(
   speedFt: number,
   usedFeet: number,
-  dashUsed: boolean
+  dashUsed: boolean,
+  actionUsed = false
 ): number | null {
-  if (dashUsed) return null;
+  if (!canUseDashMovement(dashUsed, actionUsed)) return null;
   return Math.max(0, speedFt * 2 - usedFeet);
 }

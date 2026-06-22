@@ -2616,6 +2616,104 @@ html.campaign-bg-active .retro-back-link {
   gap: 12px;
 }
 
+.combat-attack-review-card {
+  flex: 0 0 min(420px, 88vw);
+  max-width: 420px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.combat-attack-review-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.combat-attack-review-card-header .retro-box-title {
+  margin: 0;
+}
+
+.combat-attack-review-status {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.combat-attack-review-status-awaiting-saves {
+  color: #fde68a;
+  border-color: rgba(250, 204, 21, 0.45);
+}
+
+.combat-attack-review-status-awaiting-dm-review {
+  color: #bbf7d0;
+  border-color: rgba(74, 222, 128, 0.45);
+}
+
+.combat-attack-review-card-actions {
+  margin-top: auto;
+}
+
+.combat-stage .combat-dm-approval-tray {
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: #16161f;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  color: #cbd5e1;
+}
+
+.combat-stage .combat-dm-approval-tray-header {
+  margin-bottom: 10px;
+}
+
+.combat-stage .combat-dm-approval-tray-title {
+  margin: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.combat-stage .combat-dm-approval-tray-count {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.35);
+  border: 1px solid rgba(147, 197, 253, 0.45);
+  color: #eff6ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.combat-stage .combat-dm-approval-tray-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+}
+
+.combat-stage .combat-dm-approval-tray-scroll .combat-attack-review-card {
+  scroll-snap-align: start;
+}
+
 .combat-board-area {
   flex: 1;
   min-height: 0;
@@ -2999,6 +3097,12 @@ html.campaign-bg-active .retro-back-link {
   min-width: 0;
   max-width: 8rem;
   margin-bottom: 0;
+}
+
+.combat-damage-applied-breakdown {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.85rem;
 }
 
 .combat-attack-submit-hint {
@@ -3426,6 +3530,22 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-token-dm.combat-token-dragging {
   cursor: grabbing;
+}
+
+.combat-token-dm.combat-token-hp-clickable {
+  cursor: pointer;
+}
+
+.combat-hp-adjust-modal {
+  max-width: 360px;
+}
+
+.combat-hp-adjust-current {
+  margin: 0 0 12px;
+}
+
+.combat-hp-adjust-actions {
+  margin-top: 4px;
 }
 
 .combat-token-dm .combat-token-label {

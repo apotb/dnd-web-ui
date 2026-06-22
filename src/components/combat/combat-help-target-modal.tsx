@@ -23,7 +23,7 @@ export function CombatHelpTargetModal({
       >
         <p className="retro-box-title">Help</p>
         <p className="retro-muted">
-          Choose a party member within 5 feet to grant advantage on their next attack
+          Choose an ally within 5 feet to grant advantage on their next attack
           against a target within 5 feet of you.
         </p>
         <ul className="combat-help-target-list">

@@ -1,4 +1,5 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { getPendingAttackForAttacker } from "@/lib/combat/pending-attacks";
 import { isDmControlledToken } from "@/lib/combat/turn";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import type { GridPosition } from "@/lib/combat/movement";
@@ -60,6 +61,9 @@ export function canUserControlOpportunityAttack(
   token: CombatToken,
   character: ParsedCharacter | null
 ): boolean {
+  if (token.kind === "enemy" || token.kind === "ally") {
+    return isDm;
+  }
   if (token.kind !== "party") return false;
   if (isDm && isDmControlledToken(token, character)) return true;
   return !!userId && character?.owner_user_id === userId;
@@ -99,10 +103,8 @@ export function hasSubmittedOpportunityAttack(
   state: CombatState,
   attackerTokenId: string
 ): boolean {
-  return (
-    state.pendingAttack?.isOpportunityAttack === true &&
-    state.pendingAttack.attackerTokenId === attackerTokenId
-  );
+  const pending = getPendingAttackForAttacker(state, attackerTokenId);
+  return pending?.isOpportunityAttack === true;
 }
 
 export function canSkipOpportunityAttackAction(

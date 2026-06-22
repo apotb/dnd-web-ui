@@ -21,6 +21,15 @@ import {
 } from "@/lib/combat/initiative";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import {
+  applyHpDelta,
+  applyTokenHpOverlays,
+  combatTokenHpFingerprint,
+  getTokenHpDisplay,
+  mergeLiveStatePreservingTokenHp,
+  reconcileTokenHpOverlays,
+  type TokenHpOverlay,
+} from "@/lib/combat/hp-adjust";
+import {
   removeCombatImage,
   resolveCombatImageUrl,
   uploadCombatBackground,
@@ -52,19 +61,19 @@ import { CombatMovePanel } from "@/components/combat/combat-move-panel";
 import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
 import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
+import { CombatHpAdjustModal } from "@/components/combat/combat-hp-adjust-modal";
 import { CombatRollModal } from "@/components/combat/combat-roll-modal";
 import { CombatOpportunityAttackModal } from "@/components/combat/combat-opportunity-attack-modal";
 import { CombatOpportunityAttackPanel } from "@/components/combat/combat-opportunity-attack-panel";
 import { CombatAttackSubmitModal } from "@/components/combat/combat-attack-submit-modal";
 import type { AttackSubmitValues } from "@/components/combat/combat-attack-submit-modal";
-import { CombatAttackReviewModal } from "@/components/combat/combat-attack-review-modal";
+import { CombatDmApprovalTray } from "@/components/combat/combat-dm-approval-tray";
 import { CombatSaveRollModal } from "@/components/combat/combat-save-roll-modal";
-import { CombatDmSaveRollModal } from "@/components/combat/combat-dm-save-roll-modal";
 import { CombatTargetingOverlay } from "@/components/combat/combat-targeting-overlay";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   getCombatOptionGroupsForToken,
-  getOpportunityAttackOptionsForCharacter,
+  getOpportunityAttackOptionsForToken,
   isAttackTargetingOption,
   isConfirmActionOption,
   isDashActionOption,
@@ -84,18 +93,26 @@ import {
   submitCombatAttack,
   submitCombatDmSaveRolls,
   submitCombatSaveRoll,
+  type CharacterHpUpdate,
 } from "@/lib/combat/attack-actions";
 import {
   buildTargetList,
-  findPlayerSaveTarget,
-  getDmSaveTargets,
+  findPlayerSaveContext,
   optionToAttack,
 } from "@/lib/combat/pending-attack-builder";
+import {
+  getPendingAttackForAttacker,
+  getDmApprovalTrayAttacks,
+  hasPendingAttackForAttacker,
+  canAdvanceTurnWithPendingAttacks,
+} from "@/lib/combat/pending-attacks";
 import { getTargetingHighlights } from "@/lib/combat/targeting";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import {
-  skipCombatOpportunityAttack,
   submitCombatOpportunityAttack,
+} from "@/lib/combat/attack-actions";
+import {
+  skipCombatOpportunityAttack,
 } from "@/lib/combat/opportunity-attack-actions";
 import {
   canSkipOpportunityAttackAction,
@@ -106,8 +123,8 @@ import {
 } from "@/lib/combat/opportunity-attacks";
 import {
   getAdjacentAllyTokens,
+  getOpportunityAttackAttackerIds,
   getOpportunityAttackReactors,
-  getPartyOpportunityAttackReactors,
 } from "@/lib/combat/engagement";
 import { endCombatTurn } from "@/lib/combat/turn-actions";
 import {
@@ -319,7 +336,7 @@ export function CombatBoard({
 
   useEffect(() => {
     setLocalCharacters(characters);
-  }, [characters]);
+  }, [campaignId]);
 
   const liveState = useRealtimeCombatState(campaignId, initialCombatState);
   const [draft, setDraft] = useState(liveState);
@@ -344,8 +361,8 @@ export function CombatBoard({
     y: number;
   } | null>(null);
   const [submittingAttack, setSubmittingAttack] = useState(false);
-  const [submittingSave, setSubmittingSave] = useState(false);
-  const [resolvingAttack, setResolvingAttack] = useState(false);
+  const [submittingSaveId, setSubmittingSaveId] = useState<string | null>(null);
+  const [resolvingAttackId, setResolvingAttackId] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
   const [hoveredTokenId, setHoveredTokenId] = useState<string | null>(null);
@@ -367,9 +384,17 @@ export function CombatBoard({
   const [skippingOpportunityAttack, setSkippingOpportunityAttack] = useState(false);
   const [userOaLocked, setUserOaLocked] = useState(false);
   const prevUserOaSubmittedPendingRef = useRef(false);
+  const autoResolvingAttackIdsRef = useRef<Set<string>>(new Set());
   const [helpTargetPickerAllies, setHelpTargetPickerAllies] = useState<
     CombatToken[] | null
   >(null);
+  const [hpAdjustTokenId, setHpAdjustTokenId] = useState<string | null>(null);
+  const [hpAdjustLiveHp, setHpAdjustLiveHp] = useState<{
+    currentHp: number;
+    maxHp: number;
+  } | null>(null);
+  const [submittingHpAdjust, setSubmittingHpAdjust] = useState(false);
+  const [hpOverlayVersion, setHpOverlayVersion] = useState(0);
   const [endTurnConfirmOpen, setEndTurnConfirmOpen] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
@@ -379,7 +404,17 @@ export function CombatBoard({
   attackTargetingRef.current = attackTargeting;
   const supabase = useMemo(() => createClient(), []);
 
-  const combatState = isDm ? draft : liveState;
+  const tokenHpOverlaysRef = useRef<Map<string, TokenHpOverlay>>(new Map());
+  const awaitingPersistFingerprintRef = useRef<string | null>(null);
+  const lastLocalCombatWriteAtRef = useRef(0);
+  const hpAdjustTokenIdRef = useRef<string | null>(null);
+  hpAdjustTokenIdRef.current = hpAdjustTokenId;
+
+  const combatState = useMemo(() => {
+    void hpOverlayVersion;
+    const base = isDm ? draft : liveState;
+    return applyTokenHpOverlays(base, tokenHpOverlaysRef.current);
+  }, [draft, hpOverlayVersion, isDm, liveState]);
 
   combatStateRef.current = combatState;
 
@@ -388,11 +423,29 @@ export function CombatBoard({
     [combatState.backgroundPath, supabase]
   );
 
+  const bumpHpOverlay = useCallback(() => {
+    setHpOverlayVersion((version) => version + 1);
+  }, []);
+
+  const characterRosterKey = useMemo(
+    () =>
+      localCharacters
+        .map((character) => character.id)
+        .sort()
+        .join(","),
+    [localCharacters]
+  );
+
   const persist = useCallback(
     async (next: CombatState) => {
       if (!isDm) return;
+      lastLocalCombatWriteAtRef.current = Date.now();
+      awaitingPersistFingerprintRef.current = combatTokenHpFingerprint(next);
       setDraft(next);
-      await persistCombatState(campaignId, next);
+      const error = await persistCombatState(campaignId, next);
+      if (error) {
+        awaitingPersistFingerprintRef.current = null;
+      }
     },
     [campaignId, isDm]
   );
@@ -419,16 +472,49 @@ export function CombatBoard({
     setHoveredTokenId(token?.id ?? null);
   }, []);
 
-  useEffect(() => {
-    if (!isDm) return;
-    if (draggingTokenIdRef.current) return;
-    setDraft(liveState);
-  }, [isDm, liveState]);
+  function shouldPreserveCombatTokenHpOverlay(): boolean {
+    return (
+      tokenHpOverlaysRef.current.size > 0 ||
+      hpAdjustTokenIdRef.current != null ||
+      awaitingPersistFingerprintRef.current != null ||
+      Date.now() - lastLocalCombatWriteAtRef.current < 5000
+    );
+  }
 
   useEffect(() => {
     if (!isDm) return;
-    setDraft((prev) => syncPartyTokens(prev, characters));
-  }, [characters, isDm]);
+    if (draggingTokenIdRef.current) return;
+
+    if (reconcileTokenHpOverlays(liveState, tokenHpOverlaysRef.current)) {
+      bumpHpOverlay();
+    }
+
+    const awaited = awaitingPersistFingerprintRef.current;
+    if (awaited && combatTokenHpFingerprint(liveState) === awaited) {
+      awaitingPersistFingerprintRef.current = null;
+    }
+
+    setDraft((prev) => {
+      if (combatTokenHpFingerprint(liveState) === combatTokenHpFingerprint(prev)) {
+        return prev;
+      }
+
+      const localSource = applyTokenHpOverlays(prev, tokenHpOverlaysRef.current);
+
+      if (shouldPreserveCombatTokenHpOverlay()) {
+        return mergeLiveStatePreservingTokenHp(localSource, liveState);
+      }
+
+      return liveState;
+    });
+  }, [bumpHpOverlay, isDm, liveState]);
+
+  useEffect(() => {
+    if (!isDm) return;
+    setDraft((prev) => syncPartyTokens(prev, localCharacters));
+    // Only re-sync party token metadata when roster membership changes, not on HP edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- localCharacters read at roster change time
+  }, [characterRosterKey, isDm]);
 
   const beginTokenDrag = useCallback(
     (tokenId: string, pointerId: number, clientX: number, clientY: number) => {
@@ -569,6 +655,20 @@ export function CombatBoard({
     ? combatState.tokens.find((token) => token.id === selectedTokenId) ?? null
     : null;
 
+  const hpAdjustToken = hpAdjustTokenId
+    ? combatState.tokens.find((token) => token.id === hpAdjustTokenId) ?? null
+    : null;
+
+  function openHpAdjustForToken(tokenId: string) {
+    const token = combatStateRef.current.tokens.find((entry) => entry.id === tokenId);
+    if (!token) return;
+    const character = token.characterId ? charactersById[token.characterId] ?? null : null;
+    const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
+    const display = getTokenHpDisplay(token, character, enemyData);
+    setHpAdjustTokenId(tokenId);
+    setHpAdjustLiveHp({ currentHp: display.currentHp, maxHp: display.maxHp });
+  }
+
   const canStartInitiative =
     isDm &&
     combatState.initiative.status === "none" &&
@@ -597,7 +697,14 @@ export function CombatBoard({
   const actionUsed = combatState.turn.actionUsed;
   const bonusActionUsed = combatState.turn.bonusActionUsed;
   const disengageUsed = combatState.turn.disengageUsed;
-  const pendingAttack = combatState.pendingAttack;
+  const pendingAttacks = combatState.pendingAttacks;
+  const dmApprovalTrayAttacks = useMemo(
+    () => getDmApprovalTrayAttacks(pendingAttacks),
+    [pendingAttacks]
+  );
+  const currentTurnPendingAttack = currentTurnTokenId
+    ? getPendingAttackForAttacker(combatState, currentTurnTokenId)
+    : null;
   const pendingOpportunityAttacks = combatState.pendingOpportunityAttacks;
   const opportunityAttacksPending = hasPendingOpportunityAttacks(combatState);
   const remainingMovementFeet = getRemainingMovementFeet(
@@ -610,7 +717,8 @@ export function CombatBoard({
   const dashPreviewFeet = getDashPreviewRemainingFeet(
     currentSpeedFt,
     movementUsedFeet,
-    dashUsed
+    dashUsed,
+    actionUsed
   );
 
   const currentTurnOptionGroups = useMemo(() => {
@@ -733,15 +841,26 @@ export function CombatBoard({
   ]);
 
   const opportunityAttackOptions = useMemo(() => {
-    if (!userOaAttackerToken?.characterId) return [];
-    const character = charactersById[userOaAttackerToken.characterId];
-    if (!character) return [];
-    return getOpportunityAttackOptionsForCharacter(
+    if (!userOaAttackerToken) return [];
+    const character = userOaAttackerToken.characterId
+      ? charactersById[userOaAttackerToken.characterId] ?? null
+      : null;
+    const enemyData = userOaAttackerToken.enemySlug
+      ? enemiesBySlug[userOaAttackerToken.enemySlug]?.data ?? null
+      : null;
+    return getOpportunityAttackOptionsForToken(userOaAttackerToken, {
       character,
+      enemyData,
       catalogItems,
-      classCatalog
-    );
-  }, [catalogItems, charactersById, classCatalog, userOaAttackerToken]);
+      classCatalog,
+    });
+  }, [
+    catalogItems,
+    charactersById,
+    classCatalog,
+    enemiesBySlug,
+    userOaAttackerToken,
+  ]);
 
   const provokingTokenLabel = useMemo(() => {
     const provokingId = pendingOpportunityAttacks?.provokingTokenId;
@@ -761,19 +880,21 @@ export function CombatBoard({
     };
   }, [combatState.tokens, pendingOpportunityAttacks]);
 
+  const userOaPendingAttack = userOaAttackerToken
+    ? getPendingAttackForAttacker(combatState, userOaAttackerToken.id)
+    : null;
   const userOaPendingOptionId =
-    pendingAttack?.isOpportunityAttack &&
-    pendingAttack.attackerTokenId === userOaAttackerToken?.id
-      ? pendingAttack.optionId
-      : null;
+    userOaPendingAttack?.isOpportunityAttack ? userOaPendingAttack.optionId : null;
 
-  const playerHasPendingAction =
-    pendingAttack != null &&
-    pendingAttack.attackerTokenId === currentTurnTokenId &&
-    !pendingAttack.isOpportunityAttack &&
-    !isDm;
-  const pendingOptionId = playerHasPendingAction ? pendingAttack.optionId : null;
+  const turnTokenHasPendingAction =
+    currentTurnPendingAttack != null &&
+    !currentTurnPendingAttack.isOpportunityAttack;
+  const playerHasPendingAction = turnTokenHasPendingAction && !isDm;
+  const pendingOptionId = turnTokenHasPendingAction
+    ? currentTurnPendingAttack.optionId
+    : null;
 
+  const turnEndBlockedByPendingAttacks = !canAdvanceTurnWithPendingAttacks(combatState);
   const enemyTurnBlockedByOpportunityAttacks =
     opportunityAttacksPending &&
     currentTurnToken != null &&
@@ -806,7 +927,7 @@ export function CombatBoard({
 
   async function handleSelectCombatOption(option: CombatOption) {
     if (!isImplementedCombatOption(option)) return;
-    if (attackTargeting || movementMode || playerHasPendingAction) return;
+    if (attackTargeting || movementMode || turnTokenHasPendingAction) return;
 
     if (isHelpActionOption(option)) {
       if (!currentTurnToken) return;
@@ -846,8 +967,11 @@ export function CombatBoard({
     if (isAttackTargetingOption(option) && userControlsTurn && currentTurnToken) {
       const attack = optionToAttack(option);
       if (!attack) return;
-      if (pendingAttack) {
-        window.alert("An attack is already being resolved.");
+      if (
+        currentTurnToken &&
+        hasPendingAttackForAttacker(combatState, currentTurnToken.id)
+      ) {
+        window.alert("You already have an action pending.");
         return;
       }
       setMovementMode(false);
@@ -860,7 +984,7 @@ export function CombatBoard({
   const mapSelectionActive = Boolean(attackTargeting || movementMode);
   const selectedActionOptionId =
     pendingOptionId ?? attackTargeting?.option.id ?? null;
-  const turnActionsLocked = mapSelectionActive || playerHasPendingAction;
+  const turnActionsLocked = mapSelectionActive || turnTokenHasPendingAction;
 
   const targetingHighlights = useMemo(() => {
     if (!attackTargeting || !currentTurnToken) return null;
@@ -889,7 +1013,10 @@ export function CombatBoard({
         ? charactersById[hoveredTargetToken.characterId]
         : null;
       if (!character) return null;
-      return `HP ${character.data.combat.currentHp}/${character.data.combat.maxHp} · AC ${character.data.combat.ac}`;
+      const currentHp =
+        hoveredTargetToken.currentHp ?? character.data.combat.currentHp;
+      const maxHp = hoveredTargetToken.maxHp ?? character.data.combat.maxHp;
+      return `HP ${currentHp}/${maxHp} · AC ${character.data.combat.ac}`;
     }
 
     const enemy = hoveredTargetToken.enemySlug
@@ -984,6 +1111,28 @@ export function CombatBoard({
     handleTargetingAtCellRef.current(cell);
   }
 
+  function applyCharacterHpUpdates(next: CombatState, updates?: CharacterHpUpdate[]) {
+    if (!updates?.length) return;
+    setLocalCharacters((current) =>
+      current.map((character) => {
+        const update = updates.find((entry) => entry.characterId === character.id);
+        if (!update) return character;
+        const token = next.tokens.find((entry) => entry.characterId === character.id);
+        return {
+          ...character,
+          data: {
+            ...character.data,
+            combat: {
+              ...character.data.combat,
+              currentHp: token?.currentHp ?? update.currentHp,
+              tempHp: update.tempHp,
+            },
+          },
+        };
+      })
+    );
+  }
+
   async function handleSubmitAttack(values: AttackSubmitValues) {
     if (!attackSubmitDraft) return;
     setSubmittingAttack(true);
@@ -1000,7 +1149,8 @@ export function CombatBoard({
       ? submitCombatOpportunityAttack
       : submitCombatAttack;
 
-    const { next, error } = await submitFn(campaignId, combatState, {
+    const { next, error, characterUpdates } = await submitFn(campaignId, combatState, {
+      userId,
       isDm,
       attacker,
       combatOption: attackSubmitDraft.option,
@@ -1020,10 +1170,11 @@ export function CombatBoard({
       return;
     }
     if (attackSubmitDraft.isOpportunityAttack) {
-      setUserOaLocked(true);
+      setUserOaLocked(hasPendingAttackForAttacker(next, attacker.id));
     }
     if (isDm) {
       setDraft(next);
+      applyCharacterHpUpdates(next, characterUpdates);
     }
     setAttackSubmitDraft(null);
   }
@@ -1068,82 +1219,78 @@ export function CombatBoard({
   }
 
   async function handleSubmitPlayerSave(saveRoll: number, saveTotal: number) {
-    if (!pendingAttack || !playerSaveTarget) return;
-    setSubmittingSave(true);
-    const { next, error } = await submitCombatSaveRoll(campaignId, combatState, {
+    if (!playerSaveContext) return;
+    setSubmittingSaveId(playerSaveContext.pending.id);
+    const { next, error, characterUpdates } = await submitCombatSaveRoll(campaignId, combatState, {
       isDm,
-      tokenId: playerSaveTarget.tokenId,
+      pendingAttackId: playerSaveContext.pending.id,
+      tokenId: playerSaveContext.target.tokenId,
       saveRoll,
       saveTotal,
+      charactersById,
     });
-    setSubmittingSave(false);
+    setSubmittingSaveId(null);
     if (error) {
       window.alert(error);
       return;
     }
     if (isDm) {
       setDraft(next);
+      applyCharacterHpUpdates(next, characterUpdates);
     }
   }
 
   async function handleSubmitDmSaves(
+    pendingAttackId: string,
     saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number }>
   ) {
-    if (!pendingAttack) return;
-    setSubmittingSave(true);
-    const { next, error } = await submitCombatDmSaveRolls(
+    setSubmittingSaveId(pendingAttackId);
+    const { next, error, characterUpdates } = await submitCombatDmSaveRolls(
       campaignId,
       combatState,
+      pendingAttackId,
       saves,
+      charactersById,
       isDm
     );
-    setSubmittingSave(false);
+    setSubmittingSaveId(null);
     if (error) {
       window.alert(error);
       return;
     }
     if (isDm) {
       setDraft(next);
+      applyCharacterHpUpdates(next, characterUpdates);
     }
   }
 
-  async function handleResolveAttack(reviewed: NonNullable<typeof pendingAttack>) {
-    setResolvingAttack(true);
-    const { next, error } = await resolveCombatAttack(
+  async function handleResolveAttack(reviewed: (typeof pendingAttacks)[number]) {
+    setResolvingAttackId(reviewed.id);
+    const { next, error, characterUpdates } = await resolveCombatAttack(
       campaignId,
       combatState,
       reviewed,
       charactersById,
       isDm
     );
-    setResolvingAttack(false);
+    setResolvingAttackId(null);
     if (error) {
       window.alert(error);
       return;
     }
     if (isDm) {
       setDraft(next);
-      setLocalCharacters((current) =>
-        current.map((character) => {
-          const token = next.tokens.find((t) => t.characterId === character.id);
-          if (token?.currentHp == null) return character;
-          return {
-            ...character,
-            data: {
-              ...character.data,
-              combat: {
-                ...character.data.combat,
-                currentHp: token.currentHp,
-              },
-            },
-          };
-        })
-      );
+      applyCharacterHpUpdates(next, characterUpdates);
     }
   }
 
-  async function handleRejectAttack() {
-    const { next, error } = await cancelCombatAttack(campaignId, combatState, isDm);
+  async function handleRejectAttack(pendingAttackId: string) {
+    const { next, error } = await cancelCombatAttack(
+      campaignId,
+      combatState,
+      pendingAttackId,
+      isDm
+    );
     if (error) {
       window.alert(error);
       return;
@@ -1153,27 +1300,50 @@ export function CombatBoard({
     }
   }
 
-  const playerSaveTarget = useMemo(() => {
-    if (!pendingAttack || pendingAttack.status !== "awaiting-saves" || !userId) {
-      return null;
-    }
-    return findPlayerSaveTarget(
-      pendingAttack,
+  const playerSaveContext = useMemo(() => {
+    if (!userId) return null;
+    return findPlayerSaveContext(
+      pendingAttacks,
       combatState.tokens,
       charactersById,
       userId
     );
-  }, [pendingAttack, combatState.tokens, charactersById, userId]);
+  }, [pendingAttacks, combatState.tokens, charactersById, userId]);
 
-  const dmSaveTargets = useMemo(() => {
-    if (!pendingAttack || !isDm) return [];
-    return getDmSaveTargets(pendingAttack);
-  }, [pendingAttack, isDm]);
+  useEffect(() => {
+    if (!isDm) return;
+
+    for (const pending of combatState.pendingAttacks) {
+      if (!pending.skipDmReview || pending.status !== "awaiting-dm-review") continue;
+      if (autoResolvingAttackIdsRef.current.has(pending.id)) continue;
+      if (resolvingAttackId === pending.id) continue;
+
+      autoResolvingAttackIdsRef.current.add(pending.id);
+      void resolveCombatAttack(campaignId, combatState, pending, charactersById, isDm)
+        .then(({ next, error, characterUpdates }) => {
+          if (error) {
+            window.alert(error);
+            return;
+          }
+          setDraft(next);
+          applyCharacterHpUpdates(next, characterUpdates);
+        })
+        .finally(() => {
+          autoResolvingAttackIdsRef.current.delete(pending.id);
+        });
+    }
+  }, [
+    campaignId,
+    charactersById,
+    combatState,
+    isDm,
+    resolvingAttackId,
+  ]);
 
   function handleToggleMovementMode() {
     if (
       attackTargeting ||
-      playerHasPendingAction ||
+      turnTokenHasPendingAction ||
       provokingMovePending ||
       pendingOpportunityAttackMove
     ) {
@@ -1189,12 +1359,14 @@ export function CombatBoard({
       speedFt: currentSpeedFt,
       usedFeet: movementUsedFeet,
       dashUsed,
+      actionUsed,
     });
   }, [
     combatState,
     currentSpeedFt,
     currentTurnToken,
     dashUsed,
+    actionUsed,
     movementMode,
     movementUsedFeet,
     userControlsTurn,
@@ -1207,10 +1379,10 @@ export function CombatBoard({
   }, [showMovePanel]);
 
   useEffect(() => {
-    if (!playerHasPendingAction) return;
+    if (!turnTokenHasPendingAction) return;
     setMovementMode(false);
     clearAttackFlow();
-  }, [playerHasPendingAction]);
+  }, [turnTokenHasPendingAction]);
 
   useEffect(() => {
     if (!provokingMovePending && !pendingOpportunityAttackMove) return;
@@ -1234,6 +1406,7 @@ export function CombatBoard({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         clearAttackFlow();
+        setHpAdjustTokenId(null);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -1245,6 +1418,7 @@ export function CombatBoard({
     dashConsumed: boolean
   ) {
     if (!currentTurnToken || !userControlsTurn || provokingMovePending) return;
+    if (dashConsumed && (dashUsed || actionUsed)) return;
 
     const opportunityAttackReactors = getOpportunityAttackReactors(
       currentTurnToken,
@@ -1254,19 +1428,21 @@ export function CombatBoard({
     );
 
     if (opportunityAttackReactors.length > 0) {
-      const isNpcTurn =
-        currentTurnToken.kind === "enemy" || currentTurnToken.kind === "ally";
+      const opportunityAttackerTokenIds = getOpportunityAttackAttackerIds(
+        currentTurnToken,
+        opportunityAttackReactors
+      );
+      if (opportunityAttackerTokenIds.length === 0) {
+        await commitMovementToDestination(destination, dashConsumed);
+        return;
+      }
       setMovementMode(false);
       setHoveredMovementCell(null);
       setPendingOpportunityAttackMove({
         destination,
         dashConsumed,
         reactorLabels: opportunityAttackReactors.map((reactor) => reactor.label),
-        opportunityAttackerTokenIds: isNpcTurn
-          ? getPartyOpportunityAttackReactors(opportunityAttackReactors).map(
-              (reactor) => reactor.id
-            )
-          : undefined,
+        opportunityAttackerTokenIds,
       });
       return;
     }
@@ -1312,7 +1488,7 @@ export function CombatBoard({
     );
     if (!destination) return;
 
-    if (destination.zone === "dash" && !dashUsed) {
+    if (destination.zone === "dash" && !dashUsed && !actionUsed) {
       setPendingDashDestination(destination);
       return;
     }
@@ -1321,7 +1497,7 @@ export function CombatBoard({
   }
 
   async function handleConfirmDashMove() {
-    if (!pendingDashDestination) return;
+    if (!pendingDashDestination || dashUsed || actionUsed) return;
     const destination = pendingDashDestination;
     setPendingDashDestination(null);
     await tryCommitMovement(destination, true);
@@ -1366,6 +1542,124 @@ export function CombatBoard({
       dashConsumed,
       opportunityAttackerTokenIds
     );
+  }
+
+  async function handleApplyHpAdjust(delta: number) {
+    if (!hpAdjustTokenId || delta === 0) return;
+
+    const previousState = combatStateRef.current;
+    const token = previousState.tokens.find((entry) => entry.id === hpAdjustTokenId);
+    if (!token) return;
+
+    const character = token.characterId ? charactersById[token.characterId] ?? null : null;
+    const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
+    const { currentHp, maxHp } = getTokenHpDisplay(token, character, enemyData);
+    const nextHp = applyHpDelta(currentHp, maxHp, delta);
+    const damageDelta = delta < 0 ? -delta : 0;
+    const previousLocalCharacters =
+      token.kind === "party" && character ? localCharacters : null;
+
+    const adjustingToken = token;
+
+    const next = updateTokenInState(previousState, adjustingToken.id, {
+      currentHp: nextHp,
+      maxHp,
+      damageTaken: (adjustingToken.damageTaken ?? 0) + damageDelta,
+    });
+
+    function rollback() {
+      awaitingPersistFingerprintRef.current = null;
+      tokenHpOverlaysRef.current.delete(adjustingToken.id);
+      bumpHpOverlay();
+      setDraft(previousState);
+      combatStateRef.current = previousState;
+      if (previousLocalCharacters) {
+        setLocalCharacters(previousLocalCharacters);
+      }
+      const rollbackCharacter = adjustingToken.characterId
+        ? previousLocalCharacters?.find((entry) => entry.id === adjustingToken.characterId) ??
+          charactersById[adjustingToken.characterId] ??
+          null
+        : null;
+      setHpAdjustLiveHp(
+        getTokenHpDisplay(adjustingToken, rollbackCharacter, enemyData)
+      );
+    }
+
+    const nextDamageTaken = (adjustingToken.damageTaken ?? 0) + damageDelta;
+
+    // Optimistic UI — update board + modal immediately, persist in background.
+    lastLocalCombatWriteAtRef.current = Date.now();
+    awaitingPersistFingerprintRef.current = combatTokenHpFingerprint(next);
+    tokenHpOverlaysRef.current.set(adjustingToken.id, {
+      currentHp: nextHp,
+      maxHp,
+      damageTaken: nextDamageTaken,
+    });
+    bumpHpOverlay();
+    setHpAdjustLiveHp({ currentHp: nextHp, maxHp });
+    setDraft(next);
+    combatStateRef.current = next;
+
+    if (token.kind === "party" && character) {
+      const nextCombat = {
+        ...character.data.combat,
+        currentHp: nextHp,
+      };
+      setLocalCharacters((current) =>
+        current.map((entry) =>
+          entry.id === character.id
+            ? {
+                ...entry,
+                data: {
+                  ...entry.data,
+                  combat: nextCombat,
+                },
+              }
+            : entry
+        )
+      );
+    }
+
+    setSubmittingHpAdjust(true);
+
+    if (token.kind === "party" && character) {
+      const nextCombat = {
+        ...character.data.combat,
+        currentHp: nextHp,
+      };
+      const error = await saveCharacterData(
+        character.id,
+        { ...character.data, combat: nextCombat },
+        undefined,
+        { isDm: true, originalData: character.data }
+      );
+      if (error) {
+        setSubmittingHpAdjust(false);
+        rollback();
+        window.alert(error);
+        return;
+      }
+    }
+
+    const persistError = await persistCombatState(campaignId, next);
+    setSubmittingHpAdjust(false);
+
+    if (persistError) {
+      rollback();
+      window.alert(persistError);
+    }
+  }
+
+  function handleTokenClick(tokenId: string, event: React.MouseEvent) {
+    if (!isDm || !battleActive || attackTargeting || movementMode || draggingTokenId) return;
+    event.stopPropagation();
+    openHpAdjustForToken(tokenId);
+  }
+
+  function handleCloseHpAdjust() {
+    setHpAdjustTokenId(null);
+    setHpAdjustLiveHp(null);
   }
 
   async function handleAddEnemy(enemy: EnemyRecord) {
@@ -1543,9 +1837,10 @@ export function CombatBoard({
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isDm && battleActive && !attackTargeting && !movementMode ? " combat-token-hp-clickable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
+        onClick={(event) => handleTokenClick(token.id, event)}
       >
         <div
           className={`combat-token-badge${isExpanded ? " combat-token-badge-expanded" : ""}`}
@@ -1586,7 +1881,8 @@ export function CombatBoard({
                   AC {character.data.combat.ac}
                 </span>
                 <span className="combat-token-label-detail">
-                  HP {character.data.combat.currentHp}/{character.data.combat.maxHp}
+                  HP {token.currentHp ?? character.data.combat.currentHp}/
+                  {token.maxHp ?? character.data.combat.maxHp}
                 </span>
                 <span className="combat-token-label-detail">
                   Speed {character.data.combat.speed} ft
@@ -1783,8 +2079,20 @@ export function CombatBoard({
                       selectionLocked={userOaBusy}
                       skipping={skippingOpportunityAttack}
                     />
+                  ) : userControlsTurn && provokingMovePending ? (
+                    <div className="combat-turn-waiting combat-attack-waiting">
+                      <p className="combat-turn-waiting-text combat-attack-waiting-text">
+                        Waiting for opportunity attacks…
+                      </p>
+                    </div>
                   ) : userControlsTurn ? (
-                    enemyTurnBlockedByOpportunityAttacks ? (
+                    playerHasPendingAction ? (
+                      <div className="combat-turn-waiting combat-attack-waiting">
+                        <p className="combat-turn-waiting-text combat-attack-waiting-text">
+                          Action pending DM review…
+                        </p>
+                      </div>
+                    ) : enemyTurnBlockedByOpportunityAttacks ? (
                       <div className="combat-turn-waiting combat-attack-waiting">
                         <p className="combat-turn-waiting-text combat-attack-waiting-text">
                           Waiting for opportunity attacks…
@@ -1801,7 +2109,7 @@ export function CombatBoard({
                             movementMode={movementMode}
                             disabled={
                               !!attackTargeting ||
-                              playerHasPendingAction ||
+                              turnTokenHasPendingAction ||
                               enemyTurnBlockedByOpportunityAttacks ||
                               provokingMovePending ||
                               !!pendingOpportunityAttackMove
@@ -1833,7 +2141,11 @@ export function CombatBoard({
                             nextTurnLabel={nextTurnLabel}
                             onSelectEndTurn={() => setEndTurnConfirmOpen(true)}
                             endingTurn={endingTurn}
-                            disabled={turnActionsLocked || opportunityAttacksPending}
+                            disabled={
+                              turnActionsLocked ||
+                              opportunityAttacksPending ||
+                              turnEndBlockedByPendingAttacks
+                            }
                           />
                         ) : null}
                       </>
@@ -1993,12 +2305,26 @@ export function CombatBoard({
                     speedFeet={currentSpeedFt}
                     usedFeet={movementUsedFeet}
                     dashUsed={dashUsed}
+                    actionUsed={actionUsed}
                     onCellClick={(cellX, cellY) => void handleMovementCellClick(cellX, cellY)}
                     onCellHover={setHoveredMovementCell}
                   />
                 ) : null}
               </div>
             </div>
+            {isDm && battleActive && dmApprovalTrayAttacks.length > 0 ? (
+              <CombatDmApprovalTray
+                pendingAttacks={dmApprovalTrayAttacks}
+                tokens={combatState.tokens}
+                resolvingAttackId={resolvingAttackId}
+                submittingSaveId={submittingSaveId}
+                onReject={(pendingAttackId) => void handleRejectAttack(pendingAttackId)}
+                onConfirm={(reviewed) => void handleResolveAttack(reviewed)}
+                onSubmitDmSaves={(pendingAttackId, saves) =>
+                  void handleSubmitDmSaves(pendingAttackId, saves)
+                }
+              />
+            ) : null}
           </div>
         </div>
       </div>
@@ -2016,6 +2342,16 @@ export function CombatBoard({
         presentCharacterIds={presentCharacterIds}
         onConfirm={handleAddPartyMembers}
       />
+      {hpAdjustToken && hpAdjustLiveHp ? (
+        <CombatHpAdjustModal
+          tokenLabel={hpAdjustToken.label}
+          currentHp={hpAdjustLiveHp.currentHp}
+          maxHp={hpAdjustLiveHp.maxHp}
+          submitting={submittingHpAdjust}
+          onCancel={handleCloseHpAdjust}
+          onApply={(delta) => void handleApplyHpAdjust(delta)}
+        />
+      ) : null}
       {attackSubmitDraft ? (
         <CombatAttackSubmitModal
           attack={attackSubmitDraft.attack}
@@ -2027,32 +2363,14 @@ export function CombatBoard({
           onSubmit={(values) => void handleSubmitAttack(values)}
         />
       ) : null}
-      {playerSaveTarget && pendingAttack ? (
+      {playerSaveContext ? (
         <CombatSaveRollModal
-          target={playerSaveTarget}
-          saveAbility={pendingAttack.saveAbility}
-          saveDc={pendingAttack.saveDc}
-          submitting={submittingSave}
+          target={playerSaveContext.target}
+          saveAbility={playerSaveContext.pending.saveAbility}
+          saveDc={playerSaveContext.pending.saveDc}
+          submitting={submittingSaveId === playerSaveContext.pending.id}
           onCancel={() => {}}
           onSubmit={(saveRoll, saveTotal) => void handleSubmitPlayerSave(saveRoll, saveTotal)}
-        />
-      ) : null}
-      {isDm && dmSaveTargets.length > 0 && pendingAttack ? (
-        <CombatDmSaveRollModal
-          targets={dmSaveTargets}
-          saveAbility={pendingAttack.saveAbility}
-          saveDc={pendingAttack.saveDc}
-          submitting={submittingSave}
-          onCancel={() => {}}
-          onSubmit={(saves) => void handleSubmitDmSaves(saves)}
-        />
-      ) : null}
-      {isDm && pendingAttack?.status === "awaiting-dm-review" ? (
-        <CombatAttackReviewModal
-          pending={pendingAttack}
-          submitting={resolvingAttack}
-          onCancel={() => void handleRejectAttack()}
-          onConfirm={(reviewed) => void handleResolveAttack(reviewed)}
         />
       ) : null}
       {endTurnConfirmOpen ? (

@@ -70,6 +70,7 @@ export const pendingAttackSchema = z.object({
   optionName: z.string(),
   actionCost: z.enum(["action", "bonus-action", "reaction"]),
   isOpportunityAttack: z.boolean().default(false),
+  skipDmReview: z.boolean().default(false),
   rollType: z.enum(["attack", "save", "auto"]),
   attackBonus: z.number().int().optional(),
   saveDc: z.number().int().optional(),
@@ -136,7 +137,7 @@ export const combatStateSchema = z.object({
     bonusActionUsed: false,
     disengageUsed: false,
   }),
-  pendingAttack: pendingAttackSchema.nullable().default(null),
+  pendingAttacks: z.array(pendingAttackSchema).default([]),
   pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
 });
 
@@ -198,13 +199,25 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
       bonusActionUsed: state.turn.bonusActionUsed ?? false,
       disengageUsed: state.turn.disengageUsed ?? false,
     },
-    pendingAttack: state.pendingAttack ?? null,
+    pendingAttacks: state.pendingAttacks ?? [],
     pendingOpportunityAttacks: state.pendingOpportunityAttacks ?? null,
   };
 }
 
+function migrateCombatStateInput(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  const raw = { ...(input as Record<string, unknown>) };
+  if (!Array.isArray(raw.pendingAttacks)) {
+    const legacy = raw.pendingAttack;
+    raw.pendingAttacks =
+      legacy != null && typeof legacy === "object" ? [legacy] : [];
+  }
+  delete raw.pendingAttack;
+  return raw;
+}
+
 export function parseCombatState(input: unknown): CombatState {
-  const parsed = combatStateSchema.parse(input ?? {});
+  const parsed = combatStateSchema.parse(migrateCombatStateInput(input ?? {}));
 
   return normalizeCombatTurn({
     ...parsed,

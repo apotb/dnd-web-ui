@@ -27,11 +27,17 @@ export function areTokensEngaged(a: CombatToken, b: CombatToken): boolean {
   return areTokensWithinMeleeRange(a, b);
 }
 
+function getTokenFaction(token: CombatToken): "party" | "enemy" | null {
+  if (token.kind === "party" || token.kind === "ally") return "party";
+  if (token.kind === "enemy") return "enemy";
+  return null;
+}
+
 export function isAllyToken(a: CombatToken, b: CombatToken): boolean {
   if (a.id === b.id) return false;
-  const aFriendly = a.kind === "party" || a.kind === "ally";
-  const bFriendly = b.kind === "party" || b.kind === "ally";
-  return aFriendly && bFriendly;
+  const factionA = getTokenFaction(a);
+  const factionB = getTokenFaction(b);
+  return factionA != null && factionA === factionB;
 }
 
 export function getAdjacentAllyTokens(
@@ -55,11 +61,9 @@ export function canUseHelpAction(token: CombatToken, state: CombatState): boolea
 
 export function isHostileToken(a: CombatToken, b: CombatToken): boolean {
   if (a.id === b.id) return false;
-  const aFriendly = a.kind === "party" || a.kind === "ally";
-  const bFriendly = b.kind === "party" || b.kind === "ally";
-  const aEnemy = a.kind === "enemy";
-  const bEnemy = b.kind === "enemy";
-  return (aFriendly && bEnemy) || (aEnemy && bFriendly);
+  const factionA = getTokenFaction(a);
+  const factionB = getTokenFaction(b);
+  return factionA != null && factionB != null && factionA !== factionB;
 }
 
 export function tokenAtPosition(
@@ -113,4 +117,19 @@ export const getOpportunityAttackEnemies = getOpportunityAttackReactors;
 
 export function getPartyOpportunityAttackReactors(reactors: CombatToken[]): CombatToken[] {
   return reactors.filter((token) => token.kind === "party");
+}
+
+export function getEnemyOpportunityAttackReactors(reactors: CombatToken[]): CombatToken[] {
+  return reactors.filter((token) => token.kind === "enemy");
+}
+
+export function getOpportunityAttackAttackerIds(
+  provokingToken: CombatToken,
+  reactors: CombatToken[]
+): string[] {
+  const isNpcProvoking = provokingToken.kind === "enemy" || provokingToken.kind === "ally";
+  const attackers = isNpcProvoking
+    ? getPartyOpportunityAttackReactors(reactors)
+    : getEnemyOpportunityAttackReactors(reactors);
+  return attackers.map((reactor) => reactor.id);
 }

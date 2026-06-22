@@ -2,7 +2,10 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { advanceTurn } from "@/lib/combat/turn";
-import { canAdvanceTurnWithOpportunityAttacks } from "@/lib/combat/opportunity-attacks";
+import {
+  canAdvanceTurnWithOpportunityAttacks,
+} from "@/lib/combat/opportunity-attacks";
+import { canAdvanceTurnWithPendingAttacks } from "@/lib/combat/pending-attacks";
 import { persistCombatState } from "@/lib/hooks/use-realtime-combat-state";
 import type { CombatState } from "@/lib/schemas/combat-state";
 
@@ -15,6 +18,13 @@ export async function endCombatTurn(
     return {
       next: state,
       error: "Opportunity attacks must be resolved before ending this turn.",
+    };
+  }
+
+  if (!canAdvanceTurnWithPendingAttacks(state)) {
+    return {
+      next: state,
+      error: "Resolve pending actions before ending this turn.",
     };
   }
 

@@ -203,6 +203,7 @@ interface DamageAppliedFieldProps {
   computedDamage: number;
   overrideValue: string;
   onOverrideChange: (value: string) => void;
+  breakdown?: string | null;
   disabled?: boolean;
 }
 
@@ -210,6 +211,7 @@ export function DamageAppliedField({
   computedDamage,
   overrideValue,
   onOverrideChange,
+  breakdown = null,
   disabled = false,
 }: DamageAppliedFieldProps) {
   const hasOverride = overrideValue.trim().length > 0;
@@ -237,6 +239,9 @@ export function DamageAppliedField({
           aria-label="Override damage applied"
         />
       </div>
+      {breakdown && !hasOverride ? (
+        <span className="retro-muted combat-damage-applied-breakdown">{breakdown}</span>
+      ) : null}
     </div>
   );
 }

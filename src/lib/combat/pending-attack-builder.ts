@@ -1,6 +1,7 @@
 import {
   allSavesSubmitted,
   buildPendingTargetFromToken,
+  computeDamageApplied,
   computeHitFromRoll,
   transitionToDmReview,
 } from "@/lib/combat/attack-resolution";
@@ -118,7 +119,7 @@ export function createPendingAttack(
   submission: AttackSubmissionInput,
   charactersById: Record<string, ParsedCharacter>,
   enemiesBySlug: Record<string, { data: EnemyData }>,
-  options?: { isOpportunityAttack?: boolean }
+  options?: { isOpportunityAttack?: boolean; skipDmReview?: boolean }
 ): PendingAttack {
   const spec = parseAttackRangeSpec(attack);
   const requiresSave = attack.rollType === "save";
@@ -140,7 +141,7 @@ export function createPendingAttack(
 
     if (rollType === "attack" && attackRoll != null && base.ac != null) {
       const hitResult = computeHitFromRoll(attackRoll, attack.attackBonus, base.ac);
-      return {
+      const resolvedTarget: PendingAttackTarget = {
         ...base,
         attackRoll,
         attackTotal: hitResult.total,
@@ -149,7 +150,12 @@ export function createPendingAttack(
         damageText,
         damageRolls,
         damageAmount,
-        finalDamage: hitResult.hit ? (damageAmount ?? 0) : 0,
+      };
+      return {
+        ...resolvedTarget,
+        finalDamage: hitResult.hit
+          ? computeDamageApplied(resolvedTarget, "attack", { damageDice: attack.damageDice })
+          : 0,
       };
     }
 
@@ -185,6 +191,7 @@ export function createPendingAttack(
     optionName: option.name,
     actionCost: getOptionActionCost(option, options),
     isOpportunityAttack: options?.isOpportunityAttack ?? false,
+    skipDmReview: options?.skipDmReview ?? false,
     rollType,
     attackBonus: attack.attackBonus,
     saveDc: attack.saveDc,
@@ -263,6 +270,22 @@ export function findPlayerSaveTarget(
     const character = charactersById[token.characterId];
     if (character?.owner_user_id === userId) {
       return target;
+    }
+  }
+  return null;
+}
+
+export function findPlayerSaveContext(
+  pendingAttacks: PendingAttack[],
+  tokens: CombatToken[],
+  charactersById: Record<string, ParsedCharacter>,
+  userId: string
+): { pending: PendingAttack; target: PendingAttackTarget } | null {
+  for (const pending of pendingAttacks) {
+    if (pending.status !== "awaiting-saves") continue;
+    const target = findPlayerSaveTarget(pending, tokens, charactersById, userId);
+    if (target) {
+      return { pending, target };
     }
   }
   return null;

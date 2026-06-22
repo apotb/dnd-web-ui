@@ -18,6 +18,7 @@ interface CombatMovementOverlayProps {
   speedFeet: number;
   usedFeet: number;
   dashUsed: boolean;
+  actionUsed: boolean;
   onCellClick: (cellX: number, cellY: number) => void;
   onCellHover: (cell: { x: number; y: number } | null) => void;
 }
@@ -32,6 +33,7 @@ export function CombatMovementOverlay({
   speedFeet,
   usedFeet,
   dashUsed,
+  actionUsed,
   onCellClick,
   onCellHover,
 }: CombatMovementOverlayProps) {
@@ -88,12 +90,12 @@ export function CombatMovementOverlay({
           {hoverDestination.costFeet} ft ·{" "}
           {Math.max(
             0,
-            (hoverDestination.zone === "dash" && !dashUsed
+            (hoverDestination.zone === "dash" && !dashUsed && !actionUsed
               ? speedFeet * 2 - usedFeet
               : remainingFeet) - hoverDestination.costFeet
           )}{" "}
           ft left
-          {hoverDestination.zone === "dash" && !dashUsed ? " · Dash required" : ""}
+          {hoverDestination.zone === "dash" && !dashUsed && !actionUsed ? " · Dash required" : ""}
         </div>
       ) : null}
     </div>

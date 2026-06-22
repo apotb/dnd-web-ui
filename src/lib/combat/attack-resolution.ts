@@ -1,6 +1,11 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyHpDamage } from "@/lib/character/combat-derivation";
+import { parseDamageNotation } from "@/lib/dnd/dice";
 import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
+import {
+  hasPendingAttackForAttacker,
+  removePendingAttack,
+} from "@/lib/combat/pending-attacks";
 import { isBattleActive, isDmControlledToken } from "@/lib/combat/turn";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type {
@@ -138,12 +143,14 @@ export function applyResolvedAttack(
     }
   }
 
-  let nextState: CombatState = {
-    ...state,
-    tokens,
-    turn,
-    pendingAttack: null,
-  };
+  let nextState: CombatState = removePendingAttack(
+    {
+      ...state,
+      tokens,
+      turn,
+    },
+    pending.id
+  );
 
   if (pending.isOpportunityAttack) {
     nextState = completeOpportunityAttackForAttacker(nextState, pending.attackerTokenId);
@@ -186,9 +193,57 @@ export function buildPendingTargetFromToken(
   };
 }
 
+export interface ComputeDamageAppliedOptions {
+  damageDice?: string;
+}
+
+export interface DamageRollComponents {
+  diceSum: number;
+  modifier: number;
+}
+
+export function resolveDamageRollComponents(
+  target: PendingAttackTarget,
+  damageDice?: string
+): DamageRollComponents | null {
+  const notation = damageDice?.trim() || target.damageText?.trim() || "";
+  const parsed = notation ? parseDamageNotation(notation) : null;
+  const amount = target.damageAmount ?? 0;
+
+  if (target.damageRolls?.length) {
+    const diceSum = target.damageRolls.reduce((sum, roll) => sum + roll, 0);
+    return { diceSum, modifier: parsed?.modifier ?? 0 };
+  }
+
+  if (parsed) {
+    return { diceSum: amount - parsed.modifier, modifier: parsed.modifier };
+  }
+
+  return null;
+}
+
+/** Double total damage after flat modifiers: (dice + flat) × 2. */
+export function applyCriticalToDamage(baseDamage: number, critical: boolean): number {
+  if (!critical) return baseDamage;
+  return baseDamage * 2;
+}
+
+export function formatCriticalDamageBreakdown(
+  components: DamageRollComponents,
+  total: number
+): string {
+  const base = components.diceSum + components.modifier;
+  const inner =
+    components.modifier !== 0
+      ? `${components.diceSum}${components.modifier >= 0 ? " + " : " − "}${Math.abs(components.modifier)}`
+      : String(components.diceSum);
+  return `(${inner}) × 2 = ${total}`;
+}
+
 export function computeDamageApplied(
   target: PendingAttackTarget,
-  rollType: PendingAttack["rollType"]
+  rollType: PendingAttack["rollType"],
+  options?: ComputeDamageAppliedOptions
 ): number {
   const amount = target.damageAmount ?? 0;
 
@@ -197,28 +252,52 @@ export function computeDamageApplied(
     if (target.hit !== true) return 0;
   }
 
-  if (target.requiresSave && target.saveSucceeded === true) {
-    return Math.floor(amount / 2);
+  let damage = amount;
+
+  if (rollType === "attack" && target.critical) {
+    damage = applyCriticalToDamage(amount, true);
   }
 
-  return amount;
+  if (target.requiresSave && target.saveSucceeded === true) {
+    return Math.floor(damage / 2);
+  }
+
+  return damage;
+}
+
+export function formatDamageAppliedBreakdown(
+  target: PendingAttackTarget,
+  rollType: PendingAttack["rollType"],
+  damage: number,
+  options?: ComputeDamageAppliedOptions
+): string | null {
+  if (rollType !== "attack" || !target.critical || target.hit !== true) return null;
+
+  const components = resolveDamageRollComponents(target, options?.damageDice);
+  if (components) {
+    return formatCriticalDamageBreakdown(components, damage);
+  }
+
+  const base = target.damageAmount ?? 0;
+  return `(${base}) × 2 = ${damage}`;
 }
 
 export function resolveFinalDamageApplied(
   target: PendingAttackTarget,
   rollType: PendingAttack["rollType"],
   overrideText: string,
-  parseValue: (value: string) => number | null
+  parseValue: (value: string) => number | null,
+  options?: ComputeDamageAppliedOptions
 ): number {
   const trimmed = overrideText.trim();
   if (trimmed) {
     return parseValue(trimmed) ?? 0;
   }
-  return computeDamageApplied(target, rollType);
+  return computeDamageApplied(target, rollType, options);
 }
 
-export function canSubmitAttack(state: CombatState): boolean {
-  return isBattleActive(state) && !state.pendingAttack;
+export function canSubmitAttack(state: CombatState, attackerTokenId: string): boolean {
+  return isBattleActive(state) && !hasPendingAttackForAttacker(state, attackerTokenId);
 }
 
 export function canSubmitOpportunityAttack(
@@ -227,19 +306,15 @@ export function canSubmitOpportunityAttack(
 ): boolean {
   if (!isBattleActive(state)) return false;
   if (!canSkipOpportunityAttackAction(state, attackerTokenId)) return false;
-  if (state.pendingAttack != null) return false;
+  if (hasPendingAttackForAttacker(state, attackerTokenId)) return false;
   return true;
 }
 
 export function transitionToDmReview(pending: PendingAttack): PendingAttack {
   const targets = pending.targets.map((target) => {
-    let finalDamage = target.finalDamage ?? target.damageAmount ?? 0;
-    if (target.requiresSave && target.saveSucceeded === true) {
-      finalDamage = Math.floor(finalDamage / 2);
-    }
-    if (target.hit === false) {
-      finalDamage = 0;
-    }
+    const finalDamage = computeDamageApplied(target, pending.rollType, {
+      damageDice: pending.damageDice,
+    });
     return { ...target, finalDamage };
   });
 

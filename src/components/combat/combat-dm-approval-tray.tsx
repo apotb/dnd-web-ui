@@ -1,0 +1,59 @@
+"use client";
+
+import { CombatAttackReviewCard } from "@/components/combat/combat-attack-review-card";
+import type { CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
+
+interface CombatDmApprovalTrayProps {
+  pendingAttacks: PendingAttack[];
+  tokens: CombatToken[];
+  resolvingAttackId: string | null;
+  submittingSaveId: string | null;
+  onReject: (pendingAttackId: string) => void;
+  onConfirm: (pending: PendingAttack) => void;
+  onSubmitDmSaves: (
+    pendingAttackId: string,
+    saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number }>
+  ) => void;
+}
+
+function getAttackerLabel(pending: PendingAttack, tokens: CombatToken[]): string {
+  const token = tokens.find((entry) => entry.id === pending.attackerTokenId);
+  return token?.label ?? "Unknown attacker";
+}
+
+export function CombatDmApprovalTray({
+  pendingAttacks,
+  tokens,
+  resolvingAttackId,
+  submittingSaveId,
+  onReject,
+  onConfirm,
+  onSubmitDmSaves,
+}: CombatDmApprovalTrayProps) {
+  if (pendingAttacks.length === 0) return null;
+
+  return (
+    <section className="combat-dm-approval-tray" aria-label="Pending action approvals">
+      <div className="combat-dm-approval-tray-header">
+        <h3 className="combat-dm-approval-tray-title">
+          Pending actions
+          <span className="combat-dm-approval-tray-count">{pendingAttacks.length}</span>
+        </h3>
+      </div>
+      <div className="combat-dm-approval-tray-scroll">
+        {pendingAttacks.map((pending) => (
+          <CombatAttackReviewCard
+            key={`${pending.id}-${pending.status}`}
+            pending={pending}
+            attackerLabel={getAttackerLabel(pending, tokens)}
+            submitting={resolvingAttackId === pending.id}
+            submittingSaves={submittingSaveId === pending.id}
+            onReject={() => onReject(pending.id)}
+            onConfirm={onConfirm}
+            onSubmitDmSaves={(saves) => onSubmitDmSaves(pending.id, saves)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}

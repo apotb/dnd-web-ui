@@ -19,23 +19,23 @@ export async function commitCombatMove(
     opportunityAttackerTokenIds?: string[];
   }
 ): Promise<{ next: CombatState; error?: string }> {
-  const next =
-    options.opportunityAttackerTokenIds && options.opportunityAttackerTokenIds.length > 0
-      ? applyCombatMoveWithOpportunityAttacks(
-          state,
-          options.tokenId,
-          { x: options.x, y: options.y },
-          options.costFeet,
-          options.dashConsumed,
-          options.opportunityAttackerTokenIds
-        )
-      : applyCombatMove(
-          state,
-          options.tokenId,
-          { x: options.x, y: options.y },
-          options.costFeet,
-          options.dashConsumed
-        );
+  const hasOpportunityAttacks = (options.opportunityAttackerTokenIds?.length ?? 0) > 0;
+  const next = hasOpportunityAttacks
+    ? applyCombatMoveWithOpportunityAttacks(
+        state,
+        options.tokenId,
+        { x: options.x, y: options.y },
+        options.costFeet,
+        options.dashConsumed,
+        options.opportunityAttackerTokenIds!
+      )
+    : applyCombatMove(
+        state,
+        options.tokenId,
+        { x: options.x, y: options.y },
+        options.costFeet,
+        options.dashConsumed
+      );
 
   if (options.isDm) {
     const error = await persistCombatState(campaignId, next);
@@ -50,6 +50,9 @@ export async function commitCombatMove(
     p_y: options.y,
     p_cost_feet: options.costFeet,
     p_dash_consumed: options.dashConsumed,
+    p_opportunity_attacker_token_ids: hasOpportunityAttacks
+      ? options.opportunityAttackerTokenIds
+      : null,
   });
 
   return { next, error: error?.message };

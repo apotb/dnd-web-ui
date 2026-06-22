@@ -50,6 +50,19 @@ export function isDmControlledToken(
   return true;
 }
 
+export function canUserActForToken(
+  userId: string | null,
+  isDm: boolean,
+  token: CombatToken,
+  character: ParsedCharacter | null
+): boolean {
+  if (isDmControlledToken(token, character)) {
+    return isDm;
+  }
+
+  return !!userId && character?.owner_user_id === userId;
+}
+
 export function canUserControlTurn(
   userId: string | null,
   isDm: boolean,
@@ -107,7 +120,6 @@ export function advanceTurn(state: CombatState): CombatState {
       round: nextRound,
       ...TURN_RESET_FIELDS,
     },
-    pendingAttack: null,
     pendingOpportunityAttacks: null,
   };
 }

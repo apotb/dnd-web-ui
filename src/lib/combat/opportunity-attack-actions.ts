@@ -1,73 +1,16 @@
 "use client";
 
-import {
-  createPendingAttack,
-  type AttackSubmissionInput,
-} from "@/lib/combat/pending-attack-builder";
-import type { CombatOption } from "@/lib/combat/combat-options";
+import { submitCombatOpportunityAttack } from "@/lib/combat/attack-actions";
 import {
   canSkipOpportunityAttackAction,
   hasSubmittedOpportunityAttack,
   skipOpportunityAttackForAttacker,
 } from "@/lib/combat/opportunity-attacks";
-import { canSubmitOpportunityAttack } from "@/lib/combat/attack-resolution";
-import type { ParsedCharacter } from "@/lib/character/utils";
-import type { DerivedAttack } from "@/lib/dnd/attacks";
-import type { EnemyData } from "@/lib/schemas/enemy";
-import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import type { CombatState } from "@/lib/schemas/combat-state";
 import { persistCombatState } from "@/lib/hooks/use-realtime-combat-state";
 import { createClient } from "@/lib/supabase/client";
 
-export async function submitCombatOpportunityAttack(
-  campaignId: string,
-  state: CombatState,
-  options: {
-    isDm: boolean;
-    attacker: CombatToken;
-    combatOption: CombatOption;
-    attack: DerivedAttack;
-    targets: CombatToken[];
-    submission: AttackSubmissionInput;
-    charactersById: Record<string, ParsedCharacter>;
-    enemiesBySlug: Record<string, { data: EnemyData }>;
-  }
-): Promise<{ next: CombatState; error?: string }> {
-  if (!canSubmitOpportunityAttack(state, options.attacker.id)) {
-    if (hasSubmittedOpportunityAttack(state, options.attacker.id)) {
-      return { next: state, error: "Your opportunity attack is already pending." };
-    }
-    return { next: state, error: "An attack is already pending." };
-  }
-
-  const pending = createPendingAttack(
-    state,
-    options.attacker,
-    options.combatOption,
-    options.attack,
-    options.targets,
-    null,
-    options.submission,
-    options.charactersById,
-    options.enemiesBySlug,
-    { isOpportunityAttack: true }
-  );
-
-  const next: CombatState = { ...state, pendingAttack: pending };
-
-  if (options.isDm) {
-    const error = await persistCombatState(campaignId, next);
-    return { next, error: error ?? undefined };
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase.rpc("submit_combat_opportunity_attack", {
-    p_campaign_id: campaignId,
-    p_attacker_token_id: options.attacker.id,
-    p_pending_attack: pending,
-  });
-
-  return { next, error: error?.message };
-}
+export { submitCombatOpportunityAttack };
 
 export async function skipCombatOpportunityAttack(
   campaignId: string,
@@ -77,11 +20,8 @@ export async function skipCombatOpportunityAttack(
     attackerTokenId: string;
   }
 ): Promise<{ next: CombatState; error?: string }> {
-  if (state.pendingAttack != null) {
-    if (hasSubmittedOpportunityAttack(state, options.attackerTokenId)) {
-      return { next: state, error: "Your opportunity attack is already pending." };
-    }
-    return { next: state, error: "An attack is already pending." };
+  if (hasSubmittedOpportunityAttack(state, options.attackerTokenId)) {
+    return { next: state, error: "Your opportunity attack is already pending." };
   }
 
   if (!canSkipOpportunityAttackAction(state, options.attackerTokenId)) {

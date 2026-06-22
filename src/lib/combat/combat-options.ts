@@ -289,6 +289,43 @@ export function getOpportunityAttackOptionsForCharacter(
     .map((attack) => attackToCombatOption(attack, character.data, "attack"));
 }
 
+function isEnemyMeleeAction(description: string): boolean {
+  return /\bMelee Weapon Attack:/i.test(description);
+}
+
+export function getOpportunityAttackOptionsForToken(
+  token: CombatToken,
+  context: {
+    character: ParsedCharacter | null;
+    enemyData: EnemyData | null;
+    catalogItems: Record<string, Item>;
+    classCatalog: PhbClass[];
+  }
+): CombatOption[] {
+  if (context.character) {
+    return getOpportunityAttackOptionsForCharacter(
+      context.character,
+      context.catalogItems,
+      context.classCatalog
+    );
+  }
+
+  if (context.enemyData) {
+    return context.enemyData.actions
+      .filter((action) => isEnemyMeleeAction(action.description))
+      .map((action, index) => ({
+        id: `enemy-action:${index}:${action.name}`,
+        name: action.name || "Attack",
+        subtitle: enemyActionSubtitle(action.description),
+        tooltip: formatEnemyActionTooltip(action),
+        kind: "enemy-action" as const,
+        enemyAction: action,
+      }));
+  }
+
+  return [];
+}
+
 function buildPartyOptionGroups(
   character: ParsedCharacter,
   catalogItems: Record<string, Item>,

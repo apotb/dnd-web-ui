@@ -16,13 +16,19 @@ import {
   formatDamageAppliedBreakdown,
   resolveFinalDamageApplied,
 } from "@/lib/combat/attack-resolution";
+import { getDmSaveTargets } from "@/lib/combat/pending-attack-builder";
 import type { PendingAttack, PendingAttackTarget } from "@/lib/schemas/combat-state";
 
-interface CombatAttackReviewModalProps {
+interface CombatAttackReviewCardProps {
   pending: PendingAttack;
-  onCancel: () => void;
+  attackerLabel: string;
+  onReject: () => void;
   onConfirm: (pending: PendingAttack) => void;
+  onSubmitDmSaves?: (
+    saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number }>
+  ) => void;
   submitting?: boolean;
+  submittingSaves?: boolean;
 }
 
 function cloneTarget(target: PendingAttackTarget): PendingAttackTarget {
@@ -34,6 +40,11 @@ function parseOptionalInt(value: string): number | null {
   if (!trimmed) return null;
   const parsed = parseInt(trimmed, 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseIntOrZero(value: string): number {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function formatHpLine(target: PendingAttackTarget): string {
@@ -61,12 +72,18 @@ function projectedHp(
   return Math.max(0, target.currentHp - damage);
 }
 
-export function CombatAttackReviewModal({
+export function CombatAttackReviewCard({
   pending,
-  onCancel,
+  attackerLabel,
+  onReject,
   onConfirm,
+  onSubmitDmSaves,
   submitting = false,
-}: CombatAttackReviewModalProps) {
+  submittingSaves = false,
+}: CombatAttackReviewCardProps) {
+  const isAwaitingSaves = pending.status === "awaiting-saves";
+  const dmSaveTargets = useMemo(() => getDmSaveTargets(pending), [pending]);
+
   const [draft, setDraft] = useState<PendingAttack>(() => ({
     ...pending,
     targets: pending.targets.map(cloneTarget),
@@ -90,9 +107,13 @@ export function CombatAttackReviewModal({
       })
     )
   );
+  const [dmSaveRolls, setDmSaveRolls] = useState<
+    Record<string, { saveRoll: string; saveMod: string }>
+  >({});
 
   const attackBonus = pending.attackBonus ?? 0;
   const damageDice = pending.damageDice ?? "";
+  const busy = submitting || submittingSaves;
 
   function updateTarget(tokenId: string, patch: Partial<PendingAttackTarget>) {
     setDraft((current) => ({
@@ -171,6 +192,23 @@ export function CombatAttackReviewModal({
     });
   }
 
+  function handleSubmitDmSaves() {
+    if (!onSubmitDmSaves) return;
+    onSubmitDmSaves(
+      dmSaveTargets.map((target) => {
+        const entry = dmSaveRolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
+        const saveRoll = parseD20Roll(entry.saveRoll) ?? 0;
+        const saveTotal = saveRoll + parseIntOrZero(entry.saveMod);
+        return { tokenId: target.tokenId, saveRoll, saveTotal };
+      })
+    );
+  }
+
+  const allDmSavesValid = dmSaveTargets.every((target) => {
+    const entry = dmSaveRolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
+    return parseD20Roll(entry.saveRoll) != null;
+  });
+
   const targetSections = useMemo(
     () =>
       draft.targets.map((target) => {
@@ -193,20 +231,20 @@ export function CombatAttackReviewModal({
               {afterHp != null ? ` · After damage: ${afterHp} HP` : ""}
             </span>
 
-            {pending.rollType === "attack" ? (
+            {pending.rollType === "attack" && !isAwaitingSaves ? (
               <div className="combat-attack-review-fields">
                 <HitRollField
                   value={target.attackRoll?.toString() ?? ""}
                   onChange={(value) => handleAttackRollChange(target.tokenId, value)}
                   attackBonus={attackBonus}
-                  disabled={submitting}
+                  disabled={busy}
                 />
                 <label className="combat-attack-submit-field combat-attack-review-check">
                   <input
                     type="checkbox"
                     checked={target.hit ?? false}
                     onChange={(event) => handleHitChange(target.tokenId, event.target.checked)}
-                    disabled={submitting}
+                    disabled={busy}
                   />
                   <span>Hit</span>
                 </label>
@@ -217,14 +255,14 @@ export function CombatAttackReviewModal({
                     onChange={(event) =>
                       handleCriticalChange(target.tokenId, event.target.checked)
                     }
-                    disabled={submitting || !target.hit}
+                    disabled={busy || !target.hit}
                   />
                   <span>Critical</span>
                 </label>
               </div>
             ) : null}
 
-            {pending.rollType === "save" ? (
+            {pending.rollType === "save" && !isAwaitingSaves ? (
               <div className="combat-attack-review-fields">
                 <label className="combat-attack-submit-field">
                   <span>Save roll (d20)</span>
@@ -235,7 +273,7 @@ export function CombatAttackReviewModal({
                         saveRoll: parseD20Roll(value),
                       })
                     }
-                    disabled={submitting}
+                    disabled={busy}
                   />
                 </label>
                 <label className="combat-attack-submit-field">
@@ -249,7 +287,7 @@ export function CombatAttackReviewModal({
                         saveTotal: parseInt(event.target.value, 10) || null,
                       })
                     }
-                    disabled={submitting}
+                    disabled={busy}
                   />
                 </label>
                 <label className="combat-attack-submit-field combat-attack-review-check">
@@ -259,80 +297,153 @@ export function CombatAttackReviewModal({
                     onChange={(event) =>
                       updateTarget(target.tokenId, { saveSucceeded: event.target.checked })
                     }
-                    disabled={submitting}
+                    disabled={busy}
                   />
                   <span>Succeeded</span>
                 </label>
               </div>
             ) : null}
 
-            <div className="combat-attack-review-fields">
-              <DamageRollField
-                damageDice={damageDice || target.damageText || ""}
-                rolls={rolls}
-                onRollsChange={(nextRolls) => handleDamageRollsChange(target.tokenId, nextRolls)}
-                fallbackTotal={target.damageAmount?.toString() ?? ""}
-                onFallbackTotalChange={(value) => {
-                  updateTarget(target.tokenId, {
-                    damageAmount: parseOptionalInt(value),
-                  });
-                }}
-                knownTotal={target.damageAmount}
-                disabled={submitting}
-              />
-              <DamageAppliedField
-                computedDamage={computedDamage}
-                overrideValue={overrideText}
-                breakdown={damageBreakdown}
-                onOverrideChange={(value) =>
-                  setDamageOverrides((current) => ({
-                    ...current,
-                    [target.tokenId]: value,
-                  }))
-                }
-                disabled={submitting}
-              />
-            </div>
+            {!isAwaitingSaves ? (
+              <div className="combat-attack-review-fields">
+                <DamageRollField
+                  damageDice={damageDice || target.damageText || ""}
+                  rolls={rolls}
+                  onRollsChange={(nextRolls) => handleDamageRollsChange(target.tokenId, nextRolls)}
+                  fallbackTotal={target.damageAmount?.toString() ?? ""}
+                  onFallbackTotalChange={(value) => {
+                    updateTarget(target.tokenId, {
+                      damageAmount: parseOptionalInt(value),
+                    });
+                  }}
+                  knownTotal={target.damageAmount}
+                  disabled={busy}
+                />
+                <DamageAppliedField
+                  computedDamage={computedDamage}
+                  overrideValue={overrideText}
+                  breakdown={damageBreakdown}
+                  onOverrideChange={(value) =>
+                    setDamageOverrides((current) => ({
+                      ...current,
+                      [target.tokenId]: value,
+                    }))
+                  }
+                  disabled={busy}
+                />
+              </div>
+            ) : null}
           </div>
         );
       }),
     [
       attackBonus,
+      busy,
       damageDice,
       damageOverrides,
       damageRollInputs,
       draft.targets,
+      isAwaitingSaves,
       pending.rollType,
-      submitting,
     ]
   );
 
+  const statusLabel = isAwaitingSaves
+    ? dmSaveTargets.length > 0
+      ? "Awaiting saves"
+      : "Waiting for player saves"
+    : "Ready to approve";
+
   return (
-    <div className="supply-picker-overlay" onClick={onCancel}>
-      <div
-        className="supply-picker-modal retro-box combat-attack-review-modal"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <p className="retro-box-title">Review attack — {pending.optionName}</p>
+    <article className="combat-attack-review-card retro-box">
+      <div className="combat-attack-review-card-header">
+        <p className="retro-box-title">{pending.optionName}</p>
+        <span className="retro-muted">
+          {attackerLabel}
+          {pending.isOpportunityAttack ? " · Opportunity attack" : ""}
+        </span>
+        <span className={`combat-attack-review-status combat-attack-review-status-${pending.status}`}>
+          {statusLabel}
+        </span>
+      </div>
 
-        <div className="combat-attack-review-targets">{targetSections}</div>
+      {isAwaitingSaves && dmSaveTargets.length > 0 ? (
+        <div className="combat-dm-save-roll-list">
+          <p className="retro-muted">
+            DC {pending.saveDc ?? "?"}
+            {pending.saveAbility ? ` ${pending.saveAbility}` : ""} — enter saves for creatures you
+            control.
+          </p>
+          {dmSaveTargets.map((target) => {
+            const entry = dmSaveRolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
+            const saveRollValue = parseD20Roll(entry.saveRoll);
+            const total = (saveRollValue ?? 0) + parseIntOrZero(entry.saveMod);
+            return (
+              <div key={target.tokenId} className="combat-attack-submit-target-block">
+                <strong>{target.label}</strong>
+                <label className="combat-attack-submit-field">
+                  <span>d20</span>
+                  <SaveRollField
+                    value={entry.saveRoll}
+                    onChange={(value) =>
+                      setDmSaveRolls((current) => ({
+                        ...current,
+                        [target.tokenId]: { ...entry, saveRoll: value },
+                      }))
+                    }
+                    disabled={busy}
+                  />
+                </label>
+                <label className="combat-attack-submit-field">
+                  <span>Mod</span>
+                  <input
+                    type="number"
+                    className="candy-input"
+                    value={entry.saveMod}
+                    onChange={(event) =>
+                      setDmSaveRolls((current) => ({
+                        ...current,
+                        [target.tokenId]: { ...entry, saveMod: event.target.value },
+                      }))
+                    }
+                    disabled={busy}
+                  />
+                </label>
+                <span className="retro-muted">= {total}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
-        <div className="supply-picker-actions combat-roll-actions">
-          <button type="button" className="candy-btn" onClick={onCancel} disabled={submitting}>
-            Reject
-          </button>
-          <div className="combat-roll-right-actions">
+      <div className="combat-attack-review-targets">{targetSections}</div>
+
+      <div className="supply-picker-actions combat-roll-actions combat-attack-review-card-actions">
+        <button type="button" className="candy-btn" onClick={onReject} disabled={busy}>
+          Reject
+        </button>
+        <div className="combat-roll-right-actions">
+          {isAwaitingSaves && dmSaveTargets.length > 0 ? (
+            <button
+              type="button"
+              className="candy-btn"
+              onClick={handleSubmitDmSaves}
+              disabled={busy || !allDmSavesValid}
+            >
+              {submittingSaves ? "Submitting…" : "Submit saves"}
+            </button>
+          ) : !isAwaitingSaves ? (
             <button
               type="button"
               className="candy-btn"
               onClick={handleConfirm}
-              disabled={submitting}
+              disabled={busy}
             >
               {submitting ? "Approving…" : "Approve"}
             </button>
-          </div>
+          ) : null}
         </div>
       </div>
-    </div>
+    </article>
   );
 }
