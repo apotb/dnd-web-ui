@@ -7,6 +7,7 @@ import type {
   CombatToken,
   InitiativeTokenResult,
 } from "@/lib/schemas/combat-state";
+import { isCombatantToken } from "@/lib/schemas/combat-state";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { abilityModifier as enemyAbilityModifier } from "@/lib/schemas/enemy";
 
@@ -103,7 +104,9 @@ export function sortInitiativeTokenIds(
 
 export function allInitiativeResultsCollected(state: CombatState): boolean {
   if (state.initiative.status !== "collecting") return false;
-  return state.tokens.every((token) => state.initiative.results[token.id] != null);
+  const combatants = state.tokens.filter(isCombatantToken);
+  if (combatants.length === 0) return false;
+  return combatants.every((token) => state.initiative.results[token.id] != null);
 }
 
 export function finalizeInitiativeIfReady(state: CombatState): CombatState {

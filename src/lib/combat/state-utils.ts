@@ -7,6 +7,7 @@ import {
   type CombatState,
   type CombatToken,
   combatTokenSchema,
+  isCombatantToken,
 } from "@/lib/schemas/combat-state";
 
 export interface EnemyRecord {
@@ -250,6 +251,83 @@ export function findEnemySpawnSlot(
   return findEdgeSpawnSlot(state, x, width, height);
 }
 
+/** Bottom-left spawn slots: bottom row, then 3rd from bottom, 5th, etc. */
+function bottomEdgeSpawnRowOrder(state: CombatState, height: number): number[] {
+  const maxY = state.gridHeight - height;
+  const evenRows: number[] = [];
+  const oddRows: number[] = [];
+
+  for (let y = maxY; y >= 0; y--) {
+    const fromBottom = maxY - y;
+    if (fromBottom % 2 === 0) {
+      evenRows.push(y);
+    } else {
+      oddRows.push(y);
+    }
+  }
+
+  return [...evenRows, ...oddRows];
+}
+
+function findBottomLeftSpawnSlot(
+  state: CombatState,
+  width: number,
+  height: number
+): { x: number; y: number } {
+  const x = 0;
+
+  for (const y of bottomEdgeSpawnRowOrder(state, height)) {
+    if (
+      footprintIsFree(state, x, y, width, height) &&
+      hasSpawnSideClearance(state, x, y, width, height)
+    ) {
+      return { x, y };
+    }
+  }
+
+  for (let y = state.gridHeight - height; y >= 0; y--) {
+    if (footprintIsFree(state, x, y, width, height)) {
+      return { x, y };
+    }
+  }
+
+  return { x, y: Math.max(0, state.gridHeight - height) };
+}
+
+export function findMarkerSpawnSlot(
+  state: CombatState,
+  width: number,
+  height: number
+): { x: number; y: number } {
+  return findBottomLeftSpawnSlot(state, width, height);
+}
+
+export function createMarkerToken(
+  name: string,
+  tooltip: string,
+  state: CombatState,
+  options?: { id?: string; portraitPath?: string | null }
+): CombatToken {
+  const width = 1;
+  const height = 1;
+  const { x, y } = findMarkerSpawnSlot(state, width, height);
+  const trimmedName = name.trim();
+
+  return combatTokenSchema.parse({
+    id: options?.id ?? crypto.randomUUID(),
+    kind: "marker",
+    name: trimmedName,
+    label: trimmedName,
+    tooltip: tooltip.trim(),
+    portraitPath: options?.portraitPath ?? null,
+    x,
+    y,
+    width,
+    height,
+    placed: true,
+  });
+}
+
 export function createEnemyToken(enemy: EnemyRecord, state: CombatState): CombatToken {
   const width = 1;
   const height = 1;
@@ -296,6 +374,18 @@ export function addEnemyToState(state: CombatState, enemy: EnemyRecord): CombatS
   return {
     ...state,
     tokens: relabelEnemyTokens([...state.tokens, createEnemyToken(enemy, state)]),
+  };
+}
+
+export function addMarkerToState(
+  state: CombatState,
+  name: string,
+  tooltip: string,
+  options?: { id?: string; portraitPath?: string | null }
+): CombatState {
+  return {
+    ...state,
+    tokens: [...state.tokens, createMarkerToken(name, tooltip, state, options)],
   };
 }
 
@@ -365,8 +455,11 @@ function clearTokenFromInitiative(
     };
   }
 
-  const allCollected = tokens.every((token) => results[token.id] != null);
-  if (allCollected && tokens.length > 0) {
+  const combatants = tokens.filter(isCombatantToken);
+  const allCollected =
+    combatants.length > 0 &&
+    combatants.every((token) => results[token.id] != null);
+  if (allCollected) {
     return {
       initiative: {
         status: "ready",

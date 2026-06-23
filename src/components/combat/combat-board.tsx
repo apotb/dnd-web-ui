@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   addEnemyToState,
+  addMarkerToState,
   addPartyMembersToState,
   removeTokenFromState,
   resetCombatBoard,
@@ -31,6 +32,7 @@ import {
   removeCombatImage,
   resolveCombatImageUrl,
   uploadCombatBackground,
+  uploadMarkerPortrait,
 } from "@/lib/combat/storage";
 import { getCharacterPortraitUrl } from "@/lib/character/portrait-storage";
 import type { ParsedCharacter } from "@/lib/character/utils";
@@ -42,6 +44,7 @@ import {
 } from "@/lib/hooks/use-realtime-combat-state";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import { isCombatantToken } from "@/lib/schemas/combat-state";
 import {
   MAX_GRID_SIZE,
   MAX_TILE_FEET,
@@ -50,6 +53,7 @@ import {
 } from "@/lib/schemas/combat-grid";
 import { AddEnemyDialog } from "@/components/combat/add-enemy-dialog";
 import { AddPartyMemberDialog } from "@/components/combat/add-party-member-dialog";
+import { MarkerDialog, type MarkerDialogValues } from "@/components/combat/marker-dialog";
 import {
   CombatActionPanel,
   CombatBonusActionPanel,
@@ -156,6 +160,7 @@ interface CombatBoardProps {
 function tokenColorClass(kind: CombatToken["kind"]): string {
   if (kind === "party") return "combat-token-party";
   if (kind === "ally") return "combat-token-ally";
+  if (kind === "marker") return "combat-token-marker";
   return "combat-token-enemy";
 }
 
@@ -341,6 +346,8 @@ export function CombatBoard({
   const [draft, setDraft] = useState(liveState);
   const [addOpen, setAddOpen] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
+  const [addMarkerOpen, setAddMarkerOpen] = useState(false);
+  const [editMarkerOpen, setEditMarkerOpen] = useState(false);
   const [startingInitiative, setStartingInitiative] = useState(false);
   const [endingTurn, setEndingTurn] = useState(false);
   const [attackTargeting, setAttackTargeting] = useState<{
@@ -623,13 +630,18 @@ export function CombatBoard({
   const selectedToken = selectedTokenId
     ? combatState.tokens.find((token) => token.id === selectedTokenId) ?? null
     : null;
+  const selectedMarker = selectedToken?.kind === "marker" ? selectedToken : null;
+  const combatantCount = useMemo(
+    () => combatState.tokens.filter(isCombatantToken).length,
+    [combatState.tokens]
+  );
 
   const hpAmountValid = parsePositiveHpAmount(hpAmount) != null;
 
   const canStartInitiative =
     isDm &&
     combatState.initiative.status === "none" &&
-    combatState.tokens.length > 0 &&
+    combatantCount > 0 &&
     !startingInitiative;
 
   const battleActive = isBattleActive(combatState);
@@ -1582,6 +1594,73 @@ export function CombatBoard({
     setAddOpen(false);
   }
 
+  async function handleAddMarker(values: MarkerDialogValues) {
+    const markerId = crypto.randomUUID();
+    let portraitPath: string | null = null;
+
+    if (values.portraitFile) {
+      const { path, error } = await uploadMarkerPortrait(
+        supabase,
+        campaignId,
+        markerId,
+        values.portraitFile
+      );
+      if (error) {
+        window.alert(error);
+        return;
+      }
+      portraitPath = path;
+    }
+
+    const next = addMarkerToState(combatState, values.name, values.tooltip, {
+      id: markerId,
+      portraitPath,
+    });
+    await persist(next);
+    setAddMarkerOpen(false);
+  }
+
+  async function handleEditMarker(values: MarkerDialogValues) {
+    if (!selectedMarker) return;
+
+    const previousPath = selectedMarker.portraitPath;
+    let portraitPath = selectedMarker.portraitPath ?? null;
+
+    if (values.removePortrait) {
+      portraitPath = null;
+    } else if (values.portraitFile) {
+      const { path, error } = await uploadMarkerPortrait(
+        supabase,
+        campaignId,
+        selectedMarker.id,
+        values.portraitFile
+      );
+      if (error) {
+        window.alert(error);
+        return;
+      }
+      portraitPath = path;
+    }
+
+    const next = updateTokenInState(combatState, selectedMarker.id, {
+      name: values.name,
+      label: values.name,
+      tooltip: values.tooltip,
+      portraitPath,
+    });
+    const persistError = await persist(next);
+    if (persistError) {
+      window.alert(persistError);
+      return;
+    }
+
+    if (previousPath && previousPath !== portraitPath) {
+      await removeCombatImage(supabase, previousPath);
+    }
+
+    setEditMarkerOpen(false);
+  }
+
   async function handleAddPartyMembers(selected: ParsedCharacter[]) {
     const next = addPartyMembersToState(combatState, selected);
     await persist(next);
@@ -1616,7 +1695,7 @@ export function CombatBoard({
 
   async function handleStartInitiative() {
     if (combatState.initiative.status !== "none") return;
-    if (combatState.tokens.length === 0) {
+    if (combatantCount === 0) {
       window.alert("Add at least one combatant before starting initiative.");
       return;
     }
@@ -1734,7 +1813,8 @@ export function CombatBoard({
     const isExpanded =
       isHovered &&
       ((token.kind === "enemy" && (isDm ? enemy != null : true)) ||
-        (token.kind === "party" && character != null));
+        (token.kind === "party" && character != null) ||
+        token.kind === "marker");
 
     const isDragging = draggingTokenId === token.id;
     const isActiveTurn = battleActive && token.id === currentTurnTokenId;
@@ -1748,10 +1828,12 @@ export function CombatBoard({
       attackTargeting &&
       targetingHighlights?.validTargets.some((target) => target.id === token.id);
 
+    const markerWithoutPortrait = token.kind === "marker" && !portraitUrl;
+
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${markerWithoutPortrait ? " combat-token-marker-no-portrait" : ""}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -1759,32 +1841,32 @@ export function CombatBoard({
         <div
           className={`combat-token-badge${isExpanded ? " combat-token-badge-expanded" : ""}`}
         >
-          {portraitUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={portraitUrl} alt="" className="combat-token-portrait" draggable={false} />
-          ) : (
-            <div className="combat-token-portrait combat-token-portrait-fallback">
-              {token.label.slice(0, 1)}
-            </div>
-          )}
+          {!markerWithoutPortrait ? (
+            portraitUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={portraitUrl} alt="" className="combat-token-portrait" draggable={false} />
+            ) : (
+              <div className="combat-token-portrait combat-token-portrait-fallback">
+                {token.label.slice(0, 1)}
+              </div>
+            )
+          ) : null}
           <div
             className={`combat-token-label${isExpanded ? " combat-token-label-expanded" : ""}`}
           >
             <span className="combat-token-label-name">{token.label}</span>
-            {isExpanded ? (
-              portraitUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={portraitUrl}
-                  alt=""
-                  className="combat-token-label-portrait"
-                  draggable={false}
-                />
-              ) : (
-                <div className="combat-token-label-portrait combat-token-label-portrait-fallback">
-                  {token.label.slice(0, 1)}
-                </div>
-              )
+            {isExpanded && portraitUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={portraitUrl}
+                alt=""
+                className="combat-token-label-portrait"
+                draggable={false}
+              />
+            ) : isExpanded && !markerWithoutPortrait ? (
+              <div className="combat-token-label-portrait combat-token-label-portrait-fallback">
+                {token.label.slice(0, 1)}
+              </div>
             ) : null}
             {isExpanded && token.kind === "party" && character ? (
               <>
@@ -1819,6 +1901,11 @@ export function CombatBoard({
                   {token.maxHp ?? enemy.data.hitPoints.average}
                 </span>
               </>
+            ) : null}
+            {isExpanded && token.kind === "marker" && token.tooltip ? (
+              <span className="combat-token-label-detail combat-token-marker-tooltip">
+                {token.tooltip}
+              </span>
             ) : null}
           </div>
         </div>
@@ -2140,7 +2227,19 @@ export function CombatBoard({
                   <button
                     type="button"
                     className="candy-btn"
-                    disabled={!selectedToken || !hpAmountValid || applyingHp}
+                    onClick={() => setAddMarkerOpen(true)}
+                  >
+                    Add marker
+                  </button>
+                  <button
+                    type="button"
+                    className="candy-btn"
+                    disabled={
+                      !selectedToken ||
+                      selectedToken.kind === "marker" ||
+                      !hpAmountValid ||
+                      applyingHp
+                    }
                     onClick={() => void handleApplyHpToSelected(1)}
                   >
                     {applyingHp ? "…" : "Heal"}
@@ -2151,16 +2250,33 @@ export function CombatBoard({
                     min={1}
                     value={hpAmount}
                     onChange={(event) => setHpAmount(event.target.value)}
-                    disabled={!selectedToken || applyingHp}
+                    disabled={
+                      !selectedToken ||
+                      selectedToken.kind === "marker" ||
+                      applyingHp
+                    }
                     aria-label="HP amount"
                   />
                   <button
                     type="button"
                     className="candy-btn"
-                    disabled={!selectedToken || !hpAmountValid || applyingHp}
+                    disabled={
+                      !selectedToken ||
+                      selectedToken.kind === "marker" ||
+                      !hpAmountValid ||
+                      applyingHp
+                    }
                     onClick={() => void handleApplyHpToSelected(-1)}
                   >
                     {applyingHp ? "…" : "Damage"}
+                  </button>
+                  <button
+                    type="button"
+                    className="candy-btn"
+                    onClick={() => setEditMarkerOpen(true)}
+                    disabled={!selectedMarker}
+                  >
+                    Edit
                   </button>
                   <button
                     type="button"
@@ -2280,6 +2396,21 @@ export function CombatBoard({
         characters={characters}
         presentCharacterIds={presentCharacterIds}
         onConfirm={handleAddPartyMembers}
+      />
+      <MarkerDialog
+        open={addMarkerOpen}
+        onOpenChange={setAddMarkerOpen}
+        mode="add"
+        onSubmit={(values) => void handleAddMarker(values)}
+      />
+      <MarkerDialog
+        open={editMarkerOpen}
+        onOpenChange={setEditMarkerOpen}
+        mode="edit"
+        initialName={selectedMarker?.name ?? ""}
+        initialTooltip={selectedMarker?.tooltip ?? ""}
+        initialPortraitPath={selectedMarker?.portraitPath ?? null}
+        onSubmit={(values) => void handleEditMarker(values)}
       />
       {attackSubmitDraft ? (
         <CombatAttackSubmitModal

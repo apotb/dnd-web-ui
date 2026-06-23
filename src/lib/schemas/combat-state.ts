@@ -8,7 +8,7 @@ import {
   MIN_TILE_FEET,
 } from "@/lib/schemas/combat-grid";
 
-export const TOKEN_KINDS = ["party", "enemy", "ally"] as const;
+export const TOKEN_KINDS = ["party", "enemy", "ally", "marker"] as const;
 export type TokenKind = (typeof TOKEN_KINDS)[number];
 
 export const initiativeTokenResultSchema = z.object({
@@ -94,6 +94,7 @@ export const combatTokenSchema = z.object({
   kind: z.enum(TOKEN_KINDS),
   name: z.string().default(""),
   label: z.string().default(""),
+  tooltip: z.string().default(""),
   enemySlug: z.string().optional(),
   characterId: z.string().optional(),
   portraitPath: z.string().nullable().default(null),
@@ -152,6 +153,10 @@ export type CombatInitiative = z.infer<typeof combatInitiativeSchema>;
 export type CombatTurn = z.infer<typeof combatTurnSchema>;
 export type InitiativeTokenResult = z.infer<typeof initiativeTokenResultSchema>;
 export type CombatState = z.infer<typeof combatStateSchema>;
+
+export function isCombatantToken(token: CombatToken): boolean {
+  return token.kind !== "marker";
+}
 
 const DEFAULT_TURN: CombatTurn = {
   active: false,

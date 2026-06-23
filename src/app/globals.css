@@ -3776,6 +3776,110 @@ html.campaign-bg-active .retro-back-link {
   color: #dcfce7;
 }
 
+.combat-token-marker {
+  color: #f97316;
+}
+
+.combat-token-marker .combat-token-portrait,
+.combat-token-marker .combat-token-portrait-fallback {
+  border-color: #f97316;
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.combat-token-marker .combat-token-portrait-fallback {
+  background: #431407;
+  color: #ffedd5;
+}
+
+.combat-token-marker .combat-token-label {
+  background: rgba(67, 20, 7, 0.95);
+  border: 1px solid rgba(249, 115, 22, 0.55);
+  color: #ffedd5;
+}
+
+.combat-token-marker .combat-token-label-portrait-fallback {
+  background: #431407;
+  color: #ffedd5;
+}
+
+.combat-token-marker-tooltip {
+  white-space: pre-line;
+  max-width: 220px;
+}
+
+.combat-marker-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.combat-marker-dialog-portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.combat-marker-dialog-portrait-frame {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgba(249, 115, 22, 0.55);
+  background: rgba(67, 20, 7, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.combat-marker-dialog-portrait-frame-empty {
+  border-style: dashed;
+}
+
+.combat-marker-dialog-portrait-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.combat-marker-dialog-portrait-placeholder {
+  width: 2rem;
+  height: 2rem;
+  color: rgba(255, 237, 213, 0.65);
+}
+
+.combat-marker-dialog-portrait-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.combat-token-marker-no-portrait .combat-token-badge {
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 2px;
+}
+
+.combat-token-marker-no-portrait .combat-token-label {
+  position: static;
+  transform: none;
+}
+
+.combat-marker-dialog-tooltip {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.combat-marker-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .combat-enemy-picker {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

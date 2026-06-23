@@ -86,6 +86,32 @@ export async function uploadEnemyPortrait(
   return { path, error: null };
 }
 
+export async function uploadMarkerPortrait(
+  supabase: SupabaseClient,
+  campaignId: string,
+  markerId: string,
+  file: File
+): Promise<{ path: string | null; error: string | null }> {
+  const validationError = validateCombatImageFile(file);
+  if (validationError) {
+    return { path: null, error: validationError };
+  }
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `markers/${campaignId}/${markerId}/${Date.now()}-${safeName}`;
+
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    upsert: true,
+    contentType: file.type,
+  });
+
+  if (error) {
+    return { path: null, error: error.message };
+  }
+
+  return { path, error: null };
+}
+
 export async function uploadCombatBackground(
   supabase: SupabaseClient,
   campaignId: string,
