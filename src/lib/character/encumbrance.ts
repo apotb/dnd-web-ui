@@ -1,5 +1,6 @@
 import type { InventoryItem } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
+import { formatItemCostGp } from "@/lib/schemas/item";
 
 export const ENCUMBERED_SPEED_FT = 5;
 
@@ -98,6 +99,30 @@ export function formatInventoryItemWeightLine(
     return `${unit} (${formatWeightLb(unitWeightLb * quantity)} total)`;
   }
   return unit;
+}
+
+/** Tooltip text for custom (non-catalog) inventory rows. */
+export function formatCustomInventoryItemTooltip(
+  item: InventoryItem
+): string | null {
+  const lines: string[] = [];
+  const name = item.name.trim();
+  if (name) {
+    lines.push(name);
+  }
+  const weightLb = item.weightLb;
+  if (weightLb != null) {
+    lines.push(`Weight: ${weightLb} lb`);
+  }
+  if (item.costGp != null) {
+    lines.push(`Cost: ${formatItemCostGp(item.costGp)}`);
+  }
+  const notes = item.notes.trim();
+  if (notes) {
+    if (lines.length) lines.push("");
+    lines.push(notes);
+  }
+  return lines.length ? lines.join("\n") : null;
 }
 
 export function canCarryAdditionalWeight(

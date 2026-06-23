@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CharacterData, AbilityKey, SkillKey, ActionCost } from "@/lib/schemas/character";
+import type { CharacterData, AbilityKey, SkillKey, ActionCost, InventoryItem } from "@/lib/schemas/character";
 import { choicePlaceholder, type FeatureChoiceKey } from "@/lib/character/feature-choices";
 import {
   appendExhaustionSheetNote,
@@ -69,8 +69,12 @@ import {
   syncSpellcastingFromClass,
 } from "@/lib/dnd/spellcasting";
 import type { Item } from "@/lib/schemas/item";
-import { categoryLabel, formatItemTooltip, getWeaponProperties, RARITY_COLOR, rarityLabel } from "@/lib/schemas/item";
-import { ItemPicker } from "@/components/items/item-picker";
+import { categoryLabel, formatItemCostGp, formatItemTooltip, getWeaponProperties, RARITY_COLOR, rarityLabel } from "@/lib/schemas/item";
+import {
+  ItemPicker,
+  EMPTY_ITEM_PICKER_CUSTOM_FIELDS,
+  type ItemPickerCustomFields,
+} from "@/components/items/item-picker";
 import { SpellPicker } from "@/components/spells/spell-picker";
 import { SpellGlossaryMeta } from "@/components/spells/spell-glossary-meta";
 import { CharacterPortrait } from "@/components/character/character-portrait";
@@ -156,6 +160,7 @@ import {
 } from "@/lib/character/combat-derivation";
 import {
   formatCarryCapacityLabel,
+  formatCustomInventoryItemTooltip,
   formatInventoryItemWeightLine,
   formatWeightLb,
   getEncumbranceInfo,
@@ -496,6 +501,9 @@ export function CharacterSheet({
   const [loadedClasses, setLoadedClasses] = useState<PhbClass[]>([]);
   const [itemPickerOpen, setItemPickerOpen] = useState(false);
   const [itemPickerSwapIndex, setItemPickerSwapIndex] = useState<number | null>(null);
+  const [itemPickerCustomFields, setItemPickerCustomFields] =
+    useState<ItemPickerCustomFields>(EMPTY_ITEM_PICKER_CUSTOM_FIELDS);
+  const [itemPickerEditingCustom, setItemPickerEditingCustom] = useState(false);
   const [spellPickerOpen, setSpellPickerOpen] = useState(false);
   const swapSpellIndexRef = useRef<number | null>(null);
 
@@ -963,6 +971,33 @@ export function CharacterSheet({
     if (weight > getMaxCarryCapacityLb(strength)) return;
     update({ inventory: { ...data.inventory, items } });
   };
+
+  function customFieldsFromInventoryItem(item: InventoryItem): ItemPickerCustomFields {
+    return {
+      name: item.name,
+      weight: item.weightLb !== undefined ? String(item.weightLb) : "",
+      cost: item.costGp !== undefined ? String(item.costGp) : "",
+    };
+  }
+
+  function openItemPicker(options: { swapIndex: number | null; item?: InventoryItem }) {
+    const isEditingExisting = options.swapIndex !== null && !!options.item;
+    setItemPickerCustomFields(
+      isEditingExisting && options.item
+        ? customFieldsFromInventoryItem(options.item)
+        : EMPTY_ITEM_PICKER_CUSTOM_FIELDS
+    );
+    setItemPickerEditingCustom(isEditingExisting);
+    setItemPickerSwapIndex(options.swapIndex);
+    setItemPickerOpen(true);
+  }
+
+  function closeItemPicker() {
+    setItemPickerOpen(false);
+    setItemPickerSwapIndex(null);
+    setItemPickerEditingCustom(false);
+    setItemPickerCustomFields(EMPTY_ITEM_PICKER_CUSTOM_FIELDS);
+  }
 
   function adjustInspiration(delta: number) {
     if (!isDm || !onChange) return;
@@ -2361,10 +2396,7 @@ export function CharacterSheet({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        setItemPickerSwapIndex(null);
-                        setItemPickerOpen(true);
-                      }}
+                      onClick={() => openItemPicker({ swapIndex: null })}
                     >
                       + Add Item
                     </Button>
@@ -2379,6 +2411,7 @@ export function CharacterSheet({
                   {sortedInventoryItems.map(({ item, index: i }) => {
                     const catalogItem = item.itemId ? catalogItems[item.itemId] : null;
                     const displayName = catalogItem?.name ?? (item.name || "Unknown item");
+                    const showCustomHint = !item.itemId;
                     const isMagic = item.magicItem || (catalogItem?.is_magic ?? false);
                     const equippable = isEquippableItem(catalogItem, item);
                     const equipSlot = getItemEquipSlot(catalogItem, item);
@@ -2403,13 +2436,22 @@ export function CharacterSheet({
                       : null;
                     const itemTooltip = catalogItem
                       ? formatItemTooltip(catalogItem)
-                      : item.notes || null;
+                      : formatCustomInventoryItemTooltip(item);
                     const unitWeightLb = resolveItemWeightLb(item, catalogItem);
                     const weightLine = formatInventoryItemWeightLine(
                       unitWeightLb,
                       item.quantity
                     );
-                    const showWeightRow = editable || !!weightLine;
+                    const customWeightLabel =
+                      !item.itemId && item.weightLb != null && !weightLine
+                        ? formatWeightLb(item.weightLb)
+                        : null;
+                    const customCostLabel =
+                      !item.itemId && item.costGp != null
+                        ? formatItemCostGp(item.costGp)
+                        : null;
+                    const showWeightRow =
+                      editable || !!weightLine || !!customWeightLabel || !!customCostLabel;
 
                     return (
                       <div key={item.id} className="min-w-0 rounded-md border p-2 space-y-1">
@@ -2419,18 +2461,17 @@ export function CharacterSheet({
                               <Tooltip content={itemTooltip}>
                                 <button
                                   type="button"
-                                  className="text-left px-2.5 py-1.5 rounded-md border text-sm font-medium hover:bg-accent transition-colors min-w-0"
-                                  onClick={() => {
-                                    setItemPickerSwapIndex(i);
-                                    setItemPickerOpen(true);
-                                  }}
+                                  className={`text-left px-2.5 py-1.5 rounded-md border text-sm font-medium hover:bg-accent transition-colors min-w-0 flex flex-col justify-center ${
+                                    showCustomHint ? "min-h-[2.75rem]" : ""
+                                  }`}
+                                  onClick={() => openItemPicker({ swapIndex: i, item })}
                                 >
                                   <span className="block truncate">{displayName}</span>
-                                  {!item.itemId && (
-                                    <span className="text-xs text-muted-foreground font-normal">
+                                  {showCustomHint ? (
+                                    <span className="text-xs text-muted-foreground font-normal truncate">
                                       Custom — click to link to catalog
                                     </span>
-                                  )}
+                                  ) : null}
                                 </button>
                               </Tooltip>
                             ) : (
@@ -2459,9 +2500,12 @@ export function CharacterSheet({
                               </label>
                             )}
                             {isArmor && usesNaturalArmor && (editable || canToggleEquipment) && (
-                              <span className="text-xs text-muted-foreground shrink-0">
-                                Natural armor prevents equipping
-                              </span>
+                              <Tooltip content="Natural armor prevents equipping">
+                                <span className="inline-flex items-center gap-1.5 text-xs select-none shrink-0 cursor-not-allowed opacity-50">
+                                  <Checkbox checked={item.equipped} disabled />
+                                  Equipped
+                                </span>
+                              </Tooltip>
                             )}
                             {isWeapon && (editable || canToggleEquipment) && (
                               <>
@@ -2591,10 +2635,33 @@ export function CharacterSheet({
                                       ({formatWeightLb(item.weightLb * item.quantity)} total)
                                     </span>
                                   ) : null}
+                                  <DraftNumberInput
+                                    optional
+                                    allowDecimal
+                                    min={0}
+                                    className="w-16 h-7 text-xs ml-2"
+                                    placeholder="gp"
+                                    aria-label="Value in gold pieces"
+                                    value={item.costGp}
+                                    onCommit={(costGp) => {
+                                      const items = [...data.inventory.items];
+                                      items[i] = { ...item, costGp };
+                                      applyInventoryItems(items);
+                                    }}
+                                  />
+                                  <span>gp</span>
                                 </>
-                              ) : weightLine ? (
-                                <span>{weightLine}</span>
-                              ) : null}
+                              ) : (
+                                <>
+                                  {weightLine ? <span>{weightLine}</span> : null}
+                                  {customWeightLabel ? <span>{customWeightLabel}</span> : null}
+                                  {customCostLabel ? (
+                                    <span className={weightLine || customWeightLabel ? "ml-2" : undefined}>
+                                      {customCostLabel}
+                                    </span>
+                                  ) : null}
+                                </>
+                              )}
                             </div>
                             {editable ? (
                               <Button
@@ -2641,36 +2708,22 @@ export function CharacterSheet({
 
           <ItemPicker
             open={itemPickerOpen}
-            initialCustom={
-              itemPickerSwapIndex !== null &&
-              !data.inventory.items[itemPickerSwapIndex]?.itemId
-                ? {
-                    name: data.inventory.items[itemPickerSwapIndex].name,
-                    weightLb: data.inventory.items[itemPickerSwapIndex].weightLb,
-                  }
-                : undefined
-            }
-            onClose={() => {
-              setItemPickerOpen(false);
-              setItemPickerSwapIndex(null);
-            }}
+            customFields={itemPickerCustomFields}
+            onCustomFieldsChange={setItemPickerCustomFields}
+            isEditingCustom={itemPickerEditingCustom}
+            onClose={closeItemPicker}
             onSelect={(selection) => {
               const swapIndex = itemPickerSwapIndex;
-              setItemPickerSwapIndex(null);
 
               if (selection.source === "custom") {
                 if (swapIndex !== null) {
                   const items = [...data.inventory.items];
-                  const { itemId: _removed, ...rest } = items[swapIndex];
+                  const existing = items[swapIndex];
                   items[swapIndex] = {
-                    ...rest,
+                    ...existing,
                     name: selection.name,
                     weightLb: selection.weightLb,
-                    magicItem: false,
-                    equipped: false,
-                    wieldMain: false,
-                    wieldOff: false,
-                    attuned: false,
+                    costGp: selection.costGp,
                   };
                   applyInventoryItems(items);
                 } else {
@@ -2681,6 +2734,7 @@ export function CharacterSheet({
                       name: selection.name,
                       quantity: 1,
                       weightLb: selection.weightLb,
+                      costGp: selection.costGp,
                       equipped: false,
                       wieldMain: false,
                       wieldOff: false,
@@ -2703,6 +2757,7 @@ export function CharacterSheet({
                   name: catalogItem.name,
                   magicItem: catalogItem.is_magic,
                   weightLb: undefined,
+                  costGp: undefined,
                 };
                 applyInventoryItems(items);
               } else {

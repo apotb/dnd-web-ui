@@ -137,6 +137,11 @@ export function formatItemCostGp(costGp: number): string {
 export function formatItemTooltip(item: Item): string | null {
   const lines: string[] = [];
 
+  const name = item.name.trim();
+  if (name) {
+    lines.push(name);
+  }
+
   const weapon = getWeaponProperties(item);
   if (weapon) {
     if (weapon.damage) {

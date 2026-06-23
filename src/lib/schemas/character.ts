@@ -182,6 +182,8 @@ export const inventoryItemSchema = z.object({
   name: z.string().default(""),
   quantity: z.number().int().min(0).default(1),
   weightLb: z.number().min(0).optional(),
+  /** Custom item value in gold pieces (catalog items use items.cost_gp). */
+  costGp: z.number().min(0).optional(),
   equipped: z.boolean().default(false),
   /** Main hand (weapons only). */
   wieldMain: z.boolean().default(false),

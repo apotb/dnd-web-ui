@@ -25,7 +25,19 @@ import { searchItemsClient } from "@/lib/items/catalog-client";
 
 export type ItemPickerSelection =
   | { source: "catalog"; item: Item }
-  | { source: "custom"; name: string; weightLb?: number };
+  | { source: "custom"; name: string; weightLb?: number; costGp?: number };
+
+export interface ItemPickerCustomFields {
+  name: string;
+  weight: string;
+  cost: string;
+}
+
+export const EMPTY_ITEM_PICKER_CUSTOM_FIELDS: ItemPickerCustomFields = {
+  name: "",
+  weight: "",
+  cost: "",
+};
 
 interface ItemPickerProps {
   open: boolean;
@@ -33,13 +45,35 @@ interface ItemPickerProps {
   onSelect: (selection: ItemPickerSelection) => void;
   /** Pre-filter to a specific category */
   defaultCategory?: ItemCategory;
-  /** When editing a custom inventory row, pre-fill the custom fields. */
-  initialCustom?: { name: string; weightLb?: number };
+  /** Controlled custom item fields (owned by parent). */
+  customFields: ItemPickerCustomFields;
+  onCustomFieldsChange: (fields: ItemPickerCustomFields) => void;
+  /** True when editing an existing custom inventory row. */
+  isEditingCustom?: boolean;
 }
 
 function categoryFilterLabel(category: string): string {
   if (category === "all") return "All categories";
   return categoryLabel(category as ItemCategory);
+}
+
+function parseOptionalNonNegativeNumber(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const n = parseFloat(trimmed);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+function isRequiredNonNegativeNumber(raw: string): boolean {
+  return parseOptionalNonNegativeNumber(raw) !== undefined;
+}
+
+function canSubmitCustomFields(fields: ItemPickerCustomFields): boolean {
+  return (
+    fields.name.trim() !== "" &&
+    isRequiredNonNegativeNumber(fields.weight) &&
+    isRequiredNonNegativeNumber(fields.cost)
+  );
 }
 
 function ItemRow({ item, onSelect }: { item: Item; onSelect: () => void }) {
@@ -88,14 +122,14 @@ export function ItemPicker({
   onClose,
   onSelect,
   defaultCategory,
-  initialCustom,
+  customFields,
+  onCustomFieldsChange,
+  isEditingCustom = false,
 }: ItemPickerProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>(defaultCategory ?? "all");
   const [results, setResults] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
-  const [customName, setCustomName] = useState("");
-  const [customWeight, setCustomWeight] = useState("");
 
   const search = useCallback(async (q: string, cat: string) => {
     setLoading(true);
@@ -110,47 +144,37 @@ export function ItemPicker({
     return () => clearTimeout(tid);
   }, [open, query, category, search]);
 
-  useEffect(() => {
-    if (!open) return;
-    setCustomName(initialCustom?.name ?? "");
-    setCustomWeight(
-      initialCustom?.weightLb != null ? String(initialCustom.weightLb) : ""
-    );
-  }, [open, initialCustom?.name, initialCustom?.weightLb]);
-
-  function resetForm() {
+  function resetSearchForm() {
     setQuery("");
-    setCustomName("");
-    setCustomWeight("");
     setCategory(defaultCategory ?? "all");
-  }
-
-  function parseCustomWeight(): number | undefined {
-    const trimmed = customWeight.trim();
-    if (!trimmed) return undefined;
-    const n = parseFloat(trimmed);
-    return Number.isFinite(n) && n >= 0 ? n : undefined;
   }
 
   function handleSelect(item: Item) {
     onSelect({ source: "catalog", item });
     onClose();
-    resetForm();
+    resetSearchForm();
   }
 
   function handleAddCustom() {
-    const name = customName.trim();
-    if (!name) return;
-    onSelect({ source: "custom", name, weightLb: parseCustomWeight() });
+    const name = customFields.name.trim();
+    const weightLb = parseOptionalNonNegativeNumber(customFields.weight);
+    const costGp = parseOptionalNonNegativeNumber(customFields.cost);
+    if (!name || weightLb === undefined || costGp === undefined) return;
+    onSelect({
+      source: "custom",
+      name,
+      weightLb,
+      costGp,
+    });
     onClose();
-    resetForm();
+    resetSearchForm();
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { onClose(); resetForm(); } }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { onClose(); resetSearchForm(); } }}>
       <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>{initialCustom ? "Edit Item" : "Add Item"}</DialogTitle>
+          <DialogTitle>{isEditingCustom ? "Edit Item" : "Add Item"}</DialogTitle>
         </DialogHeader>
 
         <div className="flex gap-2">
@@ -191,50 +215,76 @@ export function ItemPicker({
 
         <div className="border-t pt-3 space-y-2 shrink-0">
           <p className="text-xs text-muted-foreground">
-            Custom item — not in the catalog (optional weight)
+            Custom item (not in catalog)
           </p>
-          <div className="flex gap-2">
+          <div className="space-y-2">
             <Input
               placeholder="e.g. Rusty gate key"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
+              required
+              value={customFields.name}
+              onChange={(e) =>
+                onCustomFieldsChange({ ...customFields, name: e.target.value })
+              }
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
                   handleAddCustom();
                 }
               }}
-              className="flex-1"
             />
-            <Input
-              type="number"
-              min={0}
-              step="0.1"
-              placeholder="lb"
-              value={customWeight}
-              onChange={(e) => setCustomWeight(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddCustom();
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={0}
+                step="0.1"
+                placeholder="lb"
+                required
+                value={customFields.weight}
+                onChange={(e) =>
+                  onCustomFieldsChange({ ...customFields, weight: e.target.value })
                 }
-              }}
-              className="w-20"
-              aria-label="Weight in pounds"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={!customName.trim()}
-              onClick={handleAddCustom}
-            >
-              {initialCustom ? "Save" : "Add"}
-            </Button>
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddCustom();
+                  }
+                }}
+                className="w-20"
+                aria-label="Weight in pounds"
+              />
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="gp"
+                required
+                value={customFields.cost}
+                onChange={(e) =>
+                  onCustomFieldsChange({ ...customFields, cost: e.target.value })
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddCustom();
+                  }
+                }}
+                className="w-20"
+                aria-label="Value in gold pieces"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!canSubmitCustomFields(customFields)}
+                onClick={handleAddCustom}
+              >
+                {isEditingCustom ? "Save" : "Add"}
+              </Button>
+            </div>
           </div>
         </div>
 
         <div className="flex justify-end pt-2 border-t">
-          <Button variant="ghost" onClick={() => { onClose(); resetForm(); }}>Cancel</Button>
+          <Button variant="ghost" onClick={() => { onClose(); resetSearchForm(); }}>Cancel</Button>
         </div>
       </DialogContent>
     </Dialog>
