@@ -306,7 +306,13 @@ export function createMarkerToken(
   name: string,
   tooltip: string,
   state: CombatState,
-  options?: { id?: string; portraitPath?: string | null }
+  options?: {
+    id?: string;
+    portraitPath?: string | null;
+    droppedByCharacterId?: string;
+    droppedItemId?: string;
+    droppedInventoryItemId?: string;
+  }
 ): CombatToken {
   const width = 1;
   const height = 1;
@@ -320,12 +326,28 @@ export function createMarkerToken(
     label: trimmedName,
     tooltip: tooltip.trim(),
     portraitPath: options?.portraitPath ?? null,
+    droppedByCharacterId: options?.droppedByCharacterId,
+    droppedItemId: options?.droppedItemId,
+    droppedInventoryItemId: options?.droppedInventoryItemId,
     x,
     y,
     width,
     height,
     placed: true,
   });
+}
+
+export function createThrownWeaponMarker(
+  itemName: string,
+  thrownByLabel: string,
+  state: CombatState,
+  options: {
+    droppedByCharacterId: string;
+    droppedItemId: string;
+    droppedInventoryItemId: string;
+  }
+): CombatToken {
+  return createMarkerToken(itemName, `Thrown by ${thrownByLabel}`, state, options);
 }
 
 export function createEnemyToken(enemy: EnemyRecord, state: CombatState): CombatToken {

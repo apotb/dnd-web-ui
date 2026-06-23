@@ -5,6 +5,7 @@ import {
   DamageAppliedField,
   DamageRollField,
   damageRollsToInputValues,
+  DisadvantageHitRollField,
   getDamageSubmitValues,
   HitRollField,
   parseD20Roll,
@@ -17,7 +18,7 @@ import {
   resolveFinalDamageApplied,
 } from "@/lib/combat/attack-resolution";
 import { getDmSaveTargets } from "@/lib/combat/pending-attack-builder";
-import { formatAmmunitionConsumptionLine } from "@/lib/dnd/ammunition";
+import { formatAmmunitionConsumptionLine, formatThrownWeaponConsumptionLine } from "@/lib/dnd/ammunition";
 import type { PendingAttack, PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatAttackReviewCardProps {
@@ -130,8 +131,12 @@ export function CombatAttackReviewCard({
     if (!target) return;
 
     const roll = parseD20Roll(value);
+    const roll2 = target.attackRoll2 ?? null;
     if (roll != null && target.ac != null) {
-      const hitResult = computeHitFromRoll(roll, attackBonus, target.ac);
+      const hitResult = computeHitFromRoll(roll, attackBonus, target.ac, {
+        attackRoll2: roll2,
+        disadvantage: target.attackDisadvantage,
+      });
       updateTarget(tokenId, {
         attackRoll: roll,
         attackTotal: hitResult.total,
@@ -144,6 +149,31 @@ export function CombatAttackReviewCard({
     updateTarget(tokenId, {
       attackRoll: roll,
       attackTotal: roll != null ? roll + attackBonus : null,
+    });
+  }
+
+  function handleAttackRoll2Change(tokenId: string, value: string) {
+    const target = draft.targets.find((entry) => entry.tokenId === tokenId);
+    if (!target) return;
+
+    const roll2 = parseD20Roll(value);
+    const roll = target.attackRoll ?? null;
+    if (roll != null && roll2 != null && target.ac != null) {
+      const hitResult = computeHitFromRoll(roll, attackBonus, target.ac, {
+        attackRoll2: roll2,
+        disadvantage: true,
+      });
+      updateTarget(tokenId, {
+        attackRoll2: roll2,
+        attackTotal: hitResult.total,
+        hit: hitResult.hit,
+        critical: hitResult.critical,
+      });
+      return;
+    }
+
+    updateTarget(tokenId, {
+      attackRoll2: roll2,
     });
   }
 
@@ -229,17 +259,29 @@ export function CombatAttackReviewCard({
             <strong>{target.label}</strong>
             <span className="retro-muted">
               AC {target.ac ?? "?"} · {formatHpLine(target)}
+              {target.attackDisadvantage ? " · Long range (disadvantage)" : ""}
               {afterHp != null ? ` · After damage: ${afterHp} HP` : ""}
             </span>
 
             {pending.rollType === "attack" && !isAwaitingSaves ? (
               <div className="combat-attack-review-fields">
-                <HitRollField
-                  value={target.attackRoll?.toString() ?? ""}
-                  onChange={(value) => handleAttackRollChange(target.tokenId, value)}
-                  attackBonus={attackBonus}
-                  disabled={busy}
-                />
+                {target.attackDisadvantage ? (
+                  <DisadvantageHitRollField
+                    roll1={target.attackRoll?.toString() ?? ""}
+                    roll2={target.attackRoll2?.toString() ?? ""}
+                    onRoll1Change={(value) => handleAttackRollChange(target.tokenId, value)}
+                    onRoll2Change={(value) => handleAttackRoll2Change(target.tokenId, value)}
+                    attackBonus={attackBonus}
+                    disabled={busy}
+                  />
+                ) : (
+                  <HitRollField
+                    value={target.attackRoll?.toString() ?? ""}
+                    onChange={(value) => handleAttackRollChange(target.tokenId, value)}
+                    attackBonus={attackBonus}
+                    disabled={busy}
+                  />
+                )}
                 <label className="combat-attack-submit-field combat-attack-review-check">
                   <input
                     type="checkbox"
@@ -372,6 +414,11 @@ export function CombatAttackReviewCard({
               pending.ammunitionItemName,
               pending.ammunitionQuantity ?? 1
             )}
+          </span>
+        ) : null}
+        {pending.thrownItemName ? (
+          <span className="retro-muted">
+            {formatThrownWeaponConsumptionLine(pending.thrownItemName)}
           </span>
         ) : null}
       </div>

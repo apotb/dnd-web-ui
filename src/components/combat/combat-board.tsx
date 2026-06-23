@@ -108,7 +108,7 @@ import {
   hasPendingAttackForAttacker,
   canAdvanceTurnWithPendingAttacks,
 } from "@/lib/combat/pending-attacks";
-import { getTargetingHighlights } from "@/lib/combat/targeting";
+import { getTargetingHighlights, isAttackAtLongRange, parseAttackRangeSpec } from "@/lib/combat/targeting";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import {
   submitCombatOpportunityAttack,
@@ -162,6 +162,13 @@ function tokenColorClass(kind: CombatToken["kind"]): string {
   if (kind === "ally") return "combat-token-ally";
   if (kind === "marker") return "combat-token-marker";
   return "combat-token-enemy";
+}
+
+/** Lower renders first (underneath); party on top, then enemies, then markers/allies. */
+function tokenStackOrder(kind: CombatToken["kind"]): number {
+  if (kind === "party") return 2;
+  if (kind === "enemy") return 1;
+  return 0;
 }
 
 function resolveTokenPortraitUrl(
@@ -361,6 +368,7 @@ export function CombatBoard({
     aoeCenter: { x: number; y: number } | null;
     isOpportunityAttack?: boolean;
     attackerToken?: CombatToken;
+    attackDisadvantageByTokenId?: Record<string, boolean>;
   } | null>(null);
   const [hoveredTargetingCell, setHoveredTargetingCell] = useState<{
     x: number;
@@ -626,6 +634,14 @@ export function CombatBoard({
       .map((tokenId) => tokensById.get(tokenId))
       .filter((token): token is CombatToken => token != null);
   }, [combatState.initiative.order, combatState.initiative.status, combatState.tokens]);
+
+  const gridRenderTokens = useMemo(
+    () =>
+      [...combatState.tokens].sort(
+        (a, b) => tokenStackOrder(a.kind) - tokenStackOrder(b.kind)
+      ),
+    [combatState.tokens]
+  );
 
   const selectedToken = selectedTokenId
     ? combatState.tokens.find((token) => token.id === selectedTokenId) ?? null
@@ -1015,16 +1031,38 @@ export function CombatBoard({
     return map;
   }, [combatState.tokens]);
 
+  function buildAttackDisadvantageMap(
+    attacker: CombatToken | null | undefined,
+    attack: DerivedAttack,
+    targets: CombatToken[]
+  ): Record<string, boolean> {
+    if (!attacker) return {};
+    const spec = parseAttackRangeSpec(attack);
+    return Object.fromEntries(
+      targets.map((target) => [
+        target.id,
+        isAttackAtLongRange(attacker, target, combatState, spec),
+      ])
+    );
+  }
+
   function openAttackSubmit(
     targets: CombatToken[],
-    aoeCenter: { x: number; y: number } | null
+    aoeCenter: { x: number; y: number } | null,
+    attacker: CombatToken | null = currentTurnToken
   ) {
-    if (!attackTargeting || targets.length === 0) return;
+    if (!attackTargeting || targets.length === 0 || !attacker) return;
     setAttackSubmitDraft({
       option: attackTargeting.option,
       attack: attackTargeting.attack,
       targets,
       aoeCenter,
+      attackerToken: attacker,
+      attackDisadvantageByTokenId: buildAttackDisadvantageMap(
+        attacker,
+        attackTargeting.attack,
+        targets
+      ),
     });
     setAttackTargeting(null);
     setHoveredTargetingCell(null);
@@ -1173,6 +1211,11 @@ export function CombatBoard({
       aoeCenter: null,
       isOpportunityAttack: true,
       attackerToken: userOaAttackerToken,
+      attackDisadvantageByTokenId: buildAttackDisadvantageMap(
+        userOaAttackerToken,
+        attack,
+        [provokingToken]
+      ),
     });
   }
 
@@ -1833,7 +1876,7 @@ export function CombatBoard({
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${markerWithoutPortrait ? " combat-token-marker-no-portrait" : ""}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -1850,7 +1893,9 @@ export function CombatBoard({
                 {token.label.slice(0, 1)}
               </div>
             )
-          ) : null}
+          ) : (
+            <div className="combat-token-portrait combat-token-portrait-spacer" aria-hidden />
+          )}
           <div
             className={`combat-token-label${isExpanded ? " combat-token-label-expanded" : ""}`}
           >
@@ -2328,7 +2373,7 @@ export function CombatBoard({
                     draggable={false}
                   />
                 ) : null}
-                {combatState.tokens.map((token) => renderToken(token))}
+                {gridRenderTokens.map((token) => renderToken(token))}
                 {renderPendingMoveGhost()}
                 {attackTargeting && currentTurnToken && userControlsTurn && targetingHighlights ? (
                   <CombatTargetingOverlay
@@ -2417,6 +2462,7 @@ export function CombatBoard({
           attack={attackSubmitDraft.attack}
           optionName={attackSubmitDraft.option.name}
           targets={attackSubmitDraft.targets}
+          attackDisadvantageByTokenId={attackSubmitDraft.attackDisadvantageByTokenId ?? {}}
           damageTakenByTokenId={damageTakenByTokenId}
           submitting={submittingAttack}
           onCancel={() => setAttackSubmitDraft(null)}

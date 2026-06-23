@@ -6,9 +6,11 @@ import type { CombatToken } from "@/lib/schemas/combat-state";
 import {
   areDamageRollsComplete,
   DamageRollField,
+  DisadvantageHitRollField,
   emptyDamageRolls,
   getDamageSubmitValues,
   HitRollField,
+  isDisadvantageHitRollComplete,
   isD20RollComplete,
   parseD20Roll,
 } from "@/components/combat/combat-roll-fields";
@@ -16,12 +18,14 @@ import { parseDamageNotation } from "@/lib/dnd/dice";
 
 export interface AttackSubmitValues {
   attackRoll?: number | null;
+  attackRoll2?: number | null;
   damageText?: string;
   damageRolls?: number[];
   damageAmount?: number | null;
   perTarget?: Array<{
     tokenId: string;
     attackRoll?: number | null;
+    attackRoll2?: number | null;
     damageText: string;
     damageRolls?: number[];
     damageAmount: number | null;
@@ -32,6 +36,7 @@ interface CombatAttackSubmitModalProps {
   attack: DerivedAttack;
   optionName: string;
   targets: CombatToken[];
+  attackDisadvantageByTokenId?: Record<string, boolean>;
   damageTakenByTokenId: Record<string, number>;
   onCancel: () => void;
   onSubmit: (values: AttackSubmitValues) => void;
@@ -49,6 +54,7 @@ export function CombatAttackSubmitModal({
   attack,
   optionName,
   targets,
+  attackDisadvantageByTokenId = {},
   damageTakenByTokenId,
   onCancel,
   onSubmit,
@@ -59,14 +65,17 @@ export function CombatAttackSubmitModal({
   const isAuto = rollType === "auto";
   const multiTarget = targets.length > 1 && !isSave;
   const attackDescriptionBlurb = formatAttackDescriptionBlurb(attack);
+  const singleTargetDisadvantage =
+    targets.length === 1 ? attackDisadvantageByTokenId[targets[0].id] === true : false;
 
   const [attackRoll, setAttackRoll] = useState("");
+  const [attackRoll2, setAttackRoll2] = useState("");
   const [damageRolls, setDamageRolls] = useState<string[]>(() =>
     emptyDamageRolls(attack.damageDice)
   );
   const [damageFallbackTotal, setDamageFallbackTotal] = useState("");
   const [perTargetRolls, setPerTargetRolls] = useState<
-    Record<string, { attackRoll: string; damageAmount: string }>
+    Record<string, { attackRoll: string; attackRoll2: string; damageAmount: string }>
   >({});
 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -86,12 +95,21 @@ export function CombatAttackSubmitModal({
     isSave ||
     (isAuto
       ? sharedDamageComplete
-      : isD20RollComplete(attackRoll) && sharedDamageComplete);
+      : singleTargetDisadvantage
+        ? isDisadvantageHitRollComplete(attackRoll, attackRoll2) && sharedDamageComplete
+        : isD20RollComplete(attackRoll) && sharedDamageComplete);
 
   const multiTargetReady =
     sharedDamageComplete &&
     targets.every((target) => {
-      const entry = perTargetRolls[target.id] ?? { attackRoll: "", damageAmount: "" };
+      const entry = perTargetRolls[target.id] ?? {
+        attackRoll: "",
+        attackRoll2: "",
+        damageAmount: "",
+      };
+      if (attackDisadvantageByTokenId[target.id]) {
+        return isDisadvantageHitRollComplete(entry.attackRoll, entry.attackRoll2);
+      }
       return isD20RollComplete(entry.attackRoll);
     });
 
@@ -120,11 +138,14 @@ export function CombatAttackSubmitModal({
         perTarget: targets.map((target) => {
           const entry = perTargetRolls[target.id] ?? {
             attackRoll: "",
+            attackRoll2: "",
             damageAmount: "",
           };
+          const disadvantage = attackDisadvantageByTokenId[target.id] === true;
           return {
             tokenId: target.id,
             attackRoll: parseD20Roll(entry.attackRoll),
+            attackRoll2: disadvantage ? parseD20Roll(entry.attackRoll2) : null,
             damageText: sharedDamage.damageText,
             damageRolls: sharedDamage.damageRolls,
             damageAmount: parseOptionalInt(entry.damageAmount) ?? sharedDamage.damageAmount,
@@ -136,6 +157,8 @@ export function CombatAttackSubmitModal({
 
     onSubmit({
       attackRoll: isSave || isAuto ? null : parseD20Roll(attackRoll),
+      attackRoll2:
+        isSave || isAuto || !singleTargetDisadvantage ? null : parseD20Roll(attackRoll2),
       ...sharedDamage,
     });
   }
@@ -157,6 +180,9 @@ export function CombatAttackSubmitModal({
           {targets.map((target) => (
             <div key={target.id} className="combat-attack-submit-target">
               <strong>{target.label}</strong>
+              {attackDisadvantageByTokenId[target.id] ? (
+                <span className="retro-muted">Long range (disadvantage)</span>
+              ) : null}
               <span className="retro-muted">
                 Battle damage taken: {damageTakenByTokenId[target.id] ?? 0}
               </span>
@@ -167,12 +193,23 @@ export function CombatAttackSubmitModal({
         {!isSave && !multiTarget ? (
           <div className="combat-attack-submit-fields">
             {!isAuto ? (
-              <HitRollField
-                value={attackRoll}
-                onChange={setAttackRoll}
-                attackBonus={attack.attackBonus}
-                disabled={submitting}
-              />
+              singleTargetDisadvantage ? (
+                <DisadvantageHitRollField
+                  roll1={attackRoll}
+                  roll2={attackRoll2}
+                  onRoll1Change={setAttackRoll}
+                  onRoll2Change={setAttackRoll2}
+                  attackBonus={attack.attackBonus}
+                  disabled={submitting}
+                />
+              ) : (
+                <HitRollField
+                  value={attackRoll}
+                  onChange={setAttackRoll}
+                  attackBonus={attack.attackBonus}
+                  disabled={submitting}
+                />
+              )
             ) : (
               <p className="retro-muted">Auto hit — enter damage below.</p>
             )}
@@ -213,22 +250,45 @@ export function CombatAttackSubmitModal({
             {targets.map((target) => {
               const entry = perTargetRolls[target.id] ?? {
                 attackRoll: "",
+                attackRoll2: "",
                 damageAmount: "",
               };
+              const disadvantage = attackDisadvantageByTokenId[target.id] === true;
               return (
                 <div key={target.id} className="combat-attack-submit-target-block">
                   <strong>{target.label}</strong>
-                  <HitRollField
-                    value={entry.attackRoll}
-                    onChange={(value) =>
-                      setPerTargetRolls((current) => ({
-                        ...current,
-                        [target.id]: { ...entry, attackRoll: value },
-                      }))
-                    }
-                    attackBonus={attack.attackBonus}
-                    disabled={submitting}
-                  />
+                  {disadvantage ? (
+                    <DisadvantageHitRollField
+                      roll1={entry.attackRoll}
+                      roll2={entry.attackRoll2}
+                      onRoll1Change={(value) =>
+                        setPerTargetRolls((current) => ({
+                          ...current,
+                          [target.id]: { ...entry, attackRoll: value },
+                        }))
+                      }
+                      onRoll2Change={(value) =>
+                        setPerTargetRolls((current) => ({
+                          ...current,
+                          [target.id]: { ...entry, attackRoll2: value },
+                        }))
+                      }
+                      attackBonus={attack.attackBonus}
+                      disabled={submitting}
+                    />
+                  ) : (
+                    <HitRollField
+                      value={entry.attackRoll}
+                      onChange={(value) =>
+                        setPerTargetRolls((current) => ({
+                          ...current,
+                          [target.id]: { ...entry, attackRoll: value },
+                        }))
+                      }
+                      attackBonus={attack.attackBonus}
+                      disabled={submitting}
+                    />
+                  )}
                   <label className="combat-attack-submit-field">
                     <span>Damage total</span>
                     <input

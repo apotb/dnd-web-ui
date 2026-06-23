@@ -10,8 +10,10 @@ import type { PhbClass } from "@/lib/dnd/phb/types";
 import {
   countAmmunitionInInventory,
   formatAmmunitionLine,
+  formatThrownWeaponLine,
   getAmmunitionDisplayName,
   getAmmunitionSlugForWeapon,
+  weaponConsumesSelfWhenThrown,
   weaponUsesAmmunition,
 } from "@/lib/dnd/ammunition";
 import { getWeaponProperties } from "@/lib/schemas/item";
@@ -239,6 +241,8 @@ export interface DerivedAttack {
   saveDc?: number;
   /** slug of the catalog item that generated this attack, if any */
   itemId?: string;
+  /** Inventory row id for the equipped weapon stack, if any. */
+  inventoryStackId?: string;
   /** Off-hand weapon attack from two-weapon fighting (bonus action). */
   isOffHand?: boolean;
   /** Catalog slug of ammunition consumed per attack, if any. */
@@ -247,6 +251,12 @@ export interface DerivedAttack {
   ammunitionName?: string;
   /** Remaining ammunition in inventory when the attack was derived. */
   ammunitionRemaining?: number;
+  /** This attack throws the weapon itself (javelin, handaxe, etc.). */
+  throwsWeapon?: boolean;
+  /** Display name of the thrown weapon. */
+  thrownItemName?: string;
+  /** Remaining thrown weapons in this stack when derived. */
+  thrownRemaining?: number;
 }
 
 export function formatAttackRollLine(attack: DerivedAttack): string {
@@ -274,6 +284,9 @@ export function formatAttackDescriptionBlurb(attack: DerivedAttack): string {
   if (attack.range) parts.push(attack.range);
   if (attack.ammunitionName != null && attack.ammunitionRemaining != null) {
     parts.push(formatAmmunitionLine(attack.ammunitionName, attack.ammunitionRemaining));
+  }
+  if (attack.throwsWeapon && attack.thrownItemName != null && attack.thrownRemaining != null) {
+    parts.push(formatThrownWeaponLine(attack.thrownItemName, attack.thrownRemaining));
   }
   if (notes) parts.push(notes);
   return parts.join(" · ");
@@ -372,6 +385,7 @@ export function deriveWeaponAttacks(
     const baseName = invItem.name || catalogItem.name;
 
     const usesAmmunition = isRanged && weaponUsesAmmunition(catalogItem);
+    const throwsWeapon = weaponConsumesSelfWhenThrown(catalogItem);
     const ammunitionItemId = usesAmmunition
       ? getAmmunitionSlugForWeapon(catalogItem.slug)
       : null;
@@ -409,10 +423,14 @@ export function deriveWeaponAttacks(
         notes: notes.join(", "),
         source: "weapon",
         itemId: invItem.itemId,
+        inventoryStackId: invItem.id,
         isOffHand,
         ammunitionItemId: ammunitionItemId ?? undefined,
         ammunitionName,
         ammunitionRemaining,
+        throwsWeapon: throwsWeapon || undefined,
+        thrownItemName: throwsWeapon ? baseName : undefined,
+        thrownRemaining: throwsWeapon ? invItem.quantity : undefined,
       });
     };
 

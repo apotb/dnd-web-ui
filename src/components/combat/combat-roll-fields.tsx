@@ -67,6 +67,74 @@ export function HitRollField({
   );
 }
 
+interface DisadvantageHitRollFieldProps {
+  roll1: string;
+  roll2: string;
+  onRoll1Change: (value: string) => void;
+  onRoll2Change: (value: string) => void;
+  attackBonus: number;
+  disabled?: boolean;
+}
+
+export function isDisadvantageHitRollComplete(roll1: string, roll2: string): boolean {
+  return isD20RollComplete(roll1) && isD20RollComplete(roll2);
+}
+
+export function DisadvantageHitRollField({
+  roll1,
+  roll2,
+  onRoll1Change,
+  onRoll2Change,
+  attackBonus,
+  disabled = false,
+}: DisadvantageHitRollFieldProps) {
+  const parsed1 = parseD20Roll(roll1);
+  const parsed2 = parseD20Roll(roll2);
+  const usedRoll =
+    parsed1 != null && parsed2 != null ? Math.min(parsed1, parsed2) : null;
+  const total = usedRoll != null ? usedRoll + attackBonus : null;
+  const bonus = formatRollBonus(attackBonus);
+
+  return (
+    <div className="combat-attack-submit-field">
+      <span>Roll for hit (disadvantage — use lower die)</span>
+      <div className="combat-roll-row combat-roll-row-wrap">
+        <input
+          type="text"
+          inputMode="numeric"
+          className="candy-input combat-roll-input"
+          placeholder="d20"
+          value={roll1}
+          onChange={(event) => onRoll1Change(sanitizeDieRollInput(event.target.value, 20))}
+          disabled={disabled}
+          aria-label="First d20 roll"
+          aria-invalid={roll1.trim().length > 0 && !isD20RollComplete(roll1)}
+        />
+        <span className="combat-roll-sep">,</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          className="candy-input combat-roll-input"
+          placeholder="d20"
+          value={roll2}
+          onChange={(event) => onRoll2Change(sanitizeDieRollInput(event.target.value, 20))}
+          disabled={disabled}
+          aria-label="Second d20 roll"
+          aria-invalid={roll2.trim().length > 0 && !isD20RollComplete(roll2)}
+        />
+        <span className="combat-roll-sep">→</span>
+        <span className="combat-roll-mod">{usedRoll ?? "—"}</span>
+        <span className="combat-roll-sep">{bonus.sign}</span>
+        <span className="combat-roll-mod">{bonus.amount}</span>
+        <span className="combat-roll-sep">=</span>
+        <span className="combat-roll-total" aria-live="polite">
+          {total ?? "—"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 interface DamageRollFieldProps {
   damageDice: string;
   rolls: string[];

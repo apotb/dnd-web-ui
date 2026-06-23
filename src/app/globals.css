@@ -3617,6 +3617,13 @@ html.campaign-bg-active .retro-back-link {
   color: #f8fafc;
 }
 
+.combat-token-portrait-spacer {
+  visibility: hidden;
+  border-color: transparent;
+  box-shadow: none;
+  background: transparent;
+}
+
 .combat-token-label {
   position: absolute;
   left: 50%;
@@ -3856,17 +3863,6 @@ html.campaign-bg-active .retro-back-link {
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.35rem;
-}
-
-.combat-token-marker-no-portrait .combat-token-badge {
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 2px;
-}
-
-.combat-token-marker-no-portrait .combat-token-label {
-  position: static;
-  transform: none;
 }
 
 .combat-marker-dialog-tooltip {

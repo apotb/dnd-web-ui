@@ -28,6 +28,27 @@ export function weaponUsesAmmunition(catalogItem: Item): boolean {
   return properties.weaponProperties.includes("ammunition");
 }
 
+/** Thrown weapons (javelin, handaxe, etc.) leave the thrower's inventory when used. */
+export function weaponConsumesSelfWhenThrown(catalogItem: Item): boolean {
+  const properties = getWeaponProperties(catalogItem);
+  if (!properties) return false;
+  if (!properties.weaponProperties.includes("thrown")) return false;
+  if (
+    properties.weaponRange === "ranged" &&
+    properties.weaponProperties.includes("ammunition")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function findInventoryStack(
+  items: InventoryItem[],
+  inventoryStackId: string
+): InventoryItem | null {
+  return items.find((item) => item.quantity > 0 && item.id === inventoryStackId) ?? null;
+}
+
 export function countAmmunitionInInventory(
   items: InventoryItem[],
   ammunitionItemId: string
@@ -62,4 +83,14 @@ export function formatAmmunitionLine(name: string, count: number): string {
 export function formatAmmunitionConsumptionLine(name: string, quantity = 1): string {
   const label = quantity === 1 ? name : `${name}s`;
   return `Consumes ${quantity} ${label}`;
+}
+
+export function formatThrownWeaponLine(name: string, count: number): string {
+  const label = count === 1 ? name : `${name}s`;
+  return `Thrown: ${count} ${label}`;
+}
+
+export function formatThrownWeaponConsumptionLine(name: string, quantity = 1): string {
+  const label = quantity === 1 ? name : `${name}s`;
+  return `Throws ${quantity} ${label} onto the map`;
 }

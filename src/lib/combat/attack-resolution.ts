@@ -2,6 +2,7 @@ import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyHpDamage } from "@/lib/character/combat-derivation";
 import { parseDamageNotation } from "@/lib/dnd/dice";
 import { consumeInventoryItem } from "@/lib/dnd/supplies";
+import { createThrownWeaponMarker } from "@/lib/combat/state-utils";
 import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
 import {
   hasPendingAttackForAttacker,
@@ -53,16 +54,31 @@ export function getTokenMaxHp(
   return 0;
 }
 
+export function resolveEffectiveAttackRoll(
+  roll: number,
+  roll2: number | null | undefined,
+  disadvantage: boolean
+): number {
+  if (!disadvantage || roll2 == null) return roll;
+  return Math.min(roll, roll2);
+}
+
 export function computeHitFromRoll(
   attackRoll: number,
   attackBonus: number,
-  ac: number
-): { total: number; hit: boolean; critical: boolean } {
-  const total = attackRoll + attackBonus;
-  const critical = attackRoll === 20;
-  const fumble = attackRoll === 1;
+  ac: number,
+  options?: { attackRoll2?: number | null; disadvantage?: boolean }
+): { total: number; hit: boolean; critical: boolean; usedRoll: number } {
+  const usedRoll = resolveEffectiveAttackRoll(
+    attackRoll,
+    options?.attackRoll2,
+    options?.disadvantage ?? false
+  );
+  const total = usedRoll + attackBonus;
+  const critical = usedRoll === 20;
+  const fumble = usedRoll === 1;
   const hit = critical || (!fumble && total >= ac);
-  return { total, hit, critical };
+  return { total, hit, critical, usedRoll };
 }
 
 export function computeSaveSuccess(saveTotal: number, saveDc: number): boolean {
@@ -148,24 +164,57 @@ export function applyResolvedAttack(
   });
 
   const attacker = state.tokens.find((token) => token.id === pending.attackerTokenId);
-  if (
-    attacker?.characterId &&
-    pending.ammunitionInventoryItemId &&
-    pending.ammunitionQuantity
-  ) {
+  let markerToken: CombatToken | null = null;
+
+  if (attacker?.characterId) {
     const character = charactersById[attacker.characterId];
     if (character) {
-      const inventoryItems = consumeInventoryItem(
-        character.data.inventory.items,
-        pending.ammunitionInventoryItemId
+      let inventoryItems = character.data.inventory.items;
+      const existingUpdate = characterUpdates.find(
+        (entry) => entry.characterId === attacker.characterId
       );
-      const combat = character.data.combat;
-      const attackerToken = tokens.find((token) => token.id === attacker.id);
-      upsertCharacterUpdate(attacker.characterId, {
-        currentHp: attackerToken?.currentHp ?? combat.currentHp,
-        tempHp: combat.tempHp,
-        inventoryItems,
-      });
+      if (existingUpdate?.inventoryItems) {
+        inventoryItems = existingUpdate.inventoryItems;
+      }
+
+      let inventoryChanged = false;
+      if (pending.ammunitionInventoryItemId && pending.ammunitionQuantity) {
+        inventoryItems = consumeInventoryItem(
+          inventoryItems,
+          pending.ammunitionInventoryItemId
+        );
+        inventoryChanged = true;
+      }
+      if (pending.thrownInventoryItemId) {
+        inventoryItems = consumeInventoryItem(
+          inventoryItems,
+          pending.thrownInventoryItemId
+        );
+        inventoryChanged = true;
+      }
+
+      if (inventoryChanged) {
+        const combat = character.data.combat;
+        const attackerToken = tokens.find((token) => token.id === attacker.id);
+        upsertCharacterUpdate(attacker.characterId, {
+          currentHp: attackerToken?.currentHp ?? combat.currentHp,
+          tempHp: combat.tempHp,
+          inventoryItems,
+        });
+      }
+
+      if (pending.thrownInventoryItemId && pending.thrownItemName) {
+        markerToken = createThrownWeaponMarker(
+          pending.thrownItemName,
+          character.name,
+          { ...state, tokens },
+          {
+            droppedByCharacterId: attacker.characterId,
+            droppedItemId: pending.thrownItemId ?? "",
+            droppedInventoryItemId: pending.thrownInventoryItemId,
+          }
+        );
+      }
     }
   }
 
@@ -186,7 +235,7 @@ export function applyResolvedAttack(
   let nextState: CombatState = removePendingAttack(
     {
       ...state,
-      tokens,
+      tokens: markerToken ? [...tokens, markerToken] : tokens,
       turn,
     },
     pending.id
@@ -230,6 +279,7 @@ export function buildPendingTargetFromToken(
     requiresSave: context.requiresSave,
     saveSubmitted: !context.requiresSave,
     needsDmSave,
+    attackDisadvantage: false,
   };
 }
 

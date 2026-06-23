@@ -6,8 +6,12 @@ import type { GridPosition } from "@/lib/combat/movement";
 export type AoeShape = "radius" | "cone" | "cube";
 
 export interface AttackRangeSpec {
-  /** Single-target max range in feet (normal range for weapons). */
+  /** Max range in feet (long range when weapon has normal/long bands). */
   maxFt: number;
+  /** Range before long-range disadvantage applies. */
+  normalRangeFt: number;
+  /** Long range limit when weapon has a second range band. */
+  longRangeFt?: number;
   /** Whether placement is AoE (click any cell). */
   isAoe: boolean;
   aoeShape?: AoeShape;
@@ -83,6 +87,7 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
     const size = parseInt(radiusMatch[1], 10);
     return {
       maxFt: size,
+      normalRangeFt: size,
       isAoe: true,
       aoeShape: "radius",
       aoeSizeFt: size,
@@ -95,6 +100,7 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
     const size = parseInt(coneMatch[1], 10);
     return {
       maxFt: size,
+      normalRangeFt: size,
       isAoe: true,
       aoeShape: "cone",
       aoeSizeFt: size,
@@ -107,6 +113,7 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
     const size = parseInt(cubeMatch[1], 10);
     return {
       maxFt: size,
+      normalRangeFt: size,
       isAoe: true,
       aoeShape: "cube",
       aoeSizeFt: size,
@@ -117,6 +124,7 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
   if (range === "touch" || range === "5 ft") {
     return {
       maxFt: 5,
+      normalRangeFt: 5,
       isAoe: false,
       requiresPrimaryTarget: true,
     };
@@ -124,8 +132,12 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
 
   const slashMatch = range.match(/^(\d+)\/(\d+)\s*ft$/);
   if (slashMatch) {
+    const normalRangeFt = parseInt(slashMatch[1], 10);
+    const longRangeFt = parseInt(slashMatch[2], 10);
     return {
-      maxFt: parseInt(slashMatch[1], 10),
+      maxFt: longRangeFt,
+      normalRangeFt,
+      longRangeFt,
       isAoe: false,
       requiresPrimaryTarget: true,
     };
@@ -133,8 +145,10 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
 
   const ftMatch = range.match(/^(\d+)\s*(?:ft|feet)$/);
   if (ftMatch) {
+    const maxFt = parseInt(ftMatch[1], 10);
     return {
-      maxFt: parseInt(ftMatch[1], 10),
+      maxFt,
+      normalRangeFt: maxFt,
       isAoe: false,
       requiresPrimaryTarget: true,
     };
@@ -142,9 +156,32 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
 
   return {
     maxFt: 5,
+    normalRangeFt: 5,
     isAoe: false,
     requiresPrimaryTarget: true,
   };
+}
+
+export function isAttackAtLongRange(
+  attacker: CombatToken,
+  target: CombatToken,
+  state: CombatState,
+  spec: AttackRangeSpec
+): boolean {
+  if (!spec.longRangeFt || spec.longRangeFt <= spec.normalRangeFt) return false;
+  const distance = distanceFeetBetweenTokens(attacker, target, state.tileFeet);
+  return distance > spec.normalRangeFt && distance <= spec.longRangeFt;
+}
+
+export function isTokenInAttackRange(
+  attacker: CombatToken,
+  target: CombatToken,
+  state: CombatState,
+  spec: AttackRangeSpec
+): boolean {
+  if (!isTokenOnGrid(attacker, state) || !isTokenOnGrid(target, state)) return false;
+  const distance = distanceFeetBetweenTokens(attacker, target, state.tileFeet);
+  return distance <= spec.maxFt;
 }
 
 export function isTokenOnGrid(token: CombatToken, state: CombatState): boolean {
@@ -173,6 +210,14 @@ export function getValidHostileTargets(
   );
 }
 
+export function getValidHostileTargetsForAttack(
+  attacker: CombatToken,
+  state: CombatState,
+  spec: AttackRangeSpec
+): CombatToken[] {
+  return getValidHostileTargets(attacker, state, spec.maxFt);
+}
+
 export function findHostileTargetAtCell(
   attacker: CombatToken,
   cell: GridPosition,
@@ -183,7 +228,7 @@ export function findHostileTargetAtCell(
   if (spec.isAoe) return null;
 
   const validIds = new Set(
-    getValidHostileTargets(attacker, state, spec.maxFt).map((token) => token.id)
+    getValidHostileTargetsForAttack(attacker, state, spec).map((token) => token.id)
   );
 
   for (const token of state.tokens) {
@@ -373,7 +418,7 @@ export function getTargetingHighlights(
     };
   }
 
-  const validTargets = getValidHostileTargets(attacker, state, spec.maxFt);
+  const validTargets = getValidHostileTargetsForAttack(attacker, state, spec);
   const validCells: GridPosition[] = [];
   for (const token of validTargets) {
     for (let dy = 0; dy < token.height; dy++) {

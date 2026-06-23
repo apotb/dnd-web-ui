@@ -8,14 +8,15 @@ import {
 import {
   findHostileTargetAtCell,
   getAoePreviewTargets,
-  getValidHostileTargets,
+  getValidHostileTargetsForAttack,
+  isAttackAtLongRange,
   isTokenOnGrid,
   parseAttackRangeSpec,
 } from "@/lib/combat/targeting";
 import type { CombatOption } from "@/lib/combat/combat-options";
 import { isMainHandWeaponAttackOption } from "@/lib/combat/combat-options";
 import type { ParsedCharacter } from "@/lib/character/utils";
-import { findAmmunitionStack } from "@/lib/dnd/ammunition";
+import { findAmmunitionStack, findInventoryStack } from "@/lib/dnd/ammunition";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type {
@@ -28,12 +29,14 @@ import { isHostileToken } from "@/lib/combat/engagement";
 
 export interface AttackSubmissionInput {
   attackRoll?: number | null;
+  attackRoll2?: number | null;
   damageText?: string;
   damageRolls?: number[];
   damageAmount?: number | null;
   perTarget?: Array<{
     tokenId: string;
     attackRoll?: number | null;
+    attackRoll2?: number | null;
     damageText?: string;
     damageRolls?: number[];
     damageAmount?: number | null;
@@ -102,6 +105,32 @@ function resolvePendingAmmunition(
   };
 }
 
+function resolvePendingThrownWeapon(
+  attack: DerivedAttack,
+  attacker: CombatToken,
+  charactersById: Record<string, ParsedCharacter>
+): Pick<
+  PendingAttack,
+  "thrownInventoryItemId" | "thrownItemName" | "thrownItemId"
+> {
+  if (!attack.throwsWeapon || !attack.inventoryStackId || !attacker.characterId) return {};
+
+  const character = charactersById[attacker.characterId];
+  if (!character) return {};
+
+  const stack = findInventoryStack(
+    character.data.inventory.items,
+    attack.inventoryStackId
+  );
+  if (!stack) return {};
+
+  return {
+    thrownInventoryItemId: stack.id,
+    thrownItemName: attack.thrownItemName ?? attack.name,
+    thrownItemId: attack.itemId,
+  };
+}
+
 export function buildTargetList(
   attacker: CombatToken,
   state: CombatState,
@@ -158,18 +187,25 @@ export function createPendingAttack(
       enemyData: ctx.enemyData,
       requiresSave,
     });
+    const attackDisadvantage = isAttackAtLongRange(attacker, token, state, spec);
 
     const perTarget = submission.perTarget?.find((entry) => entry.tokenId === token.id);
     const attackRoll = perTarget?.attackRoll ?? submission.attackRoll ?? null;
+    const attackRoll2 = perTarget?.attackRoll2 ?? submission.attackRoll2 ?? null;
     const damageText = perTarget?.damageText ?? submission.damageText ?? "";
     const damageRolls = perTarget?.damageRolls ?? submission.damageRolls;
     const damageAmount = perTarget?.damageAmount ?? submission.damageAmount ?? null;
 
     if (rollType === "attack" && attackRoll != null && base.ac != null) {
-      const hitResult = computeHitFromRoll(attackRoll, attack.attackBonus, base.ac);
+      const hitResult = computeHitFromRoll(attackRoll, attack.attackBonus, base.ac, {
+        attackRoll2,
+        disadvantage: attackDisadvantage,
+      });
       const resolvedTarget: PendingAttackTarget = {
         ...base,
         attackRoll,
+        attackRoll2: attackDisadvantage ? attackRoll2 : null,
+        attackDisadvantage,
         attackTotal: hitResult.total,
         hit: hitResult.hit,
         critical: hitResult.critical,
@@ -198,6 +234,7 @@ export function createPendingAttack(
 
     return {
       ...base,
+      attackDisadvantage,
       damageText,
       damageRolls,
       damageAmount,
@@ -227,6 +264,7 @@ export function createPendingAttack(
     isMainHandWeapon: isMainHandWeaponAttackOption(option),
     isAoe: spec.isAoe,
     ...resolvePendingAmmunition(attack, attacker, charactersById),
+    ...resolvePendingThrownWeapon(attack, attacker, charactersById),
     aoeCenter: aoeCenter ?? undefined,
     aoeShape: spec.aoeShape,
     status,
@@ -329,5 +367,5 @@ export function isTokenValidSingleTarget(
   if (!isHostileToken(attacker, target) && attack.rollType !== "save") return false;
   const spec = parseAttackRangeSpec(attack);
   if (spec.isAoe) return false;
-  return getValidHostileTargets(attacker, state, spec.maxFt).some((t) => t.id === target.id);
+  return getValidHostileTargetsForAttack(attacker, state, spec).some((t) => t.id === target.id);
 }

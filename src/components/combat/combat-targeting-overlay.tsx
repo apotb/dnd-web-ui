@@ -7,7 +7,7 @@ import {
   type AttackRangeSpec,
 } from "@/lib/combat/targeting";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
-import { formatAmmunitionLine } from "@/lib/dnd/ammunition";
+import { formatAmmunitionLine, formatThrownWeaponLine } from "@/lib/dnd/ammunition";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 
 interface CombatTargetingOverlayProps {
@@ -49,6 +49,12 @@ export function CombatTargetingOverlay({
   const ammunitionLine =
     attack.ammunitionName != null && attack.ammunitionRemaining != null
       ? formatAmmunitionLine(attack.ammunitionName, attack.ammunitionRemaining)
+      : null;
+  const thrownWeaponLine =
+    attack.throwsWeapon &&
+    attack.thrownItemName != null &&
+    attack.thrownRemaining != null
+      ? formatThrownWeaponLine(attack.thrownItemName, attack.thrownRemaining)
       : null;
   const validCellSet = useMemo(
     () => new Set(validCells.map((cell) => `${cell.x},${cell.y}`)),
@@ -151,6 +157,9 @@ export function CombatTargetingOverlay({
           </span>
           {ammunitionLine ? (
             <span className="combat-targeting-banner-hover">{ammunitionLine}</span>
+          ) : null}
+          {thrownWeaponLine ? (
+            <span className="combat-targeting-banner-hover">{thrownWeaponLine}</span>
           ) : null}
           {hoveredTokenLabel ? (
             <span className="combat-targeting-banner-hover">

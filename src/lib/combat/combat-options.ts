@@ -17,7 +17,7 @@ import {
   appendExhaustionSheetNote,
   getExhaustionAttackSaveSheetNote,
 } from "@/lib/dnd/exhaustion";
-import { formatAmmunitionLine } from "@/lib/dnd/ammunition";
+import { formatAmmunitionLine, formatThrownWeaponLine } from "@/lib/dnd/ammunition";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { EnemyData, EnemyNamedBlock } from "@/lib/schemas/enemy";
@@ -111,6 +111,14 @@ function formatAttackTooltip(attack: DerivedAttack, data: CharacterData): string
     attack.ammunitionRemaining != null
   ) {
     lines.push(formatAmmunitionLine(attack.ammunitionName, attack.ammunitionRemaining));
+  }
+
+  if (
+    attack.throwsWeapon &&
+    attack.thrownItemName != null &&
+    attack.thrownRemaining != null
+  ) {
+    lines.push(formatThrownWeaponLine(attack.thrownItemName, attack.thrownRemaining));
   }
 
   if (attack.notes.trim()) lines.push(attack.notes.trim());
