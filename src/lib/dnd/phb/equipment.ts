@@ -83,6 +83,7 @@ export const PHB_ITEMS: PhbItem[] = [
   { id: "torch", name: "Torch", weightLb: 1, type: "gear" },
   { id: "vial", name: "Vial", weightLb: 0, type: "gear" },
   { id: "waterskin", name: "Waterskin", weightLb: 5, type: "gear" },
+  { id: "empty-waterskin", name: "Empty waterskin", weightLb: 1, type: "gear" },
   { id: "whetstone", name: "Whetstone", weightLb: 1, type: "gear" },
   // Weapons
   { id: "club", name: "Club", weightLb: 2, type: "weapon" },
@@ -161,6 +162,9 @@ export const PHB_ITEMS: PhbItem[] = [
   { id: "belt-pouch", name: "Belt pouch (with coins)", weightLb: 0.5, type: "gear" },
   { id: "vestments", name: "Vestments", weightLb: 4, type: "gear" },
   { id: "incense", name: "Incense (5 sticks)", weightLb: 0, type: "gear" },
+  { id: "block-of-incense", name: "Block of Incense", weightLb: 0, type: "gear" },
+  { id: "little-bag-of-sand", name: "Little Bag of Sand", weightLb: 0, type: "gear" },
+  { id: "tej", name: "Tej (mug)", weightLb: 1, type: "consumable" },
   { id: "prayer-book", name: "Prayer book", weightLb: 5, type: "gear" },
   { id: "prayer-wheel", name: "Prayer wheel", weightLb: 1, type: "gear" },
   { id: "fine-clothes", name: "Fine clothes", weightLb: 6, type: "gear" },

@@ -159,16 +159,23 @@ import {
   getSpeciesSpeedFromCharacter,
 } from "@/lib/character/combat-derivation";
 import {
+  calculateCarryCapacityBreakdown,
   formatCarryCapacityLabel,
+  formatCarryCapacityTooltip,
   formatCustomInventoryItemTooltip,
   formatInventoryItemWeightLine,
   formatWeightLb,
   getEncumbranceInfo,
   getInventoryWeightLb,
-  getMaxCarryCapacityLb,
+  isInventoryWithinMaxCapacity,
   resolveItemWeightLb,
 } from "@/lib/character/encumbrance";
 import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, isLightWeapon, sortInventoryForDisplay } from "@/lib/character/equip-rules";
+import { mergeIntoInventory } from "@/lib/character/inventory-stack";
+import {
+  fillEmptyWaterskin,
+  isEmptyWaterskinItem,
+} from "@/lib/dnd/supplies";
 import { hasNaturalArmorSpecies } from "@/lib/dnd/phb/species-mechanics";
 import type { PhbBackground, PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 
@@ -938,14 +945,26 @@ export function CharacterSheet({
     [baseSpeciesSpeed, data]
   );
 
+  const carryCapacityBreakdown = useMemo(
+    () =>
+      calculateCarryCapacityBreakdown(
+        strength,
+        data.inventory.items,
+        catalogItems
+      ),
+    [strength, data.inventory.items, catalogItems]
+  );
+  const carryCapacityTooltip = formatCarryCapacityTooltip(carryCapacityBreakdown);
+
   const encumbrance = useMemo(
     () =>
       getEncumbranceInfo(
         strength,
         getInventoryWeightLb(data.inventory.items, catalogItems),
-        speedBeforeEncumbrance
+        speedBeforeEncumbrance,
+        carryCapacityBreakdown
       ),
-    [strength, data.inventory.items, catalogItems, speedBeforeEncumbrance]
+    [strength, data.inventory.items, catalogItems, speedBeforeEncumbrance, carryCapacityBreakdown]
   );
 
   const speedBreakdown = useMemo(
@@ -967,8 +986,7 @@ export function CharacterSheet({
   );
 
   const applyInventoryItems = (items: CharacterData["inventory"]["items"]) => {
-    const weight = getInventoryWeightLb(items, catalogItems);
-    if (weight > getMaxCarryCapacityLb(strength)) return;
+    if (!isInventoryWithinMaxCapacity(items, catalogItems, strength)) return;
     update({ inventory: { ...data.inventory, items } });
   };
 
@@ -2369,18 +2387,20 @@ export function CharacterSheet({
                 <div className="mb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium">Items</p>
-                    <span
-                      className={`text-sm ${
-                        encumbrance.status === "normal"
-                          ? "text-muted-foreground"
-                          : "text-destructive"
-                      }`}
-                    >
-                      {formatCarryCapacityLabel(
-                        encumbrance.weightLb,
-                        encumbrance.carryCapacityLb
-                      )}
-                    </span>
+                    <Tooltip content={carryCapacityTooltip}>
+                      <span
+                        className={`text-sm cursor-default ${
+                          encumbrance.status === "normal"
+                            ? "text-muted-foreground"
+                            : "text-destructive"
+                        }`}
+                      >
+                        {formatCarryCapacityLabel(
+                          encumbrance.weightLb,
+                          encumbrance.carryCapacityLb
+                        )}
+                      </span>
+                    </Tooltip>
                     {encumbrance.status === "encumbered" ? (
                       <span className="text-sm font-medium text-destructive">
                         Encumbered!
@@ -2452,6 +2472,20 @@ export function CharacterSheet({
                         : null;
                     const showWeightRow =
                       editable || !!weightLine || !!customWeightLabel || !!customCostLabel;
+                    const isEmptyWaterskin = isEmptyWaterskinItem(item);
+                    const fillPreview = isEmptyWaterskin
+                      ? fillEmptyWaterskin(data.inventory.items, item.id)
+                      : null;
+                    const canFillWaterskin =
+                      !!fillPreview &&
+                      isInventoryWithinMaxCapacity(
+                        fillPreview,
+                        catalogItems,
+                        strength
+                      );
+                    const fillTooltip = canFillWaterskin
+                      ? "Fill with water (1 empty waterskin → 1 waterskin)"
+                      : `Over capacity — filling would exceed ${formatWeightLb(encumbrance.maxCapacityLb)}`;
 
                     return (
                       <div key={item.id} className="min-w-0 rounded-md border p-2 space-y-1">
@@ -2553,6 +2587,24 @@ export function CharacterSheet({
                               </>
                             )}
                           </div>
+
+                          {isEmptyWaterskin && canMutate ? (
+                            <Tooltip content={fillTooltip}>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 shrink-0 px-2 text-xs"
+                                disabled={!canFillWaterskin}
+                                onClick={() => {
+                                  if (!fillPreview || !canFillWaterskin) return;
+                                  applyInventoryItems(fillPreview);
+                                }}
+                              >
+                                Fill
+                              </Button>
+                            </Tooltip>
+                          ) : null}
 
                           {/* Quantity */}
                           {editable ? (
@@ -2727,9 +2779,8 @@ export function CharacterSheet({
                   };
                   applyInventoryItems(items);
                 } else {
-                  applyInventoryItems([
-                    ...data.inventory.items,
-                    {
+                  applyInventoryItems(
+                    mergeIntoInventory(data.inventory.items, {
                       id: crypto.randomUUID(),
                       name: selection.name,
                       quantity: 1,
@@ -2741,8 +2792,8 @@ export function CharacterSheet({
                       attuned: false,
                       magicItem: false,
                       notes: "",
-                    },
-                  ]);
+                    })
+                  );
                 }
                 return;
               }
@@ -2761,9 +2812,8 @@ export function CharacterSheet({
                 };
                 applyInventoryItems(items);
               } else {
-                applyInventoryItems([
-                  ...data.inventory.items,
-                  {
+                applyInventoryItems(
+                  mergeIntoInventory(data.inventory.items, {
                     id: crypto.randomUUID(),
                     itemId: catalogItem.slug,
                     name: catalogItem.name,
@@ -2774,8 +2824,8 @@ export function CharacterSheet({
                     attuned: false,
                     magicItem: catalogItem.is_magic,
                     notes: "",
-                  },
-                ]);
+                  })
+                );
               }
             }}
           />

@@ -57,6 +57,7 @@ interface CampaignOverviewProps {
   isDm: boolean;
   userId: string | null;
   canManageCalendarEvents: boolean;
+  canEditNotables: boolean;
 }
 
 export function CampaignOverview({
@@ -70,6 +71,7 @@ export function CampaignOverview({
   isDm,
   userId,
   canManageCalendarEvents,
+  canEditNotables,
 }: CampaignOverviewProps) {
   const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
   const sortedCharacters = useMemo(() => {
@@ -207,6 +209,7 @@ export function CampaignOverview({
           initialNotablesData={initialNotablesData}
           initialWorldData={initialWorldData}
           isDm={isDm}
+          canEditNotables={canEditNotables}
         />
       ) : null}
     </div>

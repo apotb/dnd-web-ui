@@ -828,6 +828,14 @@ html.campaign-bg-active .retro-muted {
   gap: 8px;
 }
 
+.notable-editing-toggle.candy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  text-align: left;
+}
+
 .party-overview-stack {
   gap: 12px;
 }
@@ -2321,6 +2329,12 @@ html.campaign-bg-active .retro-back-link {
 .supply-picker-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.supply-picker-empty {
+  margin-bottom: 6px;
+  padding: 0 2px;
+  list-style: none;
 }
 
 .supply-picker-actions {

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  BACKPACK_CARRY_CAPACITY_BONUS_LB,
+  BACKPACK_ITEM_SLUG,
+} from "@/lib/character/encumbrance";
 
 export const ITEM_CATEGORIES = [
   "weapon",
@@ -199,6 +203,9 @@ export function formatItemTooltip(item: Item): string | null {
 
   if (item.weight_lb != null) {
     lines.push(`Weight: ${item.weight_lb} lb`);
+  }
+  if (item.slug === BACKPACK_ITEM_SLUG) {
+    lines.push(`Carry capacity: +${BACKPACK_CARRY_CAPACITY_BONUS_LB} lb`);
   }
   if (item.cost_gp != null) {
     lines.push(`Cost: ${formatItemCostGp(item.cost_gp)}`);

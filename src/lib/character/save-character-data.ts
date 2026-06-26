@@ -3,6 +3,7 @@ import { clampInspiration } from "@/lib/dnd/calculations";
 import { syncAcFromEquipment } from "@/lib/character/ac-derivation";
 import { syncCombatDerivedStats } from "@/lib/character/combat-derivation";
 import { sanitizeEquippedItems } from "@/lib/character/equip-rules";
+import { ensureUniqueInventoryIds } from "@/lib/character/inventory-stack";
 import { syncSavingThrowsFromClass, resolveCharacterClass } from "@/lib/character/class-derivation";
 import { stripGrantedFeaturesForSave } from "@/lib/character/feature-derivation";
 import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
@@ -27,7 +28,7 @@ export function prepareCharacterDataForSave(
   const inventory = {
     ...data.inventory,
     items: sanitizeEquippedItems(
-      data.inventory.items,
+      ensureUniqueInventoryIds(data.inventory.items),
       {},
       data.basicInfo.species
     ),

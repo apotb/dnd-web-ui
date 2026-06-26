@@ -519,6 +519,8 @@ export function CampaignMaps({
           onToggleHex={toggleHex}
           onResetFog={resetHexFog}
           onMarkerMove={updateMarkerPosition}
+          onSave={isDm ? save : undefined}
+          saving={saving}
         />
       ) : null}
 
@@ -531,6 +533,8 @@ export function CampaignMaps({
           isDm={isDm}
           onClose={() => setExpanded(false)}
           onMarkerMove={updateMarkerPosition}
+          onSave={isDm ? save : undefined}
+          saving={saving}
         />
       ) : null}
     </div>
@@ -730,6 +734,8 @@ function MapFullscreenOverlay({
   isDm,
   onClose,
   onMarkerMove,
+  onSave,
+  saving = false,
 }: {
   campaignId: string;
   imagePath: string;
@@ -738,6 +744,8 @@ function MapFullscreenOverlay({
   isDm: boolean;
   onClose: () => void;
   onMarkerMove?: (markerId: string, position: { x: number; y: number }) => void;
+  onSave?: () => void;
+  saving?: boolean;
 }) {
   const [zoom, setZoom] = useState(1);
   const [mounted, setMounted] = useState(false);
@@ -801,6 +809,16 @@ function MapFullscreenOverlay({
           >
             +
           </button>
+          {isDm && onSave ? (
+            <button
+              type="button"
+              className="candy-btn candy-btn-sm"
+              onClick={onSave}
+              disabled={saving}
+            >
+              {saving ? "..." : "Save map"}
+            </button>
+          ) : null}
           <button type="button" className="candy-btn candy-btn-sm" onClick={onClose}>
             Close
           </button>

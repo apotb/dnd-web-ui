@@ -235,6 +235,8 @@ interface HexRevealMapFullscreenProps {
   onToggleHex?: (hexId: number) => void;
   onResetFog?: () => void;
   onMarkerMove?: (markerId: string, position: { x: number; y: number }) => void;
+  onSave?: () => void;
+  saving?: boolean;
 }
 
 export function HexRevealMapFullscreen({
@@ -247,6 +249,8 @@ export function HexRevealMapFullscreen({
   onToggleHex,
   onResetFog,
   onMarkerMove,
+  onSave,
+  saving = false,
 }: HexRevealMapFullscreenProps) {
   const [zoom, setZoom] = useState(1);
   const [mounted, setMounted] = useState(false);
@@ -324,6 +328,16 @@ export function HexRevealMapFullscreen({
           >
             +
           </button>
+          {isDm && onSave ? (
+            <button
+              type="button"
+              className="candy-btn candy-btn-sm"
+              onClick={onSave}
+              disabled={saving}
+            >
+              {saving ? "..." : "Save map"}
+            </button>
+          ) : null}
           <button type="button" className="candy-btn candy-btn-sm" onClick={onClose}>
             Close
           </button>

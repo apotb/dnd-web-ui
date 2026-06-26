@@ -7,6 +7,7 @@ import {
 import { syncSavingThrowsFromClass } from "@/lib/character/class-derivation";
 import { syncAcFromEquipment } from "@/lib/character/ac-derivation";
 import { sanitizeEquippedItems } from "@/lib/character/equip-rules";
+import { ensureUniqueInventoryIds } from "@/lib/character/inventory-stack";
 import { stripGrantedFeaturesForSave } from "@/lib/character/feature-derivation";
 import { migrateFeatureChoices } from "@/lib/character/feature-choices";
 import { migrateSkillKeys } from "@/lib/character/skill-migration";
@@ -152,6 +153,13 @@ const NAME_TO_SLUG: Record<string, string> = {
   "scroll case of notes": "scroll-case-notes",
   "letter of introduction from guild": "letter-of-introduction",
   "incense (5 sticks)": "incense-5-sticks",
+  "block of incense": "block-of-incense",
+  "blocks of incense": "block-of-incense",
+  "little bag of sand": "little-bag-of-sand",
+  "bag of sand": "little-bag-of-sand",
+  "empty waterskin": "empty-waterskin",
+  "tej": "tej",
+  "tej (mug)": "tej",
   "prayer book": "prayer-book",
   "prayer wheel": "prayer-wheel",
   "con tools (10 gp)": "con-tools",
@@ -304,7 +312,9 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
         inventory: {
           ...inventory,
           items: sanitizeEquippedItems(
-            migratedItems as CharacterData["inventory"]["items"],
+            ensureUniqueInventoryIds(
+              migratedItems as CharacterData["inventory"]["items"]
+            ),
             {},
             speciesName
           ),

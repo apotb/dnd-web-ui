@@ -9,13 +9,16 @@ import {
   getWaterItems,
   formatSupplyItemTooltip,
   markFed,
+  markFedManually,
   markWatered,
+  markWateredManually,
   needsFood,
   needsWater,
 } from "@/lib/dnd/supplies";
 import {
   formatGallons,
   getFoodNotificationInfo,
+  getRequiredWaterGallons,
   getWaterNotificationInfo,
 } from "@/lib/dnd/survival";
 import { useRealtimeCharacter } from "@/lib/hooks/use-realtime-character";
@@ -121,6 +124,7 @@ function SupplyPicker({
   worldData,
   items,
   onSelect,
+  onManual,
   onCancel,
   saving,
 }: {
@@ -129,11 +133,20 @@ function SupplyPicker({
   worldData: WorldData;
   items: InventoryItem[];
   onSelect: (itemId: string) => void;
+  onManual: () => void;
   onCancel: () => void;
   saving: boolean;
 }) {
   const title = kind === "food" ? "Eat something" : "Drink something";
-  const empty = kind === "food" ? "No food in inventory." : "No water in inventory.";
+  const empty =
+    kind === "food"
+      ? "No rations in inventory."
+      : "No waterskins in inventory.";
+  const manualLabel = kind === "food" ? "Ate elsewhere" : "Drank elsewhere";
+  const manualHint =
+    kind === "food"
+      ? "Mark today as fed without using rations."
+      : `Satisfies today's water (${formatGallons(getRequiredWaterGallons(worldData))} gal) without using a waterskin.`;
 
   const foodInfo = kind === "food" ? getFoodNotificationInfo(data) : null;
   const waterInfo = kind === "water" ? getWaterNotificationInfo(data, worldData) : null;
@@ -172,11 +185,11 @@ function SupplyPicker({
             ) : null}
           </div>
         ) : null}
-        {items.length === 0 ? (
-          <p className="retro-muted">{empty}</p>
-        ) : (
-          <ul className="supply-picker-list">
-            {items.map((item) => (
+        <ul className="supply-picker-list">
+          {items.length === 0 ? (
+            <li className="supply-picker-empty retro-muted">{empty}</li>
+          ) : (
+            items.map((item) => (
               <li key={item.id}>
                 <Tooltip content={formatSupplyItemTooltip(item, kind)}>
                   <button
@@ -190,9 +203,21 @@ function SupplyPicker({
                   </button>
                 </Tooltip>
               </li>
-            ))}
-          </ul>
-        )}
+            ))
+          )}
+          <li>
+            <Tooltip content={manualHint}>
+              <button
+                type="button"
+                className="supply-picker-item"
+                disabled={saving}
+                onClick={onManual}
+              >
+                <span>{manualLabel}</span>
+              </button>
+            </Tooltip>
+          </li>
+        </ul>
         <div className="supply-picker-actions">
           <button
             type="button"
@@ -313,20 +338,24 @@ export function CampaignNotifications({
   const waterItems = getWaterItems(character.data);
   const campaignDate = getCampaignCalendarDate(worldData);
 
-  async function consume(kind: SupplyKind, inventoryItemId: string) {
+  async function consume(kind: SupplyKind, inventoryItemId: string | null) {
     if (!character) return;
     setSaving(true);
     setMessage(null);
 
     const nextData =
       kind === "food"
-        ? markFed(character.data, campaignDate, inventoryItemId)
-        : markWatered(
-            character.data,
-            campaignDate,
-            inventoryItemId,
-            worldData
-          );
+        ? inventoryItemId
+          ? markFed(character.data, campaignDate, inventoryItemId)
+          : markFedManually(character.data, campaignDate)
+        : inventoryItemId
+          ? markWatered(
+              character.data,
+              campaignDate,
+              inventoryItemId,
+              worldData
+            )
+          : markWateredManually(character.data, campaignDate, worldData);
 
     const { error } = await saveCharacterData(character.id, nextData, undefined, {
       isDm: false,
@@ -381,6 +410,7 @@ export function CampaignNotifications({
           worldData={worldData}
           items={activePicker === "food" ? foodItems : waterItems}
           onSelect={(itemId) => consume(activePicker, itemId)}
+          onManual={() => consume(activePicker, null)}
           onCancel={() => setActivePicker(null)}
           saving={saving}
         />

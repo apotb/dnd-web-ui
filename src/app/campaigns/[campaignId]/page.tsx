@@ -54,6 +54,7 @@ export default async function CampaignHomePage({
       isDm={access.isDm}
       userId={access.user?.id ?? null}
       canManageCalendarEvents={canManageCalendarEvents}
+      canEditNotables={canManageCalendarEvents}
     />
   );
 }

@@ -2,6 +2,9 @@ import type { InventoryItem } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
 import { formatItemCostGp } from "@/lib/schemas/item";
 
+export const BACKPACK_ITEM_SLUG = "backpack";
+export const BACKPACK_CARRY_CAPACITY_BONUS_LB = 30;
+
 export const ENCUMBERED_SPEED_FT = 5;
 
 export type EncumbranceStatus = "normal" | "encumbered" | "overloaded";
@@ -23,6 +26,86 @@ export function getNormalCarryCapacityLb(strength: number): number {
 
 export function getMaxCarryCapacityLb(strength: number): number {
   return Math.max(0, strength) * 30;
+}
+
+export interface CarryCapacitySource {
+  label: string;
+  value: number;
+}
+
+export interface CarryCapacityBreakdown {
+  strengthScore: number;
+  carryCapacityLb: number;
+  maxCapacityLb: number;
+  sources: CarryCapacitySource[];
+}
+
+function isBackpackItem(
+  item: InventoryItem,
+  catalogItem: Item | null | undefined
+): boolean {
+  if (item.itemId === BACKPACK_ITEM_SLUG) return true;
+  if (catalogItem?.slug === BACKPACK_ITEM_SLUG) return true;
+  return item.name.trim().toLowerCase() === "backpack";
+}
+
+function countBackpacksInInventory(
+  items: InventoryItem[],
+  catalogItems: Record<string, Item>
+): number {
+  return items.reduce((count, item) => {
+    const catalog = item.itemId ? catalogItems[item.itemId] : null;
+    if (!isBackpackItem(item, catalog)) return count;
+    return count + Math.max(0, item.quantity || 0);
+  }, 0);
+}
+
+export function calculateCarryCapacityBreakdown(
+  strength: number,
+  items: InventoryItem[],
+  catalogItems: Record<string, Item>
+): CarryCapacityBreakdown {
+  const strengthScore = Math.max(0, strength);
+  const strengthCapacity = getNormalCarryCapacityLb(strengthScore);
+  const strengthMax = getMaxCarryCapacityLb(strengthScore);
+  const sources: CarryCapacitySource[] = [
+    { label: "Strength", value: strengthCapacity },
+  ];
+
+  const backpackCount = countBackpacksInInventory(items, catalogItems);
+  let bonus = 0;
+  if (backpackCount > 0) {
+    bonus = backpackCount * BACKPACK_CARRY_CAPACITY_BONUS_LB;
+    sources.push({
+      label: backpackCount > 1 ? `Backpack (×${backpackCount})` : "Backpack",
+      value: bonus,
+    });
+  }
+
+  return {
+    strengthScore,
+    carryCapacityLb: strengthCapacity + bonus,
+    maxCapacityLb: strengthMax + bonus,
+    sources,
+  };
+}
+
+export function formatCarryCapacityTooltip(
+  breakdown: CarryCapacityBreakdown
+): string | null {
+  if (!breakdown.sources.length) return null;
+  return breakdown.sources
+    .map((source) => {
+      const weight = formatWeightLb(source.value);
+      if (source.label === "Strength") {
+        return `${source.label}: ${breakdown.strengthScore} × 15 = ${weight}`;
+      }
+      if (source.label === "Backpack" || source.label.startsWith("Backpack (×")) {
+        return `${source.label}: +${weight}`;
+      }
+      return `${source.label}: ${weight}`;
+    })
+    .join("\n");
 }
 
 export function resolveItemWeightLb(
@@ -56,10 +139,13 @@ export function getInventoryWeightLb(
 export function getEncumbranceInfo(
   strength: number,
   weightLb: number,
-  baseSpeedFt: number
+  baseSpeedFt: number,
+  carryCapacityBreakdown?: CarryCapacityBreakdown
 ): EncumbranceInfo {
-  const carryCapacityLb = getNormalCarryCapacityLb(strength);
-  const maxCapacityLb = getMaxCarryCapacityLb(strength);
+  const breakdown =
+    carryCapacityBreakdown ??
+    calculateCarryCapacityBreakdown(strength, [], {});
+  const { carryCapacityLb, maxCapacityLb } = breakdown;
 
   let status: EncumbranceStatus = "normal";
   if (weightLb > maxCapacityLb) status = "overloaded";
@@ -128,7 +214,28 @@ export function formatCustomInventoryItemTooltip(
 export function canCarryAdditionalWeight(
   currentWeightLb: number,
   additionalLb: number,
+  strength: number,
+  items: InventoryItem[] = [],
+  catalogItems: Record<string, Item> = {}
+): boolean {
+  const { maxCapacityLb } = calculateCarryCapacityBreakdown(
+    strength,
+    items,
+    catalogItems
+  );
+  return currentWeightLb + additionalLb <= maxCapacityLb;
+}
+
+export function isInventoryWithinMaxCapacity(
+  items: InventoryItem[],
+  catalogItems: Record<string, Item>,
   strength: number
 ): boolean {
-  return currentWeightLb + additionalLb <= getMaxCarryCapacityLb(strength);
+  const weightLb = getInventoryWeightLb(items, catalogItems);
+  const { maxCapacityLb } = calculateCarryCapacityBreakdown(
+    strength,
+    items,
+    catalogItems
+  );
+  return weightLb <= maxCapacityLb;
 }

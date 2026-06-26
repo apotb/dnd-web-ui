@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { User } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { createClient } from "@/lib/supabase/client";
 import {
   getNotablePortraitUrl,
@@ -42,6 +44,7 @@ interface CampaignNotablesProps {
   initialNotablesData: NotablesData;
   initialWorldData: WorldData;
   isDm: boolean;
+  canEditNotables: boolean;
 }
 
 function notableCategoryTabStorageKey(campaignId: string) {
@@ -60,6 +63,7 @@ export function CampaignNotables({
   initialNotablesData,
   initialWorldData,
   isDm,
+  canEditNotables,
 }: CampaignNotablesProps) {
   const liveNotablesData = useRealtimeNotablesData(
     campaignId,
@@ -74,11 +78,17 @@ export function CampaignNotables({
     null
   );
   const [restoredCategoryTab, setRestoredCategoryTab] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [notablePendingRemoval, setNotablePendingRemoval] =
+    useState<Notable | null>(null);
+  const [removingNotable, setRemovingNotable] = useState(false);
+
+  const editable = canEditNotables && editing;
 
   useEffect(() => {
-    if (!isDm) return;
+    if (!canEditNotables) return;
     setDraft(liveNotablesData);
-  }, [liveNotablesData, isDm]);
+  }, [liveNotablesData, canEditNotables]);
 
   useEffect(() => {
     setRestoredCategoryTab(false);
@@ -92,7 +102,7 @@ export function CampaignNotables({
     setRestoredCategoryTab(true);
   }, [campaignId, restoredCategoryTab]);
 
-  const notablesData = (isDm ? draft : liveNotablesData) ?? { notables: [] };
+  const notablesData = (editable ? draft : liveNotablesData) ?? { notables: [] };
   const savedCategoriesById = useMemo(
     () =>
       new Map(
@@ -105,11 +115,12 @@ export function CampaignNotables({
     const inCategory = filterNotablesByCategory(
       notablesData.notables,
       activeCategory,
-      isDm ? savedCategoriesById : undefined
+      editable ? savedCategoriesById : undefined
     );
-    return filterNotablesForViewer(inCategory, isDm);
+    return filterNotablesForViewer(inCategory, isDm || editable);
   }, [
     activeCategory,
+    editable,
     isDm,
     notablesData.notables,
     savedCategoriesById,
@@ -121,34 +132,41 @@ export function CampaignNotables({
     localStorage.setItem(notableCategoryTabStorageKey(campaignId), next ?? "");
   }
 
+  async function saveNotablesData(nextDraft: NotablesData) {
+    const supabase = createClient();
+    const { error } = await supabase.rpc("update_campaign_notables", {
+      p_campaign_id: campaignId,
+      p_notables_data: nextDraft,
+    });
+    return error;
+  }
+
   async function save() {
     setSaving(true);
     setMessage(null);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("campaigns")
-      .update({ notables_data: draft })
-      .eq("id", campaignId);
+    const error = await saveNotablesData(draft);
 
     setMessage(error ? error.message : "Saved");
     setSaving(false);
   }
 
   function updateNotables(nextNotables: Notable[]) {
-    if (!isDm) return;
+    if (!editable) return;
     setDraft({ ...draft, notables: nextNotables });
   }
 
-  function addNotable() {
+  function addNotable(placement: "top" | "bottom") {
     const category = activeCategory ?? DEFAULT_NOTABLE_CATEGORY;
     const categoryNotables = filterNotablesByCategory(
       draft.notables,
       category,
-      isDm ? savedCategoriesById : undefined
+      editable ? savedCategoriesById : undefined
     );
     const nextOrder =
       categoryNotables.length > 0
-        ? Math.max(...categoryNotables.map((notable) => notable.sortOrder)) + 1
+        ? placement === "top"
+          ? Math.min(...categoryNotables.map((notable) => notable.sortOrder)) - 1
+          : Math.max(...categoryNotables.map((notable) => notable.sortOrder)) + 1
         : 0;
     updateNotables([
       ...draft.notables,
@@ -161,7 +179,7 @@ export function CampaignNotables({
     const ordered = filterNotablesByCategory(
       draft.notables,
       category,
-      isDm ? savedCategoriesById : undefined
+      editable ? savedCategoriesById : undefined
     );
     const index = ordered.findIndex((notable) => notable.id === notableId);
     const swapIndex = index + direction;
@@ -190,12 +208,7 @@ export function CampaignNotables({
     };
     setDraft(nextDraft);
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("campaigns")
-      .update({ notables_data: nextDraft })
-      .eq("id", campaignId);
-
+    const error = await saveNotablesData(nextDraft);
     if (error) setMessage(error.message);
   }
 
@@ -209,8 +222,43 @@ export function CampaignNotables({
     );
   }
 
+  async function confirmRemoveNotable() {
+    if (!notablePendingRemoval) return;
+    setRemovingNotable(true);
+
+    if (notablePendingRemoval.portraitPath) {
+      await removeNotablePortrait(
+        createClient(),
+        notablePendingRemoval.portraitPath
+      );
+    }
+
+    updateNotables(
+      draft.notables.filter((entry) => entry.id !== notablePendingRemoval.id)
+    );
+    setRemovingNotable(false);
+    setNotablePendingRemoval(null);
+  }
+
+  const removeNotableLabel =
+    formatNotableNameLine(notablePendingRemoval ?? { name: "", species: "" }) ||
+    "this notable";
+
   return (
     <div className="retro-stack party-overview-stack">
+      {canEditNotables ? (
+        <label
+          className={`notable-editing-toggle candy-btn cursor-pointer select-none w-fit${editing ? " candy-btn-active" : ""}`}
+          style={{ flex: "0 1 auto" }}
+        >
+          <Checkbox
+            checked={editing}
+            onCheckedChange={(checked) => setEditing(checked === true)}
+          />
+          <span>Editing</span>
+        </label>
+      ) : null}
+
       <div
         style={{
           display: "flex",
@@ -229,21 +277,16 @@ export function CampaignNotables({
             {category.label}
           </button>
         ))}
-        {isDm ? (
-          <button
-            type="button"
-            className="candy-btn"
-            style={{ flex: "0 1 auto" }}
-            onClick={addNotable}
-          >
-            + Add notable
-          </button>
-        ) : null}
       </div>
 
       <div className="retro-stack notable-stack">
-        {isDm ? (
-          <NotablesSaveBar saving={saving} message={message} onSave={save} />
+        {editable ? (
+          <NotablesSaveBar
+            saving={saving}
+            message={message}
+            onSave={save}
+            onAddNotable={() => addNotable("top")}
+          />
         ) : null}
 
         {activeCategory && visibleNotables.length === 0 ? (
@@ -256,8 +299,9 @@ export function CampaignNotables({
               notable={notable}
               campaignDate={campaignDate}
               isDm={isDm}
-              canMoveUp={index > 0}
-              canMoveDown={index < visibleNotables.length - 1}
+              editable={editable}
+              canMoveUp={editable && index > 0}
+              canMoveDown={editable && index < visibleNotables.length - 1}
               onMoveUp={() => moveNotable(notable.id, -1)}
               onMoveDown={() => moveNotable(notable.id, 1)}
               onChange={(next) =>
@@ -267,32 +311,38 @@ export function CampaignNotables({
                   )
                 )
               }
-              onPersist={isDm ? persistNotable : undefined}
+              onPersist={editable ? persistNotable : undefined}
               onToggleVisibility={
-                isDm ? () => toggleNotableVisibility(notable) : undefined
+                editable ? () => toggleNotableVisibility(notable) : undefined
               }
-              onRemove={async () => {
-                if (!window.confirm(`Remove ${notable.name || "this notable"}?`)) {
-                  return;
-                }
-                if (notable.portraitPath) {
-                  await removeNotablePortrait(
-                    createClient(),
-                    notable.portraitPath
-                  );
-                }
-                updateNotables(
-                  draft.notables.filter((entry) => entry.id !== notable.id)
-                );
-              }}
+              onRemove={() => setNotablePendingRemoval(notable)}
             />
           ))
         )}
 
-        {isDm ? (
-          <NotablesSaveBar saving={saving} message={message} onSave={save} />
+        {editable ? (
+          <NotablesSaveBar
+            saving={saving}
+            message={message}
+            onSave={save}
+            onAddNotable={() => addNotable("bottom")}
+          />
         ) : null}
       </div>
+
+      <ConfirmModal
+        open={notablePendingRemoval !== null}
+        title="Remove notable?"
+        description={`Remove ${removeNotableLabel}? This cannot be undone.`}
+        confirmLabel={removingNotable ? "Removing…" : "Remove"}
+        confirmDisabled={removingNotable}
+        destructive
+        onCancel={() => {
+          if (removingNotable) return;
+          setNotablePendingRemoval(null);
+        }}
+        onConfirm={() => void confirmRemoveNotable()}
+      />
     </div>
   );
 }
@@ -301,13 +351,20 @@ function NotablesSaveBar({
   saving,
   message,
   onSave,
+  onAddNotable,
 }: {
   saving: boolean;
   message: string | null;
   onSave: () => void;
+  onAddNotable?: () => void;
 }) {
   return (
     <div className="party-inventory-save">
+      {onAddNotable ? (
+        <button type="button" className="candy-btn" onClick={onAddNotable}>
+          + Add notable
+        </button>
+      ) : null}
       <button
         type="button"
         className="candy-btn"
@@ -326,6 +383,7 @@ function NotableCard({
   notable,
   campaignDate,
   isDm,
+  editable,
   onChange,
   onRemove,
   onPersist,
@@ -339,8 +397,9 @@ function NotableCard({
   notable: Notable;
   campaignDate: ReturnType<typeof getCampaignCalendarDate>;
   isDm: boolean;
+  editable: boolean;
   onChange: (notable: Notable) => void;
-  onRemove: () => void | Promise<void>;
+  onRemove: () => void;
   onPersist?: (notable: Notable) => Promise<void>;
   onToggleVisibility?: () => void;
   canMoveUp?: boolean;
@@ -349,7 +408,7 @@ function NotableCard({
   onMoveDown?: () => void;
 }) {
   const events = sortNotableEvents(notable.events);
-  const showPortrait = isDm || hasNotablePortrait(notable);
+  const showPortrait = isDm || hasNotablePortrait(notable) || editable;
 
   function addEvent() {
     const nextOrder =
@@ -390,11 +449,11 @@ function NotableCard({
 
   return (
     <section
-      className={`retro-box${isDm && !notable.visibleToPlayers ? " notable-card-dm-hidden" : ""}`}
+      className={`retro-box${editable && !notable.visibleToPlayers ? " notable-card-dm-hidden" : ""}`}
     >
       <div className="notable-card-header">
         <div className="notable-card-fields">
-          {isDm ? (
+          {editable ? (
             <>
               {!notable.visibleToPlayers ? (
                 <p className="notable-hidden-label">Hidden from players</p>
@@ -453,6 +512,9 @@ function NotableCard({
             </>
           ) : (
             <>
+              {isDm && !notable.visibleToPlayers ? (
+                <p className="notable-hidden-label">Hidden from players</p>
+              ) : null}
               <p className="retro-box-title">
                 {formatNotableNameLine(notable) || "Unnamed notable"}
               </p>
@@ -463,7 +525,7 @@ function NotableCard({
           )}
 
           <div className="notable-events-section">
-            {isDm ? (
+            {editable ? (
               <p className="retro-edit-link notable-events-add">
                 <button
                   type="button"
@@ -476,11 +538,11 @@ function NotableCard({
             ) : null}
 
             {events.length === 0 ? (
-              isDm ? null : <p className="retro-muted">No events yet.</p>
+              editable ? null : <p className="retro-muted">No events yet.</p>
             ) : (
               <div className="calendar-event-list">
                 {events.map((event, index) =>
-                  isDm ? (
+                  editable ? (
                     <NotableEventEditor
                       key={event.id}
                       event={event}
@@ -499,7 +561,7 @@ function NotableCard({
             )}
           </div>
 
-          {isDm ? (
+          {editable ? (
             <p className="retro-edit-link notable-card-actions">
               <button
                 type="button"
@@ -530,7 +592,7 @@ function NotableCard({
                 type="button"
                 className="retro-inline-link"
                 style={{ color: "#b00020" }}
-                onClick={() => void onRemove()}
+                onClick={onRemove}
               >
                 Remove notable
               </button>
@@ -542,7 +604,7 @@ function NotableCard({
           <NotablePortrait
             campaignId={campaignId}
             notable={notable}
-            isDm={isDm}
+            editable={editable}
             onChange={onChange}
             onPersist={onPersist}
           />
@@ -679,13 +741,13 @@ function NotableEventEditor({
 function NotablePortrait({
   campaignId,
   notable,
-  isDm,
+  editable,
   onChange,
   onPersist,
 }: {
   campaignId: string;
   notable: Notable;
-  isDm: boolean;
+  editable: boolean;
   onChange: (notable: Notable) => void;
   onPersist?: (notable: Notable) => Promise<void>;
 }) {
@@ -783,7 +845,7 @@ function NotablePortrait({
         )}
       </div>
 
-      {isDm ? (
+      {editable ? (
         <div className="character-portrait-actions">
           <input
             ref={fileInputRef}

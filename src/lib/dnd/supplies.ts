@@ -12,9 +12,12 @@ import type {
   InventoryItem,
 } from "@/lib/schemas/character";
 import type { WorldData } from "@/lib/schemas/world";
+import { mergeIntoInventory } from "@/lib/character/inventory-stack";
 
 const FOOD_ITEM_IDS = new Set(["rations"]);
 const WATER_ITEM_IDS = new Set(["waterskin"]);
+export const WATERSKIN_ITEM_ID = "waterskin";
+export const EMPTY_WATERSKIN_ITEM_ID = "empty-waterskin";
 
 function normalizeItemName(name: string): string {
   return name.trim().toLowerCase();
@@ -29,10 +32,18 @@ export function isFoodItem(item: InventoryItem): boolean {
 
 export function isWaterItem(item: InventoryItem): boolean {
   if (item.quantity <= 0) return false;
+  if (isEmptyWaterskinItem(item)) return false;
   if (item.itemId && WATER_ITEM_IDS.has(item.itemId)) return true;
   const name = normalizeItemName(item.name);
   if (name.includes("holy water")) return false;
+  if (name.includes("empty") && name.includes("waterskin")) return false;
   return name.includes("waterskin") || name === "water";
+}
+
+export function isEmptyWaterskinItem(item: InventoryItem): boolean {
+  if (item.itemId === EMPTY_WATERSKIN_ITEM_ID) return true;
+  const name = normalizeItemName(item.name);
+  return name.includes("empty") && name.includes("waterskin");
 }
 
 export function getFoodItems(data: CharacterData): InventoryItem[] {
@@ -116,10 +127,85 @@ export function consumeInventoryItem(
   });
 }
 
+function toEmptyWaterskin(item: InventoryItem): InventoryItem {
+  return {
+    ...item,
+    id: crypto.randomUUID(),
+    itemId: EMPTY_WATERSKIN_ITEM_ID,
+    name: "",
+    quantity: 1,
+    equipped: false,
+    wieldMain: false,
+    wieldOff: false,
+  };
+}
+
+function toFullWaterskin(item: InventoryItem): InventoryItem {
+  return {
+    ...item,
+    id: crypto.randomUUID(),
+    itemId: WATERSKIN_ITEM_ID,
+    name: "",
+    quantity: 1,
+    equipped: false,
+    wieldMain: false,
+    wieldOff: false,
+  };
+}
+
+/** Replace one empty waterskin with a full waterskin in inventory. */
+export function fillEmptyWaterskin(
+  items: InventoryItem[],
+  inventoryItemId: string
+): InventoryItem[] | null {
+  const item = items.find((row) => row.id === inventoryItemId);
+  if (!item || !isEmptyWaterskinItem(item) || item.quantity <= 0) return null;
+
+  let next = consumeInventoryItem(items, inventoryItemId);
+  next = mergeIntoInventory(next, toFullWaterskin(item));
+  return next;
+}
+
+/** Decrement a waterskin stack and leave an empty waterskin instead of deleting. */
+export function consumeWaterItem(
+  items: InventoryItem[],
+  inventoryItemId: string
+): InventoryItem[] {
+  let next = items;
+
+  for (const item of items) {
+    if (item.id !== inventoryItemId) continue;
+
+    const quantity = item.quantity - 1;
+    next = next.filter((row) => row.id !== inventoryItemId);
+    if (quantity > 0) {
+      next = [...next, { ...item, quantity }];
+    }
+    next = mergeIntoInventory(next, toEmptyWaterskin(item));
+    break;
+  }
+
+  return next;
+}
+
 export function markFed(
   data: CharacterData,
   date: HarptosDate,
   inventoryItemId: string
+): CharacterData {
+  return {
+    ...markFedManually(data, date),
+    inventory: {
+      ...data.inventory,
+      items: consumeInventoryItem(data.inventory.items, inventoryItemId),
+    },
+  };
+}
+
+/** Mark fed for the day without consuming inventory (tavern, inn, etc.). */
+export function markFedManually(
+  data: CharacterData,
+  date: HarptosDate
 ): CharacterData {
   return {
     ...data,
@@ -127,10 +213,6 @@ export function markFed(
       ...data.supplies,
       fedDate: date,
       daysWithoutFood: 0,
-    },
-    inventory: {
-      ...data.inventory,
-      items: consumeInventoryItem(data.inventory.items, inventoryItemId),
     },
   };
 }
@@ -145,15 +227,37 @@ export function markWatered(
   const required = getRequiredWaterGallons(worldData);
 
   return {
+    ...applyWaterGallons(data, gallons, required, date),
+    inventory: {
+      ...data.inventory,
+      items: consumeWaterItem(data.inventory.items, inventoryItemId),
+    },
+  };
+}
+
+function applyWaterGallons(
+  data: CharacterData,
+  gallons: number,
+  required: number,
+  date: HarptosDate
+): CharacterData {
+  return {
     ...data,
     supplies: {
       ...data.supplies,
       waterGallonsToday: gallons,
       wateredDate: gallons >= required ? date : data.supplies.wateredDate,
     },
-    inventory: {
-      ...data.inventory,
-      items: consumeInventoryItem(data.inventory.items, inventoryItemId),
-    },
   };
+}
+
+/** Satisfy today's water needs without consuming a waterskin. */
+export function markWateredManually(
+  data: CharacterData,
+  date: HarptosDate,
+  worldData: WorldData
+): CharacterData {
+  const required = getRequiredWaterGallons(worldData);
+  const gallons = Math.max(data.supplies.waterGallonsToday, required);
+  return applyWaterGallons(data, gallons, required, date);
 }
