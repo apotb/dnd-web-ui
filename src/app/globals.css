@@ -745,14 +745,36 @@ html.campaign-bg-active .retro-muted {
 }
 
 .character-overview-header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 12px 16px;
-  align-items: start;
+  position: relative;
 }
 
 .character-overview-fields {
   min-width: 0;
+  padding-right: calc(clamp(120px, 22vw, 180px) + 16px);
+}
+
+.character-portrait-column {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: clamp(120px, 22vw, 180px);
+}
+
+.character-rest-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.character-rest-message {
+  font-size: 11px;
+  text-align: center;
+  margin: 0;
+  color: #444;
 }
 
 .character-portrait {
@@ -760,7 +782,7 @@ html.campaign-bg-active .retro-muted {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  width: clamp(120px, 22vw, 180px);
+  width: 100%;
 }
 
 .character-portrait-frame {
@@ -2224,6 +2246,54 @@ html.campaign-bg-active .retro-back-link {
 
 .initiative-roll-modal .supply-picker-actions {
   justify-content: center;
+}
+
+.short-rest-heal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.short-rest-heal-actions .candy-btn {
+  flex: 1 1 auto;
+  min-width: 7rem;
+}
+
+.supply-picker-modal.short-rest-heal-modal {
+  width: 100%;
+  max-width: min(440px, calc(100vw - 40px));
+}
+
+.short-rest-heal-modal .retro-box-title,
+.short-rest-heal-modal .retro-muted {
+  text-align: center;
+}
+
+.short-rest-heal-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.short-rest-heal-input {
+  width: 3.25rem;
+  min-width: 3.25rem;
+  flex-shrink: 0;
+  margin-bottom: 0;
+  padding: 6px 6px;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+  box-sizing: border-box;
+}
+
+.short-rest-heal-modal .supply-picker-actions {
+  justify-content: space-between;
 }
 
 .initiative-roll-modal .retro-muted {

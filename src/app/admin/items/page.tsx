@@ -9,9 +9,8 @@ export const metadata = { title: "Item Catalog — DM Admin" };
 async function getIsDm(): Promise<boolean> {
   const supabase = await createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return false;
   const { data } = await supabase
     .from("campaign_members")

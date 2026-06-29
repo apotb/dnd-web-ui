@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CharacterDeleteButton } from "@/components/character/character-delete-button";
 import { CharacterSheet } from "@/components/character/character-sheet";
 import { JsonImportExport } from "@/components/character/json-import-export";
+import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import { syncCharacterTopLevelFields } from "@/lib/character/utils";
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
+import { getCampaignCalendarDate, type WorldData } from "@/lib/schemas/world";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 
@@ -17,6 +21,8 @@ interface CharacterSheetViewerProps {
   isDm: boolean;
   canEdit: boolean;
   canDelete?: boolean;
+  initialWorldData: WorldData;
+  ownedCharacterId?: string | null;
 }
 
 export function CharacterSheetViewer({
@@ -26,11 +32,20 @@ export function CharacterSheetViewer({
   isDm,
   canEdit,
   canDelete = false,
+  initialWorldData,
+  ownedCharacterId = null,
 }: CharacterSheetViewerProps) {
+  const worldData = useRealtimeWorldData(campaignId, initialWorldData);
+  const campaignDate = getCampaignCalendarDate(worldData);
   const [data, setData] = useState<CharacterData>(character.data);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     setData(character.data);
@@ -41,6 +56,20 @@ export function CharacterSheetViewer({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
+
+  async function persistNow(next: CharacterData) {
+    if (!canEdit) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+
+    setSaving(true);
+    setSaveError(null);
+    const { error } = await saveCharacterData(character.id, next, classes, {
+      isDm,
+      originalData: character.data,
+    });
+    if (error) setSaveError(error);
+    setSaving(false);
+  }
 
   function scheduleSave(next: CharacterData) {
     if (!canEdit) return;
@@ -60,7 +89,16 @@ export function CharacterSheetViewer({
 
   function handleChange(next: CharacterData) {
     setData(next);
+    if (next.combat.pendingShortRest !== data.combat.pendingShortRest) {
+      void persistNow(next);
+      return;
+    }
     scheduleSave(next);
+  }
+
+  async function handleShortRestApply(next: CharacterData) {
+    setData(next);
+    await persistNow(next);
   }
 
   async function handleImport(payload: {
@@ -116,6 +154,11 @@ export function CharacterSheetViewer({
     </>
   ) : undefined;
 
+  const showShortRestHealModal =
+    canEdit &&
+    data.combat.pendingShortRest &&
+    character.id !== ownedCharacterId;
+
   return (
     <>
       {canEdit && (saving || saveError) ? (
@@ -137,7 +180,19 @@ export function CharacterSheetViewer({
         characterId={character.id}
         canEditPortrait={canEdit}
         onPersistPortrait={canEdit ? persistPortrait : undefined}
+        campaignDate={campaignDate}
+        canRest={canEdit}
       />
+      {mounted && showShortRestHealModal
+        ? createPortal(
+            <ShortRestHealModal
+              data={data}
+              classes={classes}
+              onApply={handleShortRestApply}
+            />,
+            document.body
+          )
+        : null}
     </>
   );
 }

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getCharacterAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { fetchCatalogClasses } from "@/lib/content/catalog";
+import { parseWorldData } from "@/lib/schemas/world";
 import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
 import { CharacterSheetViewer } from "@/components/character/character-sheet-viewer";
 import { CharacterSheet } from "@/components/character/character-sheet";
@@ -18,6 +19,7 @@ export default async function CharacterDetailPage({
 
   const character = parseCharacterRow(access.character, access.isDm);
   const classes = await fetchCatalogClasses();
+  const initialWorldData = parseWorldData(access.campaign.world_data);
 
   if (access.canEdit) {
     return (
@@ -40,6 +42,8 @@ export default async function CharacterDetailPage({
             isDm={access.isDm}
             canEdit
             canDelete={access.isDm}
+            initialWorldData={initialWorldData}
+            ownedCharacterId={access.ownedCharacter?.id ?? null}
           />
         </section>
       </>

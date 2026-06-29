@@ -231,25 +231,69 @@ export function formatMaxHpTooltip(
   return lines.join("\n");
 }
 
-/** Total hit dice pool (e.g. `5d10`); spent dice tracked separately later. */
+/** Total hit dice in the pool (equals character level). */
+export function getHitDiceTotal(
+  data: CharacterData,
+  catalogClasses?: PhbClass[],
+  level?: number
+): number {
+  return level ?? levelFromXp(data.basicInfo.xp ?? 0);
+}
+
+export function getHitDieSides(
+  data: CharacterData,
+  catalogClasses?: PhbClass[]
+): number {
+  const cls = resolveCharacterClass(data, catalogClasses);
+  return cls?.hitDie ?? 8;
+}
+
+export function getHitDiceRemaining(
+  data: CharacterData,
+  catalogClasses?: PhbClass[],
+  level?: number
+): number {
+  const total = getHitDiceTotal(data, catalogClasses, level);
+  const spent = data.combat.hitDiceSpent ?? 0;
+  return Math.max(0, total - Math.min(spent, total));
+}
+
+/** Total hit dice pool label (e.g. `5d10`). */
 export function getHitDicePool(
   data: CharacterData,
   catalogClasses?: PhbClass[],
   level?: number
 ): string {
-  const cls = resolveCharacterClass(data, catalogClasses);
-  const hitDie = cls?.hitDie ?? 8;
-  const lvl = level ?? levelFromXp(data.basicInfo.xp ?? 0);
+  const hitDie = getHitDieSides(data, catalogClasses);
+  const lvl = getHitDiceTotal(data, catalogClasses, level);
   return `${lvl}d${hitDie}`;
+}
+
+/** Remaining/total hit dice label (e.g. `3/5d10`). */
+export function formatHitDiceDisplay(
+  data: CharacterData,
+  catalogClasses?: PhbClass[],
+  level?: number
+): string {
+  const total = getHitDiceTotal(data, catalogClasses, level);
+  const remaining = getHitDiceRemaining(data, catalogClasses, level);
+  const hitDie = getHitDieSides(data, catalogClasses);
+  return `${remaining}/${total}d${hitDie}`;
 }
 
 export function formatHitDiceTooltip(
   data: CharacterData,
-  catalogClasses?: PhbClass[]
+  catalogClasses?: PhbClass[],
+  level?: number
 ): string | null {
   const cls = resolveCharacterClass(data, catalogClasses);
   if (!cls) return null;
-  return `${cls.name}: d${cls.hitDie}`;
+  const total = getHitDiceTotal(data, catalogClasses, level);
+  const remaining = getHitDiceRemaining(data, catalogClasses, level);
+  const spent = total - remaining;
+  const lines = [`${cls.name}: d${cls.hitDie}`, `${remaining} remaining`];
+  if (spent > 0) lines.push(`${spent} spent`);
+  return lines.join("\n");
 }
 
 export function getInitiativeTotal(data: CharacterData): number {
@@ -278,6 +322,8 @@ export function syncCombatDerivedStats(
   const hitDice = getHitDicePool(data, catalogClasses);
   const pool = resolveSpeciesList(speciesList);
   const speed = getSpeciesSpeedFromCharacter(data, pool);
+  const hitDiceTotal = getHitDiceTotal(data, catalogClasses);
+  const hitDiceSpent = Math.min(data.combat.hitDiceSpent ?? 0, hitDiceTotal);
   const currentHp = Math.min(data.combat.currentHp, maxHp);
   const exhaustion = data.exhaustionLevels.length;
   return {
@@ -286,6 +332,7 @@ export function syncCombatDerivedStats(
       ...data.combat,
       maxHp,
       hitDice,
+      hitDiceSpent,
       speed,
       currentHp,
       exhaustion,

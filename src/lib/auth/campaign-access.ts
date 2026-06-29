@@ -39,9 +39,9 @@ async function getUserOwnedCharacterInCampaign(
 export async function getAuthUser(): Promise<User | null> {
   const supabase = await createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session?.user ?? null;
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user ?? null;
 }
 
 export async function getCampaignAccess(
@@ -58,9 +58,8 @@ export async function getCampaignAccess(
   if (!campaign) return null;
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return {

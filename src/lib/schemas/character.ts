@@ -87,6 +87,17 @@ export const savingThrowsSchema = z.record(
   z.object({ proficient: z.boolean().default(false) })
 );
 
+/** Last calendar date stored on character records (Harptos). */
+export const storedHarptosDateSchema = z
+  .object({
+    year: z.number().int().min(0),
+    month: z.number().int().min(1).max(12),
+    day: z.number().int().min(0).max(30),
+    festival: z.enum(HARPTOS_FESTIVAL_IDS).nullable().optional(),
+  })
+  .nullable()
+  .default(null);
+
 export const deathSavesSchema = z.object({
   successes: z.number().int().min(0).max(3).default(0),
   failures: z.number().int().min(0).max(3).default(0),
@@ -101,6 +112,10 @@ export const combatStatsSchema = z.object({
   speed: z.number().int().min(0).default(30),
   passivePerceptionOverride: z.number().optional(),
   hitDice: z.string().default("1d8"),
+  /** Hit dice spent since the last long rest (remaining = level − spent). */
+  hitDiceSpent: z.number().int().min(0).default(0),
+  /** Last in-game calendar date this character finished a long rest. */
+  lastLongRestDate: storedHarptosDateSchema,
   deathSaves: deathSavesSchema.default({ successes: 0, failures: 0 }),
   conditions: z.array(z.string()).default([]),
   exhaustion: z.number().int().min(0).max(6).default(0),
@@ -117,6 +132,8 @@ export const combatStatsSchema = z.object({
     })
     .nullable()
     .default(null),
+  /** Player must finish hit-dice healing before leaving short rest. */
+  pendingShortRest: z.boolean().default(false),
 });
 
 export const attackSchema = z.object({
@@ -284,17 +301,6 @@ export const inventorySchema = z.object({
   items: z.array(inventoryItemSchema).default([]),
   notes: z.string().default(""),
 });
-
-/** Last calendar date the character ate or drank (Harptos). */
-export const storedHarptosDateSchema = z
-  .object({
-    year: z.number().int().min(0),
-    month: z.number().int().min(1).max(12),
-    day: z.number().int().min(0).max(30),
-    festival: z.enum(HARPTOS_FESTIVAL_IDS).nullable().optional(),
-  })
-  .nullable()
-  .default(null);
 
 export const suppliesSchema = z.object({
   fedDate: storedHarptosDateSchema,

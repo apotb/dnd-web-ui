@@ -224,6 +224,14 @@ export function addExhaustionLevels(
   });
 }
 
+export function removeOneExhaustionLevel(data: CharacterData): CharacterData {
+  if (data.exhaustionLevels.length === 0) return data;
+  return syncCombatExhaustion({
+    ...data,
+    exhaustionLevels: data.exhaustionLevels.slice(0, -1),
+  });
+}
+
 export function formatExhaustionLevelSummary(level: ExhaustionLevel): string {
   return `${level.reason}: ${level.effect}`;
 }

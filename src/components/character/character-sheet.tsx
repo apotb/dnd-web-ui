@@ -78,6 +78,7 @@ import {
 import { SpellPicker } from "@/components/spells/spell-picker";
 import { SpellGlossaryMeta } from "@/components/spells/spell-glossary-meta";
 import { CharacterPortrait } from "@/components/character/character-portrait";
+import { CharacterRestButtons } from "@/components/character/character-rest-buttons";
 import { HumanoidSpeciesPicker } from "@/components/character-creator/humanoid-species-picker";
 import { TWO_HUMANOID_SPECIES_OPTION } from "@/lib/dnd/phb/favored-enemy-humanoids";
 import { getItemsBySlugsClient } from "@/lib/items/catalog-client";
@@ -151,10 +152,10 @@ import {
   calculateMaxHpBreakdown,
   calculateSpeedBreakdown,
   formatHitDiceTooltip,
+  formatHitDiceDisplay,
   formatInitiativeTooltip,
   formatMaxHpTooltip,
   formatSpeedTooltip,
-  getHitDicePool,
   getInitiativeTotal,
   getSpeciesSpeedFromCharacter,
 } from "@/lib/character/combat-derivation";
@@ -178,6 +179,7 @@ import {
 } from "@/lib/dnd/supplies";
 import { hasNaturalArmorSpecies } from "@/lib/dnd/phb/species-mechanics";
 import type { PhbBackground, PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
+import type { HarptosDate } from "@/lib/dnd/harptos-calendar";
 
 interface CharacterSheetProps {
   data: CharacterData;
@@ -193,6 +195,10 @@ interface CharacterSheetProps {
   characterId?: string;
   canEditPortrait?: boolean;
   onPersistPortrait?: (path: string) => Promise<{ error: string | null }>;
+  /** In-game calendar date for rest limits. */
+  campaignDate?: HarptosDate;
+  /** Show short/long rest controls (owner or DM). */
+  canRest?: boolean;
 }
 
 function GrantedFeatureRow({ feature }: { feature: GrantedFeature }) {
@@ -437,6 +443,8 @@ export function CharacterSheet({
   characterId,
   canEditPortrait = false,
   onPersistPortrait,
+  campaignDate,
+  canRest = false,
 }: CharacterSheetProps) {
   const canMutate = editable || canToggleEquipment;
   const canEditAbilities = editable && isDm;
@@ -539,11 +547,11 @@ export function CharacterSheet({
   );
   const derivedMaxHp = maxHpBreakdown.total;
   const exhaustionAttackSaveNote = getExhaustionAttackSaveSheetNote(data);
-  const hitDicePool = useMemo(
-    () => getHitDicePool(data, classCatalog, level),
+  const hitDiceDisplay = useMemo(
+    () => formatHitDiceDisplay(data, classCatalog, level),
     [data, classCatalog, level]
   );
-  const hitDiceTooltip = formatHitDiceTooltip(data, classCatalog);
+  const hitDiceTooltip = formatHitDiceTooltip(data, classCatalog, level);
 
   const classDisplay =
     data.basicInfo.classes.length > 0
@@ -1178,21 +1186,33 @@ export function CharacterSheet({
               </div>
             </div>
             {campaignId && characterId ? (
-              <CharacterPortrait
-                portraitPath={data.basicInfo.portrait}
-                characterName={data.basicInfo.name || "Unnamed Character"}
-                campaignId={campaignId}
-                characterId={characterId}
-                canEdit={canEditPortrait && !!onPersistPortrait}
-                onPortraitChange={(path) => {
-                  if (!onChange) return;
-                  onChange({
-                    ...data,
-                    basicInfo: { ...data.basicInfo, portrait: path },
-                  });
-                }}
-                onPersist={onPersistPortrait ?? (async () => ({ error: null }))}
-              />
+              <div className="character-portrait-column">
+                <CharacterPortrait
+                  portraitPath={data.basicInfo.portrait}
+                  characterName={data.basicInfo.name || "Unnamed Character"}
+                  campaignId={campaignId}
+                  characterId={characterId}
+                  canEdit={canEditPortrait && !!onPersistPortrait}
+                  onPortraitChange={(path) => {
+                    if (!onChange) return;
+                    onChange({
+                      ...data,
+                      basicInfo: { ...data.basicInfo, portrait: path },
+                    });
+                  }}
+                  onPersist={onPersistPortrait ?? (async () => ({ error: null }))}
+                />
+                {canRest && campaignDate && onChange ? (
+                  <CharacterRestButtons
+                    data={data}
+                    campaignDate={campaignDate}
+                    isDm={isDm}
+                    classes={classCatalog}
+                    speciesList={catalogSpecies}
+                    onApply={onChange}
+                  />
+                ) : null}
+              </div>
             ) : null}
           </div>
           <ProficiencyOverviewList label="Languages" entries={languageEntries} />
@@ -1585,7 +1605,7 @@ export function CharacterSheet({
             <Tooltip content={hitDiceTooltip}>
               <div className="space-y-1 cursor-default">
                 <Label className="text-xs text-muted-foreground">Hit Dice</Label>
-                <p className="text-sm font-medium">{hitDicePool}</p>
+                <p className="text-sm font-medium">{hitDiceDisplay}</p>
               </div>
             </Tooltip>
             <Tooltip

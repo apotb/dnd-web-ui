@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { fetchCatalogClasses } from "@/lib/content/catalog";
+import { parseWorldData } from "@/lib/schemas/world";
 import { createClient } from "@/lib/supabase/server";
 import { CharacterSheetsList } from "@/components/character/character-sheets-list";
 import type { Character } from "@/lib/types/database";
@@ -34,6 +35,8 @@ export default async function CharactersPage({
         classes={classes}
         isDm={access.isDm}
         userId={access.user?.id ?? null}
+        initialWorldData={parseWorldData(access.campaign.world_data)}
+        ownedCharacterId={access.ownedCharacter?.id ?? null}
       />
     </Suspense>
   );

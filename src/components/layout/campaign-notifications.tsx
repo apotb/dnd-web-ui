@@ -37,6 +37,7 @@ import {
 import { DehydrationSaveModal } from "@/components/layout/dehydration-save-modal";
 import { DeathSceneModal } from "@/components/layout/death-scene-modal";
 import { InitiativeRollModal } from "@/components/layout/initiative-roll-modal";
+import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   getExhaustionDeathMessage,
@@ -253,6 +254,7 @@ export function CampaignNotifications({
   const [mounted, setMounted] = useState(false);
   const [dehydrationSaveOpen, setDehydrationSaveOpen] = useState(false);
   const [initiativeRollOpen, setInitiativeRollOpen] = useState(false);
+  const [shortRestHealOpen, setShortRestHealOpen] = useState(false);
   const [deathSceneOpen, setDeathSceneOpen] = useState(false);
 
   useEffect(() => {
@@ -262,6 +264,7 @@ export function CampaignNotifications({
   const hasPendingDehydrationSave =
     !!character?.data.supplies.pendingDehydrationSave;
   const hasPendingInitiativeRoll = !!character?.data.combat.pendingInitiativeRoll;
+  const hasPendingShortRest = !!character?.data.combat.pendingShortRest;
   const isDead = character
     ? getExhaustionModifiers(character.data).isDead
     : false;
@@ -280,6 +283,12 @@ export function CampaignNotifications({
       setInitiativeRollOpen(true);
     }
   }, [hasPendingInitiativeRoll]);
+
+  useEffect(() => {
+    if (hasPendingShortRest) {
+      setShortRestHealOpen(true);
+    }
+  }, [hasPendingShortRest]);
 
   useEffect(() => {
     if (isDead) {
@@ -371,7 +380,7 @@ export function CampaignNotifications({
     setActivePicker(null);
   }
 
-  if (!showRail && !dehydrationSaveOpen && !initiativeRollOpen && !deathSceneOpen && !activePicker) return null;
+  if (!showRail && !dehydrationSaveOpen && !initiativeRollOpen && !shortRestHealOpen && !deathSceneOpen && !activePicker) return null;
 
   const modals = (
     <>
@@ -400,6 +409,29 @@ export function CampaignNotifications({
           onComplete={() => {
             setInitiativeRollOpen(false);
             setMessage(null);
+          }}
+        />
+      ) : null}
+      {shortRestHealOpen ? (
+        <ShortRestHealModal
+          data={character.data}
+          onApply={async (next) => {
+            setSaving(true);
+            setMessage(null);
+            const { error } = await saveCharacterData(
+              character.id,
+              next,
+              undefined,
+              { isDm: false, originalData: character.data }
+            );
+            setSaving(false);
+            if (error) {
+              setMessage(error);
+              return;
+            }
+            if (!next.combat.pendingShortRest) {
+              setShortRestHealOpen(false);
+            }
           }}
         />
       ) : null}

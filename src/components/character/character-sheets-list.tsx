@@ -9,6 +9,7 @@ import { CharacterImportButton } from "@/components/character/character-import-b
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { PhbClass } from "@/lib/dnd/phb/types";
+import type { WorldData } from "@/lib/schemas/world";
 
 interface CharacterSheetsListProps {
   campaignId: string;
@@ -16,6 +17,8 @@ interface CharacterSheetsListProps {
   classes: PhbClass[];
   isDm: boolean;
   userId: string | null;
+  initialWorldData: WorldData;
+  ownedCharacterId?: string | null;
   hideTitle?: boolean;
 }
 
@@ -50,6 +53,8 @@ export function CharacterSheetsList({
   classes,
   isDm,
   userId,
+  initialWorldData,
+  ownedCharacterId = null,
   hideTitle = false,
 }: CharacterSheetsListProps) {
   const searchParams = useSearchParams();
@@ -182,6 +187,8 @@ export function CharacterSheetsList({
                   isDm={isDm}
                   canEdit={selectedCanEdit}
                   canDelete={isDm}
+                  initialWorldData={initialWorldData}
+                  ownedCharacterId={ownedCharacterId}
                 />
               </section>
             </>
