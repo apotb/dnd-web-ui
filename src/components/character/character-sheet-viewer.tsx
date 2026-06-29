@@ -161,13 +161,18 @@ export function CharacterSheetViewer({
 
   return (
     <>
-      {canEdit && (saving || saveError) ? (
-        <p
-          className={`text-xs mb-2 ${saveError ? "text-destructive" : "text-muted-foreground"}`}
-        >
-          {saveError ?? "Saving…"}
-        </p>
-      ) : null}
+      {mounted && canEdit && (saving || saveError)
+        ? createPortal(
+            <div
+              className={`sheet-save-status${saveError ? " sheet-save-status--error" : ""}`}
+              role="status"
+              aria-live="polite"
+            >
+              {saveError ?? "Saving…"}
+            </div>,
+            document.body
+          )
+        : null}
       <CharacterSheet
         data={data}
         isDm={isDm}
