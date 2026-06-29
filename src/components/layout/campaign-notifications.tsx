@@ -8,17 +8,18 @@ import {
   getFoodItems,
   getWaterItems,
   formatSupplyItemTooltip,
+  ELSEWHERE_WATER_GALLONS,
+  hasEnoughWaterToday,
   markFed,
   markFedManually,
   markWatered,
-  markWateredManually,
+  markWateredElsewhere,
   needsFood,
   needsWater,
 } from "@/lib/dnd/supplies";
 import {
   formatGallons,
   getFoodNotificationInfo,
-  getRequiredWaterGallons,
   getWaterNotificationInfo,
 } from "@/lib/dnd/survival";
 import { useRealtimeCharacter } from "@/lib/hooks/use-realtime-character";
@@ -143,14 +144,19 @@ function SupplyPicker({
     kind === "food"
       ? "No rations in inventory."
       : "No waterskins in inventory.";
-  const manualLabel = kind === "food" ? "Ate elsewhere" : "Drank elsewhere";
+  const manualLabel =
+    kind === "food"
+      ? "Ate elsewhere"
+      : `Drank elsewhere (${formatGallons(ELSEWHERE_WATER_GALLONS)} gal)`;
   const manualHint =
     kind === "food"
       ? "Mark today as fed without using rations."
-      : `Satisfies today's water (${formatGallons(getRequiredWaterGallons(worldData))} gal) without using a waterskin.`;
+      : `Adds ${formatGallons(ELSEWHERE_WATER_GALLONS)} gal without using a waterskin.`;
 
   const foodInfo = kind === "food" ? getFoodNotificationInfo(data) : null;
   const waterInfo = kind === "water" ? getWaterNotificationInfo(data, worldData) : null;
+  const atMaxHydration =
+    kind === "water" && hasEnoughWaterToday(data, worldData);
 
   return (
     <div className="supply-picker-overlay" onClick={onCancel}>
@@ -196,7 +202,7 @@ function SupplyPicker({
                   <button
                     type="button"
                     className="supply-picker-item"
-                    disabled={saving}
+                    disabled={saving || atMaxHydration}
                     onClick={() => onSelect(item.id)}
                   >
                     <span>{item.name || "Unnamed item"}</span>
@@ -211,7 +217,7 @@ function SupplyPicker({
               <button
                 type="button"
                 className="supply-picker-item"
-                disabled={saving}
+                disabled={saving || atMaxHydration}
                 onClick={onManual}
               >
                 <span>{manualLabel}</span>
@@ -364,7 +370,7 @@ export function CampaignNotifications({
               inventoryItemId,
               worldData
             )
-          : markWateredManually(character.data, campaignDate, worldData);
+          : markWateredElsewhere(character.data, campaignDate, worldData);
 
     const { error } = await saveCharacterData(character.id, nextData, undefined, {
       isDm: false,
@@ -377,7 +383,9 @@ export function CampaignNotifications({
       return;
     }
 
-    setActivePicker(null);
+    if (kind === "food" || hasEnoughWaterToday(nextData, worldData)) {
+      setActivePicker(null);
+    }
   }
 
   if (!showRail && !dehydrationSaveOpen && !initiativeRollOpen && !shortRestHealOpen && !deathSceneOpen && !activePicker) return null;

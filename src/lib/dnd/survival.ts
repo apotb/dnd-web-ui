@@ -25,7 +25,13 @@ export function getConModifier(data: CharacterData): number {
   return abilityModifier(data.abilityScores.con);
 }
 
-export function processEndOfDaySurvival(
+export function getDehydrationSaveFailureLevelsForExhaustion(
+  exhaustionBeforeCheck: number
+): number {
+  return exhaustionBeforeCheck >= 1 ? 2 : 1;
+}
+
+function applyEndOfDayFoodSurvival(
   data: CharacterData,
   endingDate: HarptosDate,
   worldData: WorldData
@@ -50,6 +56,42 @@ export function processEndOfDaySurvival(
     }
   }
 
+  return next;
+}
+
+export function previewExhaustionBeforeDehydration(
+  data: CharacterData,
+  endingDate: HarptosDate,
+  worldData: WorldData
+): number {
+  const afterFood = applyEndOfDayFoodSurvival(data, endingDate, worldData);
+  return getExhaustionCount(afterFood);
+}
+
+export function needsDehydrationSaveForWaterGallons(
+  gallonsDrunk: number,
+  worldData: WorldData
+): boolean {
+  const requiredGallons = getRequiredWaterGallons(worldData);
+  const halfRequired = requiredGallons / 2;
+  return gallonsDrunk >= halfRequired && gallonsDrunk < requiredGallons;
+}
+
+export interface ProcessEndOfDaySurvivalOptions {
+  /** When set, resolves half-water dehydration immediately instead of leaving pending. */
+  dehydrationSaveRollTotal?: number;
+}
+
+export function processEndOfDaySurvival(
+  data: CharacterData,
+  endingDate: HarptosDate,
+  worldData: WorldData,
+  options?: ProcessEndOfDaySurvivalOptions
+): CharacterData {
+  if (!worldData.dailySuppliesActive) return data;
+
+  let next = applyEndOfDayFoodSurvival(data, endingDate, worldData);
+
   const requiredGallons = getRequiredWaterGallons(worldData);
   const halfRequired = requiredGallons / 2;
   const gallonsDrunk = next.supplies.waterGallonsToday;
@@ -58,17 +100,32 @@ export function processEndOfDaySurvival(
   if (gallonsDrunk >= requiredGallons) {
     // Fully hydrated — no dehydration check.
   } else if (gallonsDrunk >= halfRequired) {
-    next = {
-      ...next,
-      supplies: {
-        ...next.supplies,
-        pendingDehydrationSave: {
-          date: endingDate,
-          dc: DEHYDRATION_SAVE_DC,
-          exhaustionBeforeCheck: exhaustionBeforeDehydration,
+    if (options?.dehydrationSaveRollTotal !== undefined) {
+      next = {
+        ...next,
+        supplies: {
+          ...next.supplies,
+          pendingDehydrationSave: {
+            date: endingDate,
+            dc: DEHYDRATION_SAVE_DC,
+            exhaustionBeforeCheck: exhaustionBeforeDehydration,
+          },
         },
-      },
-    };
+      };
+      next = resolveDehydrationSave(next, options.dehydrationSaveRollTotal);
+    } else {
+      next = {
+        ...next,
+        supplies: {
+          ...next.supplies,
+          pendingDehydrationSave: {
+            date: endingDate,
+            dc: DEHYDRATION_SAVE_DC,
+            exhaustionBeforeCheck: exhaustionBeforeDehydration,
+          },
+        },
+      };
+    }
   } else {
     const levelsToAdd = exhaustionBeforeDehydration >= 1 ? 2 : 1;
     next = addExhaustionLevels(next, levelsToAdd, "Dehydration", endingDate);
@@ -91,7 +148,9 @@ export function getDehydrationSaveFailureExhaustionLevels(
 ): number {
   const pending = data.supplies.pendingDehydrationSave;
   if (!pending) return 0;
-  return pending.exhaustionBeforeCheck >= 1 ? 2 : 1;
+  return getDehydrationSaveFailureLevelsForExhaustion(
+    pending.exhaustionBeforeCheck
+  );
 }
 
 export function resolveDehydrationSave(
@@ -153,7 +212,8 @@ export function getFoodNotificationInfo(data: CharacterData) {
 }
 
 export function formatGallons(gallons: number): string {
-  return Number.isInteger(gallons) ? String(gallons) : gallons.toFixed(1);
+  const rounded = Math.round(gallons * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
 }
 
 export function getWaterNotificationInfo(

@@ -98,6 +98,17 @@ export function getInspiration(data: CharacterData): number {
   return clampInspiration(data.inspiration ?? 0, data);
 }
 
+export function formatInspirationTooltip(
+  inspiration: number,
+  max: number
+): string {
+  return [
+    `Inspiration ${inspiration}/${max}`,
+    "",
+    "Spend 1 to gain advantage on an attack roll, saving throw, or ability check. Granted by the DM.",
+  ].join("\n");
+}
+
 export function getAbilityModifiers(scores: CharacterData["abilityScores"]) {
   return {
     str: abilityModifier(scores.str),

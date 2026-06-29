@@ -41,6 +41,7 @@ import {
   getProficiencyBonus,
   getInspiration,
   clampInspiration,
+  formatInspirationTooltip,
   getSavingThrowTotal,
   getSkillTotal,
   getSpellAttackBonus,
@@ -296,7 +297,7 @@ function InspirationIndicator({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Tooltip content={`Inspiration ${inspiration}/${max}`}>
+      <Tooltip content={formatInspirationTooltip(inspiration, max)}>
         <div
           className="flex items-center gap-1"
           aria-label={`Inspiration ${inspiration} of ${max}`}

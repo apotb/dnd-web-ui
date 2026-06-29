@@ -18,6 +18,8 @@ const FOOD_ITEM_IDS = new Set(["rations"]);
 const WATER_ITEM_IDS = new Set(["waterskin"]);
 export const WATERSKIN_ITEM_ID = "waterskin";
 export const EMPTY_WATERSKIN_ITEM_ID = "empty-waterskin";
+/** Flat hydration from "drank elsewhere" in the player water picker. */
+export const ELSEWHERE_WATER_GALLONS = 0.25;
 
 function normalizeItemName(name: string): string {
   return name.trim().toLowerCase();
@@ -260,4 +262,199 @@ export function markWateredManually(
   const required = getRequiredWaterGallons(worldData);
   const gallons = Math.max(data.supplies.waterGallonsToday, required);
   return applyWaterGallons(data, gallons, required, date);
+}
+
+/** Add a flat amount of water without consuming inventory. */
+export function addWaterGallons(
+  data: CharacterData,
+  date: HarptosDate,
+  worldData: WorldData,
+  amount: number
+): CharacterData {
+  const required = getRequiredWaterGallons(worldData);
+  const gallons = data.supplies.waterGallonsToday + amount;
+  return applyWaterGallons(data, gallons, required, date);
+}
+
+/** Small sip from a non-inventory source (stream, rain, etc.). */
+export function markWateredElsewhere(
+  data: CharacterData,
+  date: HarptosDate,
+  worldData: WorldData
+): CharacterData {
+  return addWaterGallons(data, date, worldData, ELSEWHERE_WATER_GALLONS);
+}
+
+/** Mark half of today's required water without consuming inventory. */
+export function markWateredHalf(
+  data: CharacterData,
+  date: HarptosDate,
+  worldData: WorldData
+): CharacterData {
+  const required = getRequiredWaterGallons(worldData);
+  const halfRequired = required / 2;
+  const gallons = Math.max(data.supplies.waterGallonsToday, halfRequired);
+  return applyWaterGallons(data, gallons, required, date);
+}
+
+export type EndOfDayFoodChoice =
+  | { source: "inventory"; itemId: string }
+  | { source: "elsewhere" }
+  | { source: "none" };
+
+export type EndOfDayWaterElsewhereChoice = "none" | "half" | "full";
+
+export type EndOfDaySuppliesChoice = {
+  food: EndOfDayFoodChoice;
+  /** Waterskin stacks to consume: inventory item id → count (supports multiple skins). */
+  waterItemCounts: Record<string, number>;
+  /** Drink water from a source other than inventory. */
+  waterElsewhere: EndOfDayWaterElsewhereChoice;
+};
+
+export function getWaterGallonsFromEndOfDayChoice(
+  choice: EndOfDaySuppliesChoice,
+  worldData: WorldData
+): number {
+  if (choice.waterElsewhere === "full") {
+    return getRequiredWaterGallons(worldData);
+  }
+  if (choice.waterElsewhere === "half") {
+    return getRequiredWaterGallons(worldData) / 2;
+  }
+
+  return Object.values(choice.waterItemCounts).reduce(
+    (total, count) => total + Math.max(0, count) * WATERSKIN_GALLONS,
+    0
+  );
+}
+
+export function getEndOfDayWaterStatus(
+  gallons: number,
+  worldData: WorldData
+): "full" | "half" | "none" {
+  const required = getRequiredWaterGallons(worldData);
+  const halfRequired = required / 2;
+  if (gallons >= required) return "full";
+  if (gallons >= halfRequired) return "half";
+  return "none";
+}
+
+export function getEndOfDaySuppliesChoiceFromData(
+  data: CharacterData,
+  date: HarptosDate,
+  worldData: WorldData
+): EndOfDaySuppliesChoice {
+  const gallons = data.supplies.waterGallonsToday;
+  const required = getRequiredWaterGallons(worldData);
+  const status = getEndOfDayWaterStatus(gallons, worldData);
+
+  return {
+    food: isFedForDate(data, date)
+      ? { source: "elsewhere" }
+      : { source: "none" },
+    waterItemCounts: {},
+    waterElsewhere:
+      status === "full" && gallons >= required ? "full" : "none",
+  };
+}
+
+function clearFedForDate(
+  data: CharacterData,
+  date: HarptosDate
+): CharacterData {
+  if (!data.supplies.fedDate || !sameHarptosDate(data.supplies.fedDate, date)) {
+    return data;
+  }
+
+  return {
+    ...data,
+    supplies: {
+      ...data.supplies,
+      fedDate: null,
+    },
+  };
+}
+
+function clearWaterForDate(
+  data: CharacterData,
+  date: HarptosDate
+): CharacterData {
+  return {
+    ...data,
+    supplies: {
+      ...data.supplies,
+      waterGallonsToday: 0,
+      wateredDate:
+        data.supplies.wateredDate &&
+        sameHarptosDate(data.supplies.wateredDate, date)
+          ? null
+          : data.supplies.wateredDate,
+    },
+  };
+}
+
+function applyWaterFromInventoryCounts(
+  data: CharacterData,
+  date: HarptosDate,
+  worldData: WorldData,
+  waterItemCounts: Record<string, number>
+): CharacterData {
+  let next = clearWaterForDate(data, date);
+
+  for (const [itemId, count] of Object.entries(waterItemCounts)) {
+    const uses = Math.max(0, Math.floor(count));
+    for (let i = 0; i < uses; i++) {
+      const hasItem = next.inventory.items.some(
+        (item) => item.id === itemId && isWaterItem(item)
+      );
+      if (!hasItem) break;
+      next = markWatered(next, date, itemId, worldData);
+    }
+  }
+
+  return next;
+}
+
+/** Apply DM end-of-day food/water choices before survival processing. */
+export function applyEndOfDaySuppliesChoice(
+  data: CharacterData,
+  date: HarptosDate,
+  worldData: WorldData,
+  choice: EndOfDaySuppliesChoice
+): CharacterData {
+  let next = data;
+
+  if (choice.food.source === "inventory") {
+    next = markFed(next, date, choice.food.itemId);
+  } else if (choice.food.source === "elsewhere") {
+    next = markFedManually(next, date);
+  } else {
+    next = clearFedForDate(next, date);
+  }
+
+  if (choice.waterElsewhere === "full") {
+    next = clearWaterForDate(next, date);
+    next = markWateredManually(next, date, worldData);
+  } else if (choice.waterElsewhere === "half") {
+    next = clearWaterForDate(next, date);
+    next = markWateredHalf(next, date, worldData);
+  } else {
+    next = applyWaterFromInventoryCounts(
+      next,
+      date,
+      worldData,
+      choice.waterItemCounts
+    );
+  }
+
+  return next;
+}
+
+export function characterNeedsDmEndOfDaySupplies(
+  ownerUserId: string | null,
+  dmUserId: string | null
+): boolean {
+  if (!dmUserId) return ownerUserId === null;
+  return ownerUserId === null || ownerUserId === dmUserId;
 }

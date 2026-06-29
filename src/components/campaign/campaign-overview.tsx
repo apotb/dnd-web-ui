@@ -173,6 +173,8 @@ export function CampaignOverview({
             <CampaignDayAdvance
               campaignId={campaignId}
               initialWorldData={initialWorldData}
+              characters={characters}
+              userId={userId}
             />
           ) : null}
           <HarptosCalendar
