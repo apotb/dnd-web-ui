@@ -1863,6 +1863,7 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .campaign-map-canvas {
+  --map-zoom: 1;
   position: relative;
   min-width: 100%;
   line-height: 0;
@@ -1886,12 +1887,12 @@ html.campaign-bg-active .retro-back-link {
 
 .campaign-map-marker {
   position: absolute;
-  width: 14px;
-  height: 14px;
-  margin: -7px 0 0 -7px;
-  border: 2px solid #fff;
+  width: calc(14px * var(--map-zoom));
+  height: calc(14px * var(--map-zoom));
+  margin: calc(-7px * var(--map-zoom)) 0 0 calc(-7px * var(--map-zoom));
+  border: calc(2px * var(--map-zoom)) solid #fff;
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 calc(1px * var(--map-zoom)) rgba(0, 0, 0, 0.45);
   padding: 0;
   cursor: default;
   z-index: 2;
@@ -1908,16 +1909,16 @@ html.campaign-bg-active .retro-back-link {
 .campaign-map-marker-label {
   position: absolute;
   left: 50%;
-  top: calc(100% + 6px);
+  top: calc(100% + 6px * var(--map-zoom));
   transform: translateX(-50%);
   white-space: nowrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--map-zoom));
   font-weight: 700;
   line-height: 1.2;
   color: #000;
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #000;
-  padding: 2px 6px;
+  border: calc(1px * var(--map-zoom)) solid #000;
+  padding: calc(2px * var(--map-zoom)) calc(6px * var(--map-zoom));
   pointer-events: none;
 }
 
@@ -2028,6 +2029,7 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .hex-reveal-map-canvas {
+  --map-zoom: 1;
   position: relative;
   width: 100%;
   line-height: 0;

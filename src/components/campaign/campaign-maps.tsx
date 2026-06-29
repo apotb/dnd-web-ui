@@ -696,7 +696,10 @@ function MapCanvas({
       <div
         ref={containerRef}
         className="campaign-map-canvas"
-        style={{ width: `${zoom * 100}%` }}
+        style={{
+          width: `${zoom * 100}%`,
+          "--map-zoom": expanded ? zoom * 2 : zoom,
+        }}
       >
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
