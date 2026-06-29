@@ -1,6 +1,7 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { sortInitiativeTokenIds } from "@/lib/combat/initiative";
 import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
+import { getPartyTokenLabel } from "@/lib/combat/party-token-label";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { DEFAULT_GRID_SIZE, DEFAULT_TILE_FEET, MAX_GRID_SIZE, MAX_TILE_FEET, MIN_GRID_SIZE, MIN_TILE_FEET } from "@/lib/schemas/combat-grid";
 import {
@@ -58,7 +59,7 @@ export function buildPartyTokens(
       id: character.id,
       kind: "party",
       name: character.name,
-      label: character.name,
+      label: getPartyTokenLabel(character.name),
       characterId: character.id,
       portraitPath: character.data.basicInfo.portrait || null,
       x,
@@ -533,7 +534,7 @@ export function addPartyMembersToState(
       id: character.id,
       kind: "party",
       name: character.name,
-      label: character.name,
+      label: getPartyTokenLabel(character.name),
       characterId: character.id,
       portraitPath: character.data.basicInfo.portrait || null,
       x,
@@ -611,7 +612,7 @@ export function syncPartyTokens(
         {
           ...existing,
           name: character.name,
-          label: character.name,
+          label: getPartyTokenLabel(character.name),
           portraitPath: character.data.basicInfo.portrait || existing.portraitPath,
           // Prefer character sheet HP when resyncing roster metadata (e.g. after DM HP adjust).
           currentHp: character.data.combat.currentHp ?? existing.currentHp,
@@ -631,7 +632,7 @@ export function syncPartyTokens(
       id: character.id,
       kind: "party",
       name: character.name,
-      label: character.name,
+      label: getPartyTokenLabel(character.name),
       characterId: character.id,
       portraitPath: character.data.basicInfo.portrait || null,
       x,

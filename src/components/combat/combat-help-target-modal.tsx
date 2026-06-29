@@ -1,6 +1,7 @@
 "use client";
 
 import type { CombatToken } from "@/lib/schemas/combat-state";
+import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
 
 interface CombatHelpTargetModalProps {
   allies: CombatToken[];
@@ -29,6 +30,7 @@ export function CombatHelpTargetModal({
         <ul className="combat-help-target-list">
           {allies.map((ally) => {
             const portraitUrl = resolvePortraitUrl(ally);
+            const displayLabel = getCombatTokenDisplayLabel(ally);
             return (
               <li key={ally.id}>
                 <button
@@ -49,10 +51,10 @@ export function CombatHelpTargetModal({
                       className="combat-help-target-portrait combat-help-target-portrait-fallback"
                       aria-hidden
                     >
-                      {ally.label.slice(0, 1)}
+                      {displayLabel.slice(0, 1)}
                     </div>
                   )}
-                  <span className="combat-help-target-name">{ally.label}</span>
+                  <span className="combat-help-target-name">{displayLabel}</span>
                 </button>
               </li>
             );

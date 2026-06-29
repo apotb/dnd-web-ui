@@ -139,6 +139,7 @@ import {
 } from "@/lib/combat/turn";
 import { useCombatCatalog } from "@/lib/combat/use-combat-catalog";
 import {
+  adjustTurnMovementUsedFeet,
   computeReachableDestinations,
   findDestinationAtCell,
   getDashPreviewRemainingFeet,
@@ -147,6 +148,7 @@ import {
   type ReachableDestination,
 } from "@/lib/combat/movement";
 import { commitCombatMove } from "@/lib/combat/movement-actions";
+import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
 
 interface CombatBoardProps {
   campaignId: string;
@@ -404,6 +406,7 @@ export function CombatBoard({
   >(null);
   const [hpAmount, setHpAmount] = useState("1");
   const [applyingHp, setApplyingHp] = useState(false);
+  const [adjustingMovement, setAdjustingMovement] = useState(false);
   const [endTurnConfirmOpen, setEndTurnConfirmOpen] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
@@ -663,8 +666,12 @@ export function CombatBoard({
   const battleActive = isBattleActive(combatState);
   const currentTurnTokenId = getCurrentTurnTokenId(combatState);
   const currentTurnToken = getCurrentTurnToken(combatState);
+  const canAdjustTurnMovement =
+    battleActive && currentTurnToken != null && isCombatantToken(currentTurnToken);
   const nextTurnToken = getNextTurnToken(combatState);
-  const nextTurnLabel = nextTurnToken?.label ?? "Unknown";
+  const nextTurnLabel = nextTurnToken
+    ? getCombatTokenDisplayLabel(nextTurnToken)
+    : "Unknown";
   const currentTurnCharacter = currentTurnToken?.characterId
     ? charactersById[currentTurnToken.characterId] ?? null
     : null;
@@ -672,9 +679,21 @@ export function CombatBoard({
     currentTurnToken?.enemySlug ? enemiesBySlug[currentTurnToken.enemySlug] ?? null : null;
 
   const { catalogItems, classCatalog, featureCatalogs } = useCombatCatalog(characters);
+  const tokenSpeedOptions = useMemo(
+    () => ({
+      catalogItems,
+      speciesList: featureCatalogs.species,
+    }),
+    [catalogItems, featureCatalogs.species]
+  );
 
   const currentSpeedFt = currentTurnToken
-    ? getTokenSpeedFt(currentTurnToken, currentTurnCharacter, currentTurnEnemy?.data ?? null)
+    ? getTokenSpeedFt(
+        currentTurnToken,
+        currentTurnCharacter,
+        currentTurnEnemy?.data ?? null,
+        tokenSpeedOptions
+      )
     : 0;
   const movementUsedFeet = combatState.turn.movementUsedFeet;
   const dashUsed = combatState.turn.dashUsed;
@@ -850,7 +869,8 @@ export function CombatBoard({
   const provokingTokenLabel = useMemo(() => {
     const provokingId = pendingOpportunityAttacks?.provokingTokenId;
     if (!provokingId) return "An enemy";
-    return combatState.tokens.find((token) => token.id === provokingId)?.label ?? "An enemy";
+    const token = combatState.tokens.find((entry) => entry.id === provokingId);
+    return token ? getCombatTokenDisplayLabel(token) : "An enemy";
   }, [combatState.tokens, pendingOpportunityAttacks?.provokingTokenId]);
 
   const pendingOpportunityMovePreview = useMemo(() => {
@@ -1460,7 +1480,9 @@ export function CombatBoard({
       setPendingOpportunityAttackMove({
         destination,
         dashConsumed,
-        reactorLabels: opportunityAttackReactors.map((reactor) => reactor.label),
+        reactorLabels: opportunityAttackReactors.map((reactor) =>
+          getCombatTokenDisplayLabel(reactor)
+        ),
         opportunityAttackerTokenIds,
       });
       return;
@@ -1623,6 +1645,18 @@ export function CombatBoard({
     }
 
     setApplyingHp(false);
+  }
+
+  async function handleAdjustTurnMovement(deltaUsedFeet: number) {
+    if (!canAdjustTurnMovement) return;
+
+    const next = adjustTurnMovementUsedFeet(combatState, deltaUsedFeet);
+    setAdjustingMovement(true);
+    const error = await persist(next);
+    setAdjustingMovement(false);
+    if (error) {
+      window.alert(error);
+    }
   }
 
   function handleTokenClick(tokenId: string, event: React.MouseEvent) {
@@ -1838,6 +1872,7 @@ export function CombatBoard({
 
   function renderToken(token: CombatToken) {
     const portraitUrl = resolveTokenPortraitUrl(supabase, token);
+    const displayLabel = getCombatTokenDisplayLabel(token);
     const isSelected = selectedTokenId === token.id;
     const enemy = token.enemySlug ? enemiesBySlug[token.enemySlug] : null;
     const character = token.characterId ? charactersById[token.characterId] : null;
@@ -1871,8 +1906,6 @@ export function CombatBoard({
       attackTargeting &&
       targetingHighlights?.validTargets.some((target) => target.id === token.id);
 
-    const markerWithoutPortrait = token.kind === "marker" && !portraitUrl;
-
     return (
       <div
         key={token.id}
@@ -1884,34 +1917,32 @@ export function CombatBoard({
         <div
           className={`combat-token-badge${isExpanded ? " combat-token-badge-expanded" : ""}`}
         >
-          {!markerWithoutPortrait ? (
-            portraitUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={portraitUrl} alt="" className="combat-token-portrait" draggable={false} />
-            ) : (
-              <div className="combat-token-portrait combat-token-portrait-fallback">
-                {token.label.slice(0, 1)}
-              </div>
-            )
+          {portraitUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={portraitUrl} alt="" className="combat-token-portrait" draggable={false} />
           ) : (
-            <div className="combat-token-portrait combat-token-portrait-spacer" aria-hidden />
+            <div className="combat-token-portrait combat-token-portrait-fallback">
+              {displayLabel.slice(0, 1)}
+            </div>
           )}
           <div
             className={`combat-token-label${isExpanded ? " combat-token-label-expanded" : ""}`}
           >
-            <span className="combat-token-label-name">{token.label}</span>
-            {isExpanded && portraitUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={portraitUrl}
-                alt=""
-                className="combat-token-label-portrait"
-                draggable={false}
-              />
-            ) : isExpanded && !markerWithoutPortrait ? (
-              <div className="combat-token-label-portrait combat-token-label-portrait-fallback">
-                {token.label.slice(0, 1)}
-              </div>
+            <span className="combat-token-label-name">{displayLabel}</span>
+            {isExpanded ? (
+              portraitUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={portraitUrl}
+                  alt=""
+                  className="combat-token-label-portrait"
+                  draggable={false}
+                />
+              ) : (
+                <div className="combat-token-label-portrait combat-token-label-portrait-fallback">
+                  {displayLabel.slice(0, 1)}
+                </div>
+              )
             ) : null}
             {isExpanded && token.kind === "party" && character ? (
               <>
@@ -1926,7 +1957,8 @@ export function CombatBoard({
                   {token.maxHp ?? character.data.combat.maxHp}
                 </span>
                 <span className="combat-token-label-detail">
-                  Speed {character.data.combat.speed} ft
+                  Speed{" "}
+                  {getTokenSpeedFt(token, character, null, tokenSpeedOptions)} ft
                 </span>
               </>
             ) : null}
@@ -1963,6 +1995,7 @@ export function CombatBoard({
     if (!preview) return null;
     const { token, x, y } = preview;
     const portraitUrl = resolveTokenPortraitUrl(supabase, token);
+    const displayLabel = getCombatTokenDisplayLabel(token);
 
     return (
       <div
@@ -1980,7 +2013,7 @@ export function CombatBoard({
             <img src={portraitUrl} alt="" className="combat-token-portrait" draggable={false} />
           ) : (
             <div className="combat-token-portrait combat-token-portrait-fallback">
-              {token.label.slice(0, 1)}
+              {displayLabel.slice(0, 1)}
             </div>
           )}
         </div>
@@ -2007,26 +2040,27 @@ export function CombatBoard({
           ) : null}
           {initiativeTokens.map((token) => {
             const portraitUrl = resolveTokenPortraitUrl(supabase, token);
+            const displayLabel = getCombatTokenDisplayLabel(token);
             const initiativeResult = combatState.initiative.results[token.id];
             const turnTooltip =
               isDm && initiativeResult
-                ? formatInitiativeResultTooltip(token.label, initiativeResult)
-                : token.label;
+                ? formatInitiativeResultTooltip(displayLabel, initiativeResult)
+                : displayLabel;
 
             const portrait = portraitUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={portraitUrl}
-                alt={token.label}
+                alt={displayLabel}
                 className="combat-turn-portrait"
                 draggable={false}
               />
             ) : (
               <div
                 className="combat-turn-portrait combat-turn-portrait-fallback"
-                aria-label={token.label}
+                aria-label={displayLabel}
               >
-                {token.label.slice(0, 1)}
+                {displayLabel.slice(0, 1)}
               </div>
             );
 
@@ -2205,7 +2239,11 @@ export function CombatBoard({
                   ) : (
                     <div className="combat-turn-waiting combat-attack-waiting">
                       <p className="combat-turn-waiting-text combat-attack-waiting-text">
-                        Waiting for {currentTurnToken?.label ?? "the active combatant"}&apos;s
+                        Waiting for{" "}
+                        {currentTurnToken
+                          ? getCombatTokenDisplayLabel(currentTurnToken)
+                          : "the active combatant"}
+                        &apos;s
                         turn
                       </p>
                     </div>
@@ -2276,45 +2314,69 @@ export function CombatBoard({
                   >
                     Add marker
                   </button>
-                  <button
-                    type="button"
-                    className="candy-btn"
-                    disabled={
-                      !selectedToken ||
-                      selectedToken.kind === "marker" ||
-                      !hpAmountValid ||
-                      applyingHp
-                    }
-                    onClick={() => void handleApplyHpToSelected(1)}
-                  >
-                    {applyingHp ? "…" : "Heal"}
-                  </button>
-                  <input
-                    type="number"
-                    className="candy-input combat-hp-amount-input"
-                    min={1}
-                    value={hpAmount}
-                    onChange={(event) => setHpAmount(event.target.value)}
-                    disabled={
-                      !selectedToken ||
-                      selectedToken.kind === "marker" ||
-                      applyingHp
-                    }
-                    aria-label="HP amount"
-                  />
-                  <button
-                    type="button"
-                    className="candy-btn"
-                    disabled={
-                      !selectedToken ||
-                      selectedToken.kind === "marker" ||
-                      !hpAmountValid ||
-                      applyingHp
-                    }
-                    onClick={() => void handleApplyHpToSelected(-1)}
-                  >
-                    {applyingHp ? "…" : "Damage"}
-                  </button>
+                  <div className="combat-hp-adjust-group">
+                    <button
+                      type="button"
+                      className="candy-btn"
+                      disabled={
+                        !selectedToken ||
+                        selectedToken.kind === "marker" ||
+                        !hpAmountValid ||
+                        applyingHp
+                      }
+                      onClick={() => void handleApplyHpToSelected(1)}
+                    >
+                      {applyingHp ? "…" : "Heal"}
+                    </button>
+                    <input
+                      type="number"
+                      className="combat-hp-amount-input"
+                      min={1}
+                      value={hpAmount}
+                      onChange={(event) => setHpAmount(event.target.value)}
+                      disabled={
+                        !selectedToken ||
+                        selectedToken.kind === "marker" ||
+                        applyingHp
+                      }
+                      aria-label="HP amount"
+                    />
+                    <button
+                      type="button"
+                      className="candy-btn"
+                      disabled={
+                        !selectedToken ||
+                        selectedToken.kind === "marker" ||
+                        !hpAmountValid ||
+                        applyingHp
+                      }
+                      onClick={() => void handleApplyHpToSelected(-1)}
+                    >
+                      {applyingHp ? "…" : "Damage"}
+                    </button>
+                  </div>
+                  <div className="combat-hp-adjust-group">
+                    <button
+                      type="button"
+                      className="candy-btn"
+                      disabled={
+                        !canAdjustTurnMovement ||
+                        adjustingMovement ||
+                        movementUsedFeet === 0
+                      }
+                      onClick={() => void handleAdjustTurnMovement(-5)}
+                    >
+                      {adjustingMovement ? "…" : "+5 ft"}
+                    </button>
+                    <button
+                      type="button"
+                      className="candy-btn"
+                      disabled={!canAdjustTurnMovement || adjustingMovement}
+                      onClick={() => void handleAdjustTurnMovement(5)}
+                    >
+                      {adjustingMovement ? "…" : "-5 ft"}
+                    </button>
+                  </div>
                   <button
                     type="button"
                     className="candy-btn"
@@ -2386,7 +2448,11 @@ export function CombatBoard({
                     validCells={targetingHighlights.validCells}
                     hoveredCell={hoveredTargetingCell}
                     previewCenter={null}
-                    hoveredTokenLabel={hoveredTargetToken?.label ?? null}
+                    hoveredTokenLabel={
+                      hoveredTargetToken
+                        ? getCombatTokenDisplayLabel(hoveredTargetToken)
+                        : null
+                    }
                     hoveredTokenDetail={hoveredTargetDetail}
                     onPointerMove={updateHoverFromPointer}
                     onPointerLeave={handleTargetingPointerLeave}

@@ -3546,18 +3546,37 @@ html.campaign-bg-active .retro-back-link {
   cursor: grabbing;
 }
 
-.combat-toolbar-actions .combat-hp-amount-input {
+.combat-hp-adjust-group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.combat-hp-adjust-group .candy-btn {
+  margin: 0;
+}
+
+.combat-hp-amount-input {
   width: 4.5rem;
   min-width: 4.5rem;
   max-width: 4.5rem;
   flex: 0 0 auto;
-  align-self: stretch;
   margin: 0;
   padding: 0 8px;
   border: 1px solid #000;
+  background: #fff;
   font: inherit;
   line-height: 1.2;
   box-sizing: border-box;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.combat-hp-amount-input::-webkit-outer-spin-button,
+.combat-hp-amount-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .combat-token-dm .combat-token-label {
@@ -3828,6 +3847,7 @@ html.campaign-bg-active .retro-back-link {
 .combat-token-marker-tooltip {
   white-space: pre-line;
   max-width: 220px;
+  color: inherit;
 }
 
 .combat-marker-dialog-field {

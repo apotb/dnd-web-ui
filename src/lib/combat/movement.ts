@@ -1,7 +1,10 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { getCharacterEffectiveSpeedFt } from "@/lib/character/combat-derivation";
 import { tokenFootprintsOverlap } from "@/lib/combat/state-utils";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import type { Item } from "@/lib/schemas/item";
+import type { PhbSpecies } from "@/lib/dnd/phb/types";
 
 export interface GridPosition {
   x: number;
@@ -55,13 +58,20 @@ export function parseEnemySpeedFt(speed: string): number {
   return 30;
 }
 
+export interface TokenSpeedOptions {
+  catalogItems?: Record<string, Item>;
+  speciesList?: PhbSpecies[];
+}
+
 export function getTokenSpeedFt(
   token: CombatToken,
   character: ParsedCharacter | null,
-  enemyData: EnemyData | null
+  enemyData: EnemyData | null,
+  options: TokenSpeedOptions = {}
 ): number {
+  const { catalogItems = {}, speciesList } = options;
   if (token.kind === "party" && character) {
-    return Math.max(0, character.data.combat.speed ?? 30);
+    return getCharacterEffectiveSpeedFt(character.data, catalogItems, speciesList);
   }
   if (token.kind === "enemy" && enemyData) {
     return parseEnemySpeedFt(enemyData.speed);
@@ -327,6 +337,19 @@ export function getRemainingMovementFeet(
 ): number {
   const cap = dashUsed ? speedFt * 2 : speedFt;
   return Math.max(0, cap - usedFeet);
+}
+
+export function adjustTurnMovementUsedFeet(
+  state: CombatState,
+  deltaUsedFeet: number
+): CombatState {
+  return {
+    ...state,
+    turn: {
+      ...state.turn,
+      movementUsedFeet: Math.max(0, state.turn.movementUsedFeet + deltaUsedFeet),
+    },
+  };
 }
 
 export function getDashPreviewRemainingFeet(

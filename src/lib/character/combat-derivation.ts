@@ -1,10 +1,14 @@
 import { findSpeciesByDisplayName } from "@/lib/content/catalog-tooltip";
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import {
+  calculateCarryCapacityBreakdown,
   ENCUMBERED_SPEED_FT,
+  getEncumbranceInfo,
+  getInventoryWeightLb,
   type EncumbranceInfo,
 } from "@/lib/character/encumbrance";
 import type { CharacterData } from "@/lib/schemas/character";
+import type { Item } from "@/lib/schemas/item";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 import { abilityModifier, formatModifier } from "@/lib/dnd/calculations";
@@ -86,6 +90,29 @@ export function calculateSpeedBreakdown(
     effectiveSpeedFt: encumbranceInfo.effectiveSpeedFt,
     sources,
   };
+}
+
+/** Walking speed after exhaustion and encumbrance (matches the character sheet). */
+export function getCharacterEffectiveSpeedFt(
+  data: CharacterData,
+  catalogItems: Record<string, Item> = {},
+  speciesList?: PhbSpecies[]
+): number {
+  const pool = resolveSpeciesList(speciesList);
+  const baseSpeedFt = getSpeciesSpeedFromCharacter(data, pool);
+  const speedBeforeEncumbrance = applyExhaustionToSpeed(baseSpeedFt, data);
+  const carryCapacityBreakdown = calculateCarryCapacityBreakdown(
+    data.abilityScores.str,
+    data.inventory.items,
+    catalogItems
+  );
+  const encumbrance = getEncumbranceInfo(
+    data.abilityScores.str,
+    getInventoryWeightLb(data.inventory.items, catalogItems),
+    speedBeforeEncumbrance,
+    carryCapacityBreakdown
+  );
+  return calculateSpeedBreakdown(data, encumbrance, speciesList).effectiveSpeedFt;
 }
 
 export function formatSpeedTooltip(
