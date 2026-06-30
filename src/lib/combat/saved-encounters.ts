@@ -182,6 +182,7 @@ export function savedEncounterToCombatState(
     pendingOpportunityAttacks: null,
     boardTitle: encounter.name,
     savedEncounterId: encounter.id,
+    autoApprove: false,
   };
 
   const tokens: CombatToken[] = [];

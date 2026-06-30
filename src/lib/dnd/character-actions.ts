@@ -55,7 +55,7 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
     name: "Use an Object",
     cost: "action",
     description:
-      "Interact with an object on the battlefield. Your first object interaction each turn is free; use this action to interact with an additional object (or one that requires an action).",
+      "Interact with an object on the battlefield or change one piece of equipment (draw, sheath, equip, or unequip). Your first object interaction each turn is free; use this action to interact with an additional object or make another equipment change.",
     source: "core",
     sourceLabel: "Standard",
   },

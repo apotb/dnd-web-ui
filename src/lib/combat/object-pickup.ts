@@ -1,10 +1,14 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { mergeIntoInventory } from "@/lib/character/inventory-stack";
+import { isBattleOver } from "@/lib/combat/battle-over";
 import { areTokensWithinMeleeRange } from "@/lib/combat/engagement";
+import {
+  applyObjectInteractionCosts,
+  hasEquippableInventoryItems,
+} from "@/lib/combat/object-equipment-change";
 import { removeTokenFromState } from "@/lib/combat/state-utils";
 import {
-  applyActionUsed,
-  applyFreeObjectInteractionUsed,
+  canUserActForToken,
   canUserControlTurn,
   getCurrentTurnTokenId,
   isBattleActive,
@@ -42,6 +46,7 @@ export interface ObjectInteractionContext {
   character: ParsedCharacter | null;
   userId: string | null;
   isDm: boolean;
+  catalogItems?: Record<string, Item>;
 }
 
 export function canStartObjectInteraction(context: ObjectInteractionContext): boolean {
@@ -49,7 +54,20 @@ export function canStartObjectInteraction(context: ObjectInteractionContext): bo
   if (context.actorToken.kind !== "party" || !context.actorToken.characterId) {
     return false;
   }
-  if (
+
+  const battleOver = isBattleOver(context.state);
+  if (battleOver) {
+    if (
+      !canUserActForToken(
+        context.userId,
+        context.isDm,
+        context.actorToken,
+        context.character
+      )
+    ) {
+      return false;
+    }
+  } else if (
     !canUserControlTurn(
       context.userId,
       context.isDm,
@@ -61,10 +79,19 @@ export function canStartObjectInteraction(context: ObjectInteractionContext): bo
     return false;
   }
 
-  const turn = context.state.turn;
+  const turn = battleOver
+    ? { ...context.state.turn, freeObjectInteractionUsed: false, actionUsed: false }
+    : context.state.turn;
   if (turn.freeObjectInteractionUsed && turn.actionUsed) return false;
 
-  return getAdjacentPickupMarkers(context.actorToken, context.state).length > 0;
+  const hasPickups =
+    getAdjacentPickupMarkers(context.actorToken, context.state).length > 0;
+  const hasEquipment =
+    context.character &&
+    context.catalogItems &&
+    hasEquippableInventoryItems(context.character, context.catalogItems);
+
+  return hasPickups || Boolean(hasEquipment);
 }
 
 function catalogItemToInventoryItem(item: Item, quantity: number): InventoryItem {
@@ -107,7 +134,8 @@ export function applyObjectPickup(
     return { ok: false, error: "Only party characters can pick up objects." };
   }
 
-  if (getCurrentTurnTokenId(state) !== actorTokenId) {
+  const battleOver = isBattleOver(state);
+  if (!battleOver && getCurrentTurnTokenId(state) !== actorTokenId) {
     return { ok: false, error: "You can only pick up objects on your turn." };
   }
 
@@ -126,18 +154,15 @@ export function applyObjectPickup(
   }
 
   const turn = state.turn;
-  if (turn.freeObjectInteractionUsed && turn.actionUsed) {
+  if (!battleOver && turn.freeObjectInteractionUsed && turn.actionUsed) {
     return { ok: false, error: "You have already used your object interactions this turn." };
   }
 
-  let next = state;
-  if (!turn.freeObjectInteractionUsed) {
-    next = applyFreeObjectInteractionUsed(next);
-  } else if (!turn.actionUsed) {
-    next = applyActionUsed(next);
-  } else {
-    return { ok: false, error: "You have already used your action this turn." };
+  const costResult = applyObjectInteractionCosts(state, 1);
+  if (!costResult.ok) {
+    return costResult;
   }
+  let next = costResult.next;
 
   const quantity = Math.max(1, marker.pickupQuantity ?? 1);
   const inventoryItems = mergeIntoInventory(

@@ -10,6 +10,7 @@ import {
 } from "@/lib/combat/state-utils";
 import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
 import { patchTokenHpFromDamage } from "@/lib/combat/hp-adjust";
+import { applyBattleOverEconomyReset, isBattleOver } from "@/lib/combat/battle-over";
 import { syncInitiativeAfterTokenHidden } from "@/lib/combat/initiative";
 import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
 import {
@@ -287,6 +288,13 @@ export function applyResolvedAttack(
 
   nextState = syncInitiativeAfterTokenHidden(state, nextState);
 
+  if (isBattleOver(nextState)) {
+    nextState = {
+      ...nextState,
+      turn: applyBattleOverEconomyReset(nextState.turn),
+    };
+  }
+
   return {
     next: nextState,
     characterUpdates,
@@ -429,7 +437,11 @@ export function resolveFinalDamageApplied(
 }
 
 export function canSubmitAttack(state: CombatState, attackerTokenId: string): boolean {
-  return isBattleActive(state) && !hasPendingAttackForAttacker(state, attackerTokenId);
+  return (
+    isBattleActive(state) &&
+    !isBattleOver(state) &&
+    !hasPendingAttackForAttacker(state, attackerTokenId)
+  );
 }
 
 export function canSubmitOpportunityAttack(

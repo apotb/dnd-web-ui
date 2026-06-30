@@ -23,14 +23,16 @@ export function CombatOtherActionsModal({ onCancel, onUse }: CombatOtherActionsM
             Declare which action you are taking to the DM before using your action.
           </p>
 
-          {entries.map((entry) => (
-            <div key={entry.id} className="combat-other-action-entry">
-              <p className="combat-roll-line">
-                <strong>{entry.name}</strong>
-              </p>
-              <p className="combat-roll-line retro-muted">{entry.description}</p>
-            </div>
-          ))}
+          <div className="combat-other-action-list">
+            {entries.map((entry) => (
+              <div key={entry.id} className="combat-other-action-entry">
+                <p className="combat-roll-line">
+                  <strong>{entry.name}</strong>
+                </p>
+                <p className="combat-roll-line retro-muted">{entry.description}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="supply-picker-actions combat-roll-actions">

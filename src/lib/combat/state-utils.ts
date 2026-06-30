@@ -95,6 +95,7 @@ export function createDefaultCombatState(
     pendingOpportunityAttacks: null,
     boardTitle: DEFAULT_BOARD_TITLE,
     savedEncounterId: null,
+    autoApprove: false,
   };
 
   return {
@@ -959,6 +960,7 @@ export function resetCombatBoard(
     pendingOpportunityAttacks: null,
     boardTitle: DEFAULT_BOARD_TITLE,
     savedEncounterId: null,
+    autoApprove: false,
   };
 }
 

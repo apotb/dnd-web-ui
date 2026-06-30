@@ -1,4 +1,5 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { applyBattleOverEconomyReset, isBattleOver } from "@/lib/combat/battle-over";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 
 export function isBattleActive(state: CombatState): boolean {
@@ -128,6 +129,9 @@ export function advanceTurn(state: CombatState): CombatState {
 
 export function applyMainHandAttackUsed(state: CombatState): CombatState {
   if (!isBattleActive(state)) return state;
+  if (isBattleOver(state)) {
+    return { ...state, turn: applyBattleOverEconomyReset(state.turn) };
+  }
   if (state.turn.actionUsedForTwoWeapon) return state;
 
   return {
@@ -141,6 +145,9 @@ export function applyMainHandAttackUsed(state: CombatState): CombatState {
 
 export function applyActionUsed(state: CombatState): CombatState {
   if (!isBattleActive(state)) return state;
+  if (isBattleOver(state)) {
+    return { ...state, turn: applyBattleOverEconomyReset(state.turn) };
+  }
   if (state.turn.actionUsed) return state;
 
   return {
@@ -167,6 +174,9 @@ export function applyActionGranted(state: CombatState): CombatState {
 
 export function applyDashActionUsed(state: CombatState): CombatState {
   if (!isBattleActive(state)) return state;
+  if (isBattleOver(state)) {
+    return { ...state, turn: applyBattleOverEconomyReset(state.turn) };
+  }
   if (state.turn.dashUsed || state.turn.actionUsed) return state;
 
   return {
@@ -181,6 +191,9 @@ export function applyDashActionUsed(state: CombatState): CombatState {
 
 export function applyDisengageUsed(state: CombatState): CombatState {
   if (!isBattleActive(state)) return state;
+  if (isBattleOver(state)) {
+    return { ...state, turn: applyBattleOverEconomyReset(state.turn) };
+  }
   if (state.turn.disengageUsed) return state;
 
   return {
@@ -195,6 +208,9 @@ export function applyDisengageUsed(state: CombatState): CombatState {
 
 export function applyFreeObjectInteractionUsed(state: CombatState): CombatState {
   if (!isBattleActive(state)) return state;
+  if (isBattleOver(state)) {
+    return { ...state, turn: applyBattleOverEconomyReset(state.turn) };
+  }
   if (state.turn.freeObjectInteractionUsed) return state;
 
   return {

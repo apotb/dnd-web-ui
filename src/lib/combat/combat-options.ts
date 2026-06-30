@@ -30,6 +30,7 @@ import type { EnemyData, EnemyNamedBlock } from "@/lib/schemas/enemy";
 import { getWeaponProperties, type Item } from "@/lib/schemas/item";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { canUseHelpAction, isTokenEngaged } from "@/lib/combat/engagement";
+import { isBattleOver, isTokenOnMapEdge } from "@/lib/combat/battle-over";
 import { parseAttackRangeSpec } from "@/lib/combat/targeting";
 
 export type CombatOptionKind =
@@ -144,10 +145,7 @@ function formatActionTooltip(
       ? actionSourceBadgeLabel(action)
       : `${ACTION_COST_LABELS[action.cost]} · ${actionSourceBadgeLabel(action)}`,
   ];
-  const description =
-    action.id === COMBAT_USE_OBJECT_ACTION_ID
-      ? "Interact with an object on the battlefield. Your first object interaction each turn is free; use this action to interact with an additional object (or one that requires an action)."
-      : action.description.trim();
+  const description = action.description.trim();
   if (description) lines.push(description);
   if (action.uses) {
     const rest =
@@ -251,6 +249,32 @@ export function isWeaponActionAttackOption(option: CombatOption): boolean {
   return Boolean(
     option.attack?.source === "weapon" && option.kind === "attack"
   );
+}
+
+export const COMBAT_LEAVE_AREA_ACTION_ID = "core:leave-area";
+
+const LEAVE_AREA_ACTION: CharacterActionEntry = {
+  id: COMBAT_LEAVE_AREA_ACTION_ID,
+  name: "Leave Area",
+  cost: "action",
+  description: "Leave the battlefield and remove your character from the board.",
+  source: "core",
+  sourceLabel: "Standard",
+};
+
+export function buildLeaveAreaOption(): CombatOption {
+  return {
+    id: `action:${COMBAT_LEAVE_AREA_ACTION_ID}`,
+    name: LEAVE_AREA_ACTION.name,
+    subtitle: actionSubtitle(LEAVE_AREA_ACTION),
+    tooltip: formatActionTooltip(LEAVE_AREA_ACTION),
+    kind: "action",
+    action: LEAVE_AREA_ACTION,
+  };
+}
+
+export function isLeaveAreaOption(option: CombatOption): boolean {
+  return option.action?.id === COMBAT_LEAVE_AREA_ACTION_ID;
 }
 
 export const COMBAT_DISENGAGE_ACTION_ID = "core:disengage";
@@ -455,7 +479,8 @@ function buildPartyOptionGroups(
   },
   isEngaged: boolean,
   canUseHelp: boolean,
-  canUseObject: boolean
+  canUseObject: boolean,
+  options?: { battleOver?: boolean }
 ): { actions: CombatOption[]; bonusActions: CombatOption[] } {
   const attacks = getAllAttacks(character.data, catalogItems, classCatalog);
   const characterActions = getAllCharacterActions(character.data, featureCatalogs).filter(
@@ -499,11 +524,12 @@ function buildPartyOptionGroups(
 
   const actionPanelAttacks = [...wieldedActionPanelAttacks, ...actionNaturalAttacks];
 
-  const attackOptions: CombatOption[] = turn.actionUsed
-    ? []
-    : actionPanelAttacks.map((attack) =>
-        attackToCombatOption(attack, character.data, "attack", twf)
-      );
+  const attackOptions: CombatOption[] =
+    options?.battleOver || turn.actionUsed
+      ? []
+      : actionPanelAttacks.map((attack) =>
+          attackToCombatOption(attack, character.data, "attack", twf)
+        );
 
   const actionOptions: CombatOption[] = buildStandardActionOptions(
     turn,
@@ -555,19 +581,22 @@ function buildPartyOptionGroups(
     return true;
   });
 
-  const bonusNaturalAttackOptions: CombatOption[] = turn.bonusActionUsed
-    ? []
-    : bonusNaturalAttacks.map((attack) =>
-        attackToCombatOption(attack, character.data, "bonus-action", twf)
-      );
+  const bonusNaturalAttackOptions: CombatOption[] =
+    options?.battleOver || turn.bonusActionUsed
+      ? []
+      : bonusNaturalAttacks.map((attack) =>
+          attackToCombatOption(attack, character.data, "bonus-action", twf)
+        );
 
   return {
     actions: [...attackOptions, ...actionOptions],
-    bonusActions: [
-      ...bonusActionOptions,
-      ...offHandAttackOptions,
-      ...bonusNaturalAttackOptions,
-    ],
+    bonusActions: options?.battleOver
+      ? []
+      : [
+          ...bonusActionOptions,
+          ...offHandAttackOptions,
+          ...bonusNaturalAttackOptions,
+        ],
   };
 }
 
@@ -629,7 +658,8 @@ export function isImplementedCombatOption(option: CombatOption): boolean {
     isDisengageActionOption(option) ||
     isDashActionOption(option) ||
     isUseObjectActionOption(option) ||
-    isOtherActionsOption(option)
+    isOtherActionsOption(option) ||
+    isLeaveAreaOption(option)
   );
 }
 
@@ -650,10 +680,13 @@ export function getCombatOptionGroupsForToken(
     combatState: CombatState;
     token: CombatToken;
     canUseObject: boolean;
+    battleOver?: boolean;
   }
 ): CombatOptionGroups {
+  const battleOver = context.battleOver ?? isBattleOver(context.combatState);
+
   if (token.kind === "party" && context.character) {
-    return buildPartyOptionGroups(
+    const groups = buildPartyOptionGroups(
       context.character,
       context.catalogItems,
       context.classCatalog,
@@ -668,11 +701,22 @@ export function getCombatOptionGroupsForToken(
       },
       isTokenEngaged(context.token, context.combatState),
       canUseHelpAction(context.token, context.combatState),
-      context.canUseObject
+      context.canUseObject,
+      { battleOver }
     );
+
+    if (battleOver && isTokenOnMapEdge(token, context.combatState)) {
+      return {
+        ...groups,
+        actions: [buildLeaveAreaOption(), ...groups.actions],
+      };
+    }
+
+    return groups;
   }
 
   if (token.kind === "enemy" && context.enemyData) {
+    if (battleOver) return { actions: [], bonusActions: [] };
     return buildNpcOptionGroups(
       context.enemyData,
       {
@@ -687,6 +731,7 @@ export function getCombatOptionGroupsForToken(
   }
 
   if (token.kind === "ally") {
+    if (battleOver) return { actions: [], bonusActions: [] };
     return buildNpcOptionGroups(
       context.enemyData,
       {

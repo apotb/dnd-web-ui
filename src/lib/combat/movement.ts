@@ -1,5 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { getCharacterEffectiveSpeedFt } from "@/lib/character/combat-derivation";
+import { applyBattleOverEconomyReset, isBattleOver } from "@/lib/combat/battle-over";
 import { isFootprintOnBlocked, tokensCollideForMovement } from "@/lib/combat/collision";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
@@ -284,18 +285,18 @@ export function applyCombatMove(
   costFeet: number,
   dashConsumed: boolean
 ): CombatState {
-  return {
-    ...state,
-    tokens: state.tokens.map((token) =>
-      token.id === tokenId ? { ...token, x: destination.x, y: destination.y } : token
-    ),
-    turn: {
-      ...state.turn,
-      movementUsedFeet: state.turn.movementUsedFeet + costFeet,
-      dashUsed: state.turn.dashUsed || dashConsumed,
-      actionUsed: state.turn.actionUsed || dashConsumed,
-    },
-  };
+  const tokens = state.tokens.map((token) =>
+    token.id === tokenId ? { ...token, x: destination.x, y: destination.y } : token
+  );
+  const turn = isBattleOver(state)
+    ? applyBattleOverEconomyReset(state.turn)
+    : {
+        ...state.turn,
+        movementUsedFeet: state.turn.movementUsedFeet + costFeet,
+        dashUsed: state.turn.dashUsed || dashConsumed,
+        actionUsed: state.turn.actionUsed || dashConsumed,
+      };
+  return { ...state, tokens, turn };
 }
 
 export function findDestinationAtCell(

@@ -112,13 +112,23 @@ async function finalizePendingAttack(
   return { next, characterUpdates, error: undefined };
 }
 
+export function shouldAutoApprovePendingAttack(
+  state: CombatState,
+  pending: PendingAttack
+): boolean {
+  return (
+    pending.status === "awaiting-dm-review" &&
+    (pending.skipDmReview || state.autoApprove)
+  );
+}
+
 async function maybeFinalizeAfterSaves(
   campaignId: string,
   state: CombatState,
   pending: PendingAttack,
   charactersById: Record<string, ParsedCharacter>
 ): Promise<{ next: CombatState; characterUpdates: CharacterHpUpdate[]; error?: string } | null> {
-  if (!pending.skipDmReview || pending.status !== "awaiting-dm-review") {
+  if (!shouldAutoApprovePendingAttack(state, pending)) {
     return null;
   }
   const stateWithPending = updatePendingAttack(state, pending.id, pending);

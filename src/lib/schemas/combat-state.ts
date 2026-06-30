@@ -187,6 +187,8 @@ export const combatStateSchema = z.object({
   pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
   boardTitle: z.string().default(DEFAULT_BOARD_TITLE),
   savedEncounterId: z.string().uuid().nullable().default(null),
+  /** When true, the DM client automatically approves player actions awaiting review. */
+  autoApprove: z.boolean().default(false),
 });
 
 export type BlockedCell = z.infer<typeof blockedCellSchema>;
