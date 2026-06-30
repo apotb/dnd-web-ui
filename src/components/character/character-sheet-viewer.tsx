@@ -14,6 +14,9 @@ import { getCampaignCalendarDate, type WorldData } from "@/lib/schemas/world";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 
+/** Wait for rapid edits (e.g. equip toggles) to settle before persisting. */
+const SAVE_DEBOUNCE_MS = 900;
+
 interface CharacterSheetViewerProps {
   character: ParsedCharacter;
   campaignId: string;
@@ -42,14 +45,37 @@ export function CharacterSheetViewer({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dataRef = useRef(data);
+  const saveInFlightRef = useRef(false);
+  const localRevisionRef = useRef(0);
+  const lastSyncedRevisionRef = useRef(0);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
     setData(character.data);
-  }, [character.id, character.data]);
+    dataRef.current = character.data;
+    localRevisionRef.current = 0;
+    lastSyncedRevisionRef.current = 0;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, [character.id]);
+
+  useEffect(() => {
+    if (localRevisionRef.current !== lastSyncedRevisionRef.current) return;
+    if (saveTimer.current) return;
+    if (saveInFlightRef.current) return;
+    setData(character.data);
+    dataRef.current = character.data;
+  }, [character.data]);
 
   useEffect(() => {
     return () => {
@@ -57,47 +83,94 @@ export function CharacterSheetViewer({
     };
   }, []);
 
-  async function persistNow(next: CharacterData) {
-    if (!canEdit) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
+  function markLocalEdit(next: CharacterData) {
+    localRevisionRef.current += 1;
+    dataRef.current = next;
+    setData(next);
+  }
 
+  function noteSuccessfulSave(revisionAtSave: number) {
+    if (localRevisionRef.current === revisionAtSave) {
+      lastSyncedRevisionRef.current = revisionAtSave;
+    }
+  }
+
+  async function flushSave() {
+    if (!canEdit || saveInFlightRef.current) return;
+
+    const revisionAtSave = localRevisionRef.current;
+    const toSave = dataRef.current;
+
+    saveInFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
+
+    const { error } = await saveCharacterData(character.id, toSave, classes, {
+      isDm,
+      originalData: character.data,
+    });
+
+    saveInFlightRef.current = false;
+    if (error) setSaveError(error);
+    setSaving(false);
+    noteSuccessfulSave(revisionAtSave);
+
+    if (localRevisionRef.current !== revisionAtSave) {
+      scheduleSave();
+    }
+  }
+
+  async function persistNow(next: CharacterData) {
+    if (!canEdit) return;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+
+    markLocalEdit(next);
+    const revisionAtSave = localRevisionRef.current;
+
+    saveInFlightRef.current = true;
+    setSaving(true);
+    setSaveError(null);
+
     const { error } = await saveCharacterData(character.id, next, classes, {
       isDm,
       originalData: character.data,
     });
+
+    saveInFlightRef.current = false;
     if (error) setSaveError(error);
     setSaving(false);
+    noteSuccessfulSave(revisionAtSave);
+
+    if (localRevisionRef.current !== revisionAtSave) {
+      scheduleSave();
+    }
   }
 
-  function scheduleSave(next: CharacterData) {
+  function scheduleSave() {
     if (!canEdit) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
-    saveTimer.current = setTimeout(async () => {
-      setSaving(true);
-      setSaveError(null);
-      const { error } = await saveCharacterData(character.id, next, classes, {
-        isDm,
-        originalData: character.data,
-      });
-      if (error) setSaveError(error);
-      setSaving(false);
-    }, 400);
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      void flushSave();
+    }, SAVE_DEBOUNCE_MS);
   }
 
   function handleChange(next: CharacterData) {
-    setData(next);
-    if (next.combat.pendingShortRest !== data.combat.pendingShortRest) {
+    const pendingShortRestChanged =
+      next.combat.pendingShortRest !== data.combat.pendingShortRest;
+    if (pendingShortRestChanged) {
       void persistNow(next);
       return;
     }
-    scheduleSave(next);
+    markLocalEdit(next);
+    scheduleSave();
   }
 
   async function handleShortRestApply(next: CharacterData) {
-    setData(next);
     await persistNow(next);
   }
 
@@ -111,17 +184,25 @@ export function CharacterSheetViewer({
       payload.playerName,
       payload.data
     );
-    setData(next);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
 
+    markLocalEdit(next);
+    const revisionAtSave = localRevisionRef.current;
+
+    saveInFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
     const { error } = await saveCharacterData(character.id, next, classes, {
       isDm,
       originalData: character.data,
     });
+    saveInFlightRef.current = false;
     if (error) setSaveError(error);
     setSaving(false);
+    noteSuccessfulSave(revisionAtSave);
   }
 
   async function persistPortrait(path: string) {

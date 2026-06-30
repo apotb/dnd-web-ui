@@ -347,16 +347,17 @@ function buildStandardActionOptions(
   },
   isEngaged: boolean,
   canUseHelp: boolean,
-  canUseObject: boolean
+  canUseObject: boolean,
+  battleOver = false
 ): CombatOption[] {
   const options = getStandardCombatActions()
     .filter(
       (action) =>
         action.cost === "action" &&
         !COMBAT_MERGED_OTHER_ACTION_IDS.has(action.id) &&
+        (action.id !== COMBAT_DASH_ACTION_ID || (!battleOver && !turn.dashUsed)) &&
         (action.id !== COMBAT_USE_OBJECT_ACTION_ID || canUseObject) &&
         (action.id === COMBAT_USE_OBJECT_ACTION_ID || !turn.actionUsed) &&
-        (action.id !== COMBAT_DASH_ACTION_ID || !turn.dashUsed) &&
         (action.id !== COMBAT_DISENGAGE_ACTION_ID || isEngaged) &&
         (action.id !== COMBAT_HELP_ACTION_ID || canUseHelp)
     )
@@ -535,7 +536,8 @@ function buildPartyOptionGroups(
     turn,
     isEngaged,
     canUseHelp,
-    canUseObject
+    canUseObject,
+    options?.battleOver
   );
 
   const bonusActionOptions: CombatOption[] = turn.bonusActionUsed

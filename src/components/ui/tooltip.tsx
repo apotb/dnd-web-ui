@@ -114,6 +114,11 @@ export function Tooltip({ content, children }: TooltipProps) {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    setAnchor(null);
+    setLayout(null);
+  }, [content]);
+
   useLayoutEffect(() => {
     if (!anchor || !tooltipRef.current) {
       setLayout(null);
@@ -157,6 +162,11 @@ export function Tooltip({ content, children }: TooltipProps) {
       setAnchor(null);
       setLayout(null);
       child.props.onMouseLeave?.(e);
+    },
+    onMouseDown(e: MouseEvent<HTMLElement>) {
+      setAnchor(null);
+      setLayout(null);
+      child.props.onMouseDown?.(e);
     },
   });
 

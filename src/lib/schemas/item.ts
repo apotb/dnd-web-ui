@@ -3,6 +3,7 @@ import {
   BACKPACK_CARRY_CAPACITY_BONUS_LB,
   BACKPACK_ITEM_SLUG,
 } from "@/lib/character/encumbrance";
+import type { InventoryItem } from "@/lib/schemas/character";
 
 export const ITEM_CATEGORIES = [
   "weapon",
@@ -201,14 +202,14 @@ export function formatItemTooltip(item: Item): string | null {
     lines.push(categoryLabel(item.category));
   }
 
-  if (item.weight_lb != null) {
+  if (item.weight_lb != null && item.weight_lb > 0) {
     lines.push(`Weight: ${item.weight_lb} lb`);
   }
   if (item.slug === BACKPACK_ITEM_SLUG) {
     lines.push(`Carry capacity: +${BACKPACK_CARRY_CAPACITY_BONUS_LB} lb`);
   }
-  if (item.cost_gp != null) {
-    lines.push(`Cost: ${formatItemCostGp(item.cost_gp)}`);
+  if (item.cost_gp != null && item.cost_gp > 0) {
+    lines.push(`Value: ${formatItemCostGp(item.cost_gp)}`);
   }
   if (item.is_magic && item.rarity !== "common") {
     lines.push(rarityLabel(item.rarity));
@@ -295,6 +296,50 @@ export const RARITY_COLOR: Record<ItemRarity, string> = {
   artifact: "text-red-600 dark:text-red-400",
   varies: "text-muted-foreground",
 };
+
+export type InventoryItemCategory = ItemCategory;
+
+export function resolveInventoryItemCategory(
+  item: InventoryItem,
+  catalogItem: Item | null | undefined
+): InventoryItemCategory {
+  if (!item.itemId || !catalogItem) return "adventuring_gear";
+  return catalogItem.category;
+}
+
+/** Light background + border tint for inventory cards on the character sheet. */
+export const INVENTORY_ITEM_CATEGORY_CLASS: Record<InventoryItemCategory, string> = {
+  weapon:
+    "bg-rose-500/10 border-rose-200/50 dark:bg-rose-950/40 dark:border-rose-800/50",
+  armor:
+    "bg-sky-500/10 border-sky-200/50 dark:bg-sky-950/40 dark:border-sky-800/50",
+  shield:
+    "bg-indigo-500/10 border-indigo-200/50 dark:bg-indigo-950/40 dark:border-indigo-800/50",
+  adventuring_gear:
+    "bg-amber-500/10 border-amber-200/50 dark:bg-amber-950/40 dark:border-amber-800/50",
+  tool:
+    "bg-emerald-500/10 border-emerald-200/50 dark:bg-emerald-950/40 dark:border-emerald-800/50",
+  ammunition:
+    "bg-zinc-500/10 border-zinc-200/50 dark:bg-zinc-950/40 dark:border-zinc-700/50",
+  focus:
+    "bg-violet-500/10 border-violet-200/50 dark:bg-violet-950/40 dark:border-violet-800/50",
+  pack:
+    "bg-orange-500/10 border-orange-200/50 dark:bg-orange-950/40 dark:border-orange-800/50",
+  mount_vehicle:
+    "bg-cyan-500/10 border-cyan-200/50 dark:bg-cyan-950/40 dark:border-cyan-800/50",
+  trade_goods:
+    "bg-yellow-500/10 border-yellow-200/50 dark:bg-yellow-950/40 dark:border-yellow-800/50",
+  magic_item:
+    "bg-fuchsia-500/10 border-fuchsia-200/50 dark:bg-fuchsia-950/40 dark:border-fuchsia-800/50",
+  other: "bg-muted/30 border-border",
+};
+
+export function getInventoryItemCategoryClass(
+  item: InventoryItem,
+  catalogItem: Item | null | undefined
+): string {
+  return INVENTORY_ITEM_CATEGORY_CLASS[resolveInventoryItemCategory(item, catalogItem)];
+}
 
 /** Subcategory options grouped by item category (used in admin + character creation filters). */
 export const ITEM_SUBCATEGORY_OPTIONS: Partial<

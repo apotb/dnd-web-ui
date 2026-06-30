@@ -90,6 +90,25 @@ export function distanceFeetBetweenCells(
   return cheb * tileFeet;
 }
 
+/** Grid cells on a shortest Chebyshev path (diagonals cost 1), inclusive of both endpoints. */
+export function chebyshevPathCells(a: GridPosition, b: GridPosition): GridPosition[] {
+  const cells: GridPosition[] = [{ x: a.x, y: a.y }];
+  if (a.x === b.x && a.y === b.y) return cells;
+
+  let x = a.x;
+  let y = a.y;
+  const stepX = Math.sign(b.x - a.x);
+  const stepY = Math.sign(b.y - a.y);
+
+  while (x !== b.x || y !== b.y) {
+    if (x !== b.x) x += stepX;
+    if (y !== b.y) y += stepY;
+    cells.push({ x, y });
+  }
+
+  return cells;
+}
+
 export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
   const range = attack.range.trim().toLowerCase();
 

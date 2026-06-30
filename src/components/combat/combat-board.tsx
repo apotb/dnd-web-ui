@@ -81,7 +81,6 @@ import { CombatEndTurnPanel } from "@/components/combat/combat-end-turn-panel";
 import { CombatMovePanel } from "@/components/combat/combat-move-panel";
 import { CombatBoardFullscreen } from "@/components/combat/combat-board-fullscreen";
 import { CombatMeasureOverlay } from "@/components/combat/combat-measure-overlay";
-import { CombatMeasureResultModal } from "@/components/combat/combat-measure-result-modal";
 import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
 import { CombatCollisionOverlay } from "@/components/combat/combat-collision-overlay";
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
@@ -115,10 +114,7 @@ import {
   type CombatOption,
 } from "@/lib/combat/combat-options";
 import { leaveCombatArea } from "@/lib/combat/battle-over-actions";
-import {
-  getBattleOverTurnDisplay,
-  isBattleOver,
-} from "@/lib/combat/battle-over";
+import { getBattleOverTurnDisplay, isBattleOver } from "@/lib/combat/battle-over";
 import {
   recordCombatActionUsed,
   recordCombatDash,
@@ -158,7 +154,6 @@ import {
   formatAttackDisadvantageLabel,
   hasRangedAttackAdjacentDisadvantage,
   parseAttackRangeSpec,
-  distanceFeetBetweenCells,
 } from "@/lib/combat/targeting";
 import {
   applyRectangleToBlockedSet,
@@ -583,11 +578,6 @@ export function CombatBoard({
   const [measureMode, setMeasureMode] = useState(false);
   const [measureStartCell, setMeasureStartCell] = useState<GridPosition | null>(null);
   const [measureHoverCell, setMeasureHoverCell] = useState<GridPosition | null>(null);
-  const [measureResult, setMeasureResult] = useState<{
-    start: GridPosition;
-    end: GridPosition;
-    distanceFeet: number;
-  } | null>(null);
   const [boardExpanded, setBoardExpanded] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
@@ -925,6 +915,10 @@ export function CombatBoard({
       ),
     [combatState.tokens]
   );
+  const playerClaimedCharacterOffBoard =
+    !isDm &&
+    !!ownedCharacterId &&
+    !presentCharacterIds.has(ownedCharacterId);
 
   const initiativeTokens = useMemo(() => {
     if (combatState.initiative.status !== "ready") return [];
@@ -1043,7 +1037,7 @@ export function CombatBoard({
     [catalogItems, featureCatalogs.species]
   );
 
-  const currentSpeedFt = actingToken
+  const baseSpeedFt = actingToken
     ? getTokenSpeedFt(
         actingToken,
         actingTokenCharacter,
@@ -1051,6 +1045,7 @@ export function CombatBoard({
         tokenSpeedOptions
       )
     : 0;
+  const currentSpeedFt = baseSpeedFt;
   const battleOverEconomy = getBattleOverTurnDisplay();
   const movementUsedFeet = battleOver
     ? battleOverEconomy.movementUsedFeet
@@ -1088,7 +1083,7 @@ export function CombatBoard({
     movementUsedFeet,
     dashUsed
   );
-  const canUseDash = !dashUsed && !actionUsed;
+  const canUseDash = !battleOver && !dashUsed && !actionUsed;
   const showMovePanel = remainingMovementFeet > 0 || canUseDash;
   const dashPreviewFeet = getDashPreviewRemainingFeet(
     currentSpeedFt,
@@ -1427,7 +1422,7 @@ export function CombatBoard({
     }
 
     if (isDashActionOption(option)) {
-      if (dashUsed || actionUsed) return;
+      if (battleOver || dashUsed || actionUsed) return;
       setPendingDashActionConfirm(true);
       return;
     }
@@ -1474,17 +1469,8 @@ export function CombatBoard({
       return;
     }
 
-    const distanceFeet = distanceFeetBetweenCells(
-      measureStartCell,
-      cell,
-      combatState.tileFeet
-    );
-    setMeasureResult({
-      start: measureStartCell,
-      end: cell,
-      distanceFeet,
-    });
-    clearMeasureMode();
+    setMeasureStartCell(cell);
+    setMeasureHoverCell(null);
   }
 
   const mapSelectionActive = Boolean(attackTargeting || movementMode || objectInteractionMode);
@@ -1895,9 +1881,11 @@ export function CombatBoard({
       usedFeet: movementUsedFeet,
       dashUsed,
       actionUsed,
+      allowDash: true,
     });
   }, [
     actingToken,
+    battleOver,
     combatState,
     currentSpeedFt,
     dashUsed,
@@ -2039,6 +2027,10 @@ export function CombatBoard({
     if (!destination) return;
 
     if (destination.zone === "dash" && !dashUsed && !actionUsed) {
+      if (battleOver) {
+        await tryCommitMovement(destination, false);
+        return;
+      }
       setPendingDashDestination(destination);
       return;
     }
@@ -3247,6 +3239,7 @@ export function CombatBoard({
           <CombatMeasureOverlay
             gridWidth={combatState.gridWidth}
             gridHeight={combatState.gridHeight}
+            tileFeet={combatState.tileFeet}
             startCell={measureStartCell}
             hoveredCell={measureHoverCell}
             onCellHover={setMeasureHoverCell}
@@ -3434,7 +3427,7 @@ export function CombatBoard({
                   </button>
                 </div>
               </div>
-              {battleActive ? (
+              {battleActive && !(battleOver && playerClaimedCharacterOffBoard) ? (
                 <div className="combat-toolbar-panels">
                   {!battleOver && userOaSubmittedPending ? (
                     <div className="combat-turn-waiting combat-attack-waiting">
@@ -3847,14 +3840,6 @@ export function CombatBoard({
           endingTurn={endingTurn}
           onCancel={() => setEndTurnConfirmOpen(false)}
           onConfirm={() => void handleEndTurn()}
-        />
-      ) : null}
-      {measureResult ? (
-        <CombatMeasureResultModal
-          start={measureResult.start}
-          end={measureResult.end}
-          distanceFeet={measureResult.distanceFeet}
-          onDismiss={() => setMeasureResult(null)}
         />
       ) : null}
       <CombatBoardFullscreen open={boardExpanded} onClose={() => setBoardExpanded(false)}>

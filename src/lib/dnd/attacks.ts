@@ -18,6 +18,7 @@ import {
 } from "@/lib/dnd/ammunition";
 import { getWeaponProperties } from "@/lib/schemas/item";
 import {
+  ABILITY_FULL_LABELS,
   getAbilityModifiers,
   getProficiencyBonus,
   getSpellAttackBonus,
@@ -236,6 +237,75 @@ function spellSlug(spell: Spell): string | null {
 /** Melee reach weapons (glaive, whip, etc.) attack from this distance in feet. */
 export const MELEE_REACH_FT = 10;
 
+export interface AttackBonusSource {
+  label: string;
+  value: number;
+}
+
+function formatAttackBonusSourceLine(source: AttackBonusSource): string {
+  return `${source.label}: ${formatModifier(source.value)}`;
+}
+
+export function formatAttackBonusTooltip(attack: DerivedAttack): string | null {
+  if (attack.rollType === "auto") return "Automatically hits";
+  if (attack.rollType === "save") return null;
+  if (!attack.attackBonusSources?.length) return null;
+  return attack.attackBonusSources.map(formatAttackBonusSourceLine).join("\n");
+}
+
+export function formatDamageBonusTooltip(attack: DerivedAttack): string | null {
+  if (!attack.damageBonusSources?.length) return null;
+  return attack.damageBonusSources.map(formatAttackBonusSourceLine).join("\n");
+}
+
+function buildAttackBonusSources(
+  abilityLabel: string,
+  abilityMod: number,
+  proficient: boolean,
+  proficiencyBonus: number
+): AttackBonusSource[] {
+  const sources: AttackBonusSource[] = [{ label: abilityLabel, value: abilityMod }];
+  if (proficient) {
+    sources.push({ label: "Proficiency", value: proficiencyBonus });
+  }
+  return sources;
+}
+
+function buildDamageBonusSources(
+  abilityLabel: string,
+  abilityMod: number
+): AttackBonusSource[] {
+  return [{ label: abilityLabel, value: abilityMod }];
+}
+
+function getWeaponAttackAbility(
+  isFinesse: boolean,
+  isRanged: boolean,
+  monkWeapon: boolean,
+  mods: ReturnType<typeof getAbilityModifiers>
+): { mod: number; label: string } {
+  if (isFinesse) {
+    if (mods.dex >= mods.str) {
+      return { mod: mods.dex, label: "Dexterity (finesse)" };
+    }
+    return { mod: mods.str, label: "Strength (finesse)" };
+  }
+  if (isRanged) return { mod: mods.dex, label: "Dexterity" };
+  if (monkWeapon) return { mod: mods.dex, label: "Dexterity (monk weapon)" };
+  return { mod: mods.str, label: "Strength" };
+}
+
+function getSpellAttackBonusSources(character: CharacterData): AttackBonusSource[] {
+  if (character.spells.spellAttackBonusOverride !== undefined) {
+    return [{ label: "Override", value: character.spells.spellAttackBonusOverride }];
+  }
+  const ability = character.spells.spellcastingAbility;
+  if (!ability) return [];
+  const mods = getAbilityModifiers(character.abilityScores);
+  const prof = getProficiencyBonus(character);
+  return buildAttackBonusSources(ABILITY_FULL_LABELS[ability], mods[ability], true, prof);
+}
+
 /** A single derived or manual attack entry for display. */
 export interface DerivedAttack {
   id: string;
@@ -276,6 +346,10 @@ export interface DerivedAttack {
   bonusActionOnly?: boolean;
   /** Monk bonus unarmed — only after taking the Attack action. */
   monkBonusUnarmed?: boolean;
+  /** Breakdown of attack bonus for character sheet tooltips. */
+  attackBonusSources?: AttackBonusSource[];
+  /** Breakdown of flat damage modifiers for character sheet tooltips. */
+  damageBonusSources?: AttackBonusSource[];
 }
 
 export function formatAttackRollLine(attack: DerivedAttack): string {
@@ -294,6 +368,32 @@ function parseNormalRangeFt(range: string): number {
   const singleMatch = trimmed.match(/^(\d+)\s*ft$/i);
   if (singleMatch) return parseInt(singleMatch[1], 10);
   return 5;
+}
+
+function parseWeaponRangeBands(
+  range: string
+): { normalRangeFt: number; longRangeFt: number } | null {
+  const match = range.trim().match(/^(\d+)\s*\/\s*(\d+)\s*ft$/i);
+  if (!match) return null;
+  const normalRangeFt = parseInt(match[1], 10);
+  const longRangeFt = parseInt(match[2], 10);
+  if (!Number.isFinite(normalRangeFt) || !Number.isFinite(longRangeFt)) return null;
+  if (longRangeFt <= normalRangeFt) return null;
+  return { normalRangeFt, longRangeFt };
+}
+
+export function formatWeaponRangeBandTooltip(range: string): string | null {
+  const bands = parseWeaponRangeBands(range);
+  if (!bands) return null;
+  return [
+    `Range: ${bands.normalRangeFt} ft`,
+    `Long range: ${bands.longRangeFt} ft`,
+    "Attacks beyond normal range and up to long range are made with disadvantage on the attack roll.",
+  ].join("\n");
+}
+
+export function formatAttackRangeTooltip(attack: DerivedAttack): string | null {
+  return formatWeaponRangeBandTooltip(attack.range);
 }
 
 /** Weapon attack roll that is not thrown (includes reach melee). */
@@ -408,16 +508,12 @@ export function deriveWeaponAttacks(
     const isThrown = wp.weaponProperties.includes("thrown");
     const monkWeapon = monkMartialArts && isMonkWeapon(catalogItem);
 
-    let abilityMod: number;
-    if (isFinesse) {
-      abilityMod = Math.max(mods.str, mods.dex);
-    } else if (isRanged) {
-      abilityMod = mods.dex;
-    } else if (monkWeapon) {
-      abilityMod = mods.dex;
-    } else {
-      abilityMod = mods.str;
-    }
+    const { mod: abilityMod, label: abilityLabel } = getWeaponAttackAbility(
+      isFinesse,
+      isRanged,
+      monkWeapon,
+      mods
+    );
 
     const proficient = isProficientWithWeapon(
       character,
@@ -427,6 +523,8 @@ export function deriveWeaponAttacks(
       catalogClasses
     );
     const attackBonus = abilityMod + (proficient ? prof : 0);
+    const attackBonusSources = buildAttackBonusSources(abilityLabel, abilityMod, proficient, prof);
+    const damageBonusSources = buildDamageBonusSources(abilityLabel, abilityMod);
     const baseName = invItem.name || catalogItem.name;
 
     const usesAmmunition = isRanged && weaponUsesAmmunition(catalogItem);
@@ -477,7 +575,6 @@ export function deriveWeaponAttacks(
       const modeSuffix = mode === "single" ? "" : `-${mode}`;
 
       const notes: string[] = [];
-      if (isOffHand) notes.push("Bonus action");
       if (
         mode !== "thrown" &&
         wp.weaponProperties.includes("versatile") &&
@@ -501,6 +598,8 @@ export function deriveWeaponAttacks(
         id: `weapon-${invItem.id}${idSuffix}${modeSuffix}`,
         name,
         attackBonus,
+        attackBonusSources,
+        damageBonusSources,
         damageDice: damageDiceStr,
         damageDiceWithoutMod,
         damageType: wp.damageType,
@@ -546,18 +645,23 @@ function buildNaturalAttackEntry(
   const level = getCharacterLevel(character);
   const useMonkRules = monk && spec.isUnarmedStrike;
   const abilityMod = useMonkRules ? mods.dex : mods.str;
+  const abilityLabel = useMonkRules ? "Dexterity (monk unarmed)" : "Strength";
   const damageDice = resolveUnarmedDamageDie(
     spec.baseDice,
     useMonkRules ? level : null
   );
   const proficient = spec.proficient || (monk && spec.isUnarmedStrike);
   const attackBonus = abilityMod + (proficient ? prof : 0);
+  const attackBonusSources = buildAttackBonusSources(abilityLabel, abilityMod, proficient, prof);
+  const damageBonusSources = buildDamageBonusSources(abilityLabel, abilityMod);
   const damageDiceStr = formatDamageDice(damageDice, abilityMod, true);
 
   return {
     id: spec.id,
     name: spec.name,
     attackBonus,
+    attackBonusSources,
+    damageBonusSources,
     damageDice: damageDiceStr,
     damageDiceWithoutMod: damageDice,
     damageType: spec.damageType,
@@ -603,10 +707,13 @@ export function deriveUnarmedStrike(
 function buildOffensiveSpellEntry(
   spell: Spell,
   meta: OffensiveSpellMeta,
-  attackBonus: number,
+  character: CharacterData,
   saveDc: number | undefined,
   characterLevel: number
 ): DerivedAttack {
+  const attackBonus = getSpellAttackBonus(character) ?? 0;
+  const attackBonusSources =
+    meta.rollType === "attack" ? getSpellAttackBonusSources(character) : undefined;
   let damageDice = meta.damageDice;
   const noteParts: string[] = [];
 
@@ -631,6 +738,7 @@ function buildOffensiveSpellEntry(
     id: `spell-${spell.id}`,
     name: spell.name,
     attackBonus,
+    attackBonusSources,
     damageDice,
     damageType: meta.damageType,
     range: meta.range,
@@ -654,7 +762,6 @@ function spellLevelSuffix(level: number): string {
 export function deriveSpellAttacks(character: CharacterData): DerivedAttack[] {
   if (!character.spells.spellcastingAbility) return [];
 
-  const attackBonus = getSpellAttackBonus(character) ?? 0;
   const saveDc = getSpellSaveDc(character) ?? undefined;
   const characterLevel = levelFromXp(character.basicInfo.xp ?? 0);
 
@@ -676,7 +783,7 @@ export function deriveSpellAttacks(character: CharacterData): DerivedAttack[] {
     if (!meta) continue;
 
     attacks.push(
-      buildOffensiveSpellEntry(spell, meta, attackBonus, saveDc, characterLevel)
+      buildOffensiveSpellEntry(spell, meta, character, saveDc, characterLevel)
     );
   }
 

@@ -191,6 +191,27 @@ export function formatInventoryItemWeightLine(
   return unit;
 }
 
+export function formatInventoryValueWeightLine(
+  item: InventoryItem,
+  catalogItem: Item | null | undefined
+): string | null {
+  const weightPart = formatInventoryItemWeightLine(
+    resolveItemWeightLb(item, catalogItem),
+    item.quantity
+  );
+
+  const costGp =
+    item.costGp != null
+      ? item.costGp
+      : catalogItem?.cost_gp != null
+        ? catalogItem.cost_gp
+        : null;
+  const costPart = costGp != null && costGp > 0 ? formatItemCostGp(costGp) : null;
+
+  const parts = [weightPart, costPart].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /** Tooltip text for custom (non-catalog) inventory rows. */
 export function formatCustomInventoryItemTooltip(
   item: InventoryItem
@@ -201,11 +222,11 @@ export function formatCustomInventoryItemTooltip(
     lines.push(name);
   }
   const weightLb = item.weightLb;
-  if (weightLb != null) {
+  if (weightLb != null && weightLb > 0) {
     lines.push(`Weight: ${weightLb} lb`);
   }
-  if (item.costGp != null) {
-    lines.push(`Cost: ${formatItemCostGp(item.costGp)}`);
+  if (item.costGp != null && item.costGp > 0) {
+    lines.push(`Value: ${formatItemCostGp(item.costGp)}`);
   }
   const notes = item.notes.trim();
   if (notes) {

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { DeathSaveRollModal } from "@/components/character/death-save-roll-modal";
 import { Input } from "@/components/ui/input";
 import { DraftNumberInput } from "@/components/ui/draft-number-input";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -71,7 +73,8 @@ import {
   syncSpellcastingFromClass,
 } from "@/lib/dnd/spellcasting";
 import type { Item } from "@/lib/schemas/item";
-import { categoryLabel, formatItemCostGp, formatItemTooltip, getWeaponProperties, RARITY_COLOR, rarityLabel } from "@/lib/schemas/item";
+import { categoryLabel, formatItemTooltip, getInventoryItemCategoryClass, getWeaponProperties, RARITY_COLOR, rarityLabel } from "@/lib/schemas/item";
+import { cn } from "@/lib/utils";
 import {
   ItemPicker,
   EMPTY_ITEM_PICKER_CUSTOM_FIELDS,
@@ -102,7 +105,7 @@ import {
   formatSubclassTooltip,
   speciesSubtitleLabel,
 } from "@/lib/content/catalog-tooltip";
-import { getAllAttacks, formatAttackRollLine, type DerivedAttack } from "@/lib/dnd/attacks";
+import { getAllAttacks, formatAttackRollLine, formatAttackBonusTooltip, formatDamageBonusTooltip, formatAttackRangeTooltip, formatWeaponRangeBandTooltip, type DerivedAttack } from "@/lib/dnd/attacks";
 import {
   ACTION_COST_LABELS,
   ACTION_COST_ORDER,
@@ -155,6 +158,7 @@ import {
   calculateSpeedBreakdown,
   formatHitDiceTooltip,
   formatHitDiceDisplay,
+  formatDeathSavesTooltip,
   formatInitiativeTooltip,
   formatMaxHpTooltip,
   formatSpeedTooltip,
@@ -166,14 +170,13 @@ import {
   formatCarryCapacityLabel,
   formatCarryCapacityTooltip,
   formatCustomInventoryItemTooltip,
-  formatInventoryItemWeightLine,
+  formatInventoryValueWeightLine,
   formatWeightLb,
   getEncumbranceInfo,
   getInventoryWeightLb,
   isInventoryWithinMaxCapacity,
-  resolveItemWeightLb,
 } from "@/lib/character/encumbrance";
-import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, canWieldMainHand, isOneHandedWeapon, sortInventoryForDisplay } from "@/lib/character/equip-rules";
+import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, canWieldMainHand, isOneHandedWeapon, sortInventoryForDisplay, getUnequipPreviewOnEquip, getUnequipPreviewOnWield, formatUnequipPreviewTooltip } from "@/lib/character/equip-rules";
 import { mergeIntoInventory } from "@/lib/character/inventory-stack";
 import {
   fillEmptyWaterskin,
@@ -525,6 +528,12 @@ export function CharacterSheet({
     useState<ItemPickerCustomFields>(EMPTY_ITEM_PICKER_CUSTOM_FIELDS);
   const [itemPickerEditingCustom, setItemPickerEditingCustom] = useState(false);
   const [spellPickerOpen, setSpellPickerOpen] = useState(false);
+  const [deathSaveRollOpen, setDeathSaveRollOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const swapSpellIndexRef = useRef<number | null>(null);
 
   const classCatalog = classes?.length ? classes : loadedClasses;
@@ -1043,6 +1052,7 @@ export function CharacterSheet({
   }
 
   return (
+    <>
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -1639,49 +1649,76 @@ export function CharacterSheet({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Death Saves</CardTitle>
+              <Tooltip content={formatDeathSavesTooltip(data)}>
+                <CardTitle className="text-base cursor-default w-fit">Death Saves</CardTitle>
+              </Tooltip>
             </CardHeader>
-            <CardContent className="flex gap-6">
-              <div>
+            <CardContent
+              className={
+                editable
+                  ? "grid grid-cols-4 gap-4 items-end"
+                  : "grid grid-cols-2 gap-4 items-end"
+              }
+            >
+              <div className="space-y-1">
                 <Label className="text-xs">Successes</Label>
-                {editable ? (
-                  <DraftNumberInput
-                    min={0}
-                    max={3}
-                    value={data.combat.deathSaves.successes}
-                    onCommit={(n) =>
-                      updateCombat({
-                        deathSaves: {
-                          ...data.combat.deathSaves,
-                          successes: n ?? 0,
-                        },
-                      })
-                    }
-                  />
-                ) : (
-                  <p>{data.combat.deathSaves.successes}/3</p>
-                )}
+                <p className="text-sm font-medium">
+                  {data.combat.deathSaves.successes}/3
+                </p>
               </div>
-              <div>
+              <div className="space-y-1">
                 <Label className="text-xs">Failures</Label>
-                {editable ? (
-                  <DraftNumberInput
-                    min={0}
-                    max={3}
-                    value={data.combat.deathSaves.failures}
-                    onCommit={(n) =>
-                      updateCombat({
-                        deathSaves: {
-                          ...data.combat.deathSaves,
-                          failures: n ?? 0,
-                        },
-                      })
-                    }
-                  />
-                ) : (
-                  <p>{data.combat.deathSaves.failures}/3</p>
-                )}
+                <p className="text-sm font-medium">
+                  {data.combat.deathSaves.failures}/3
+                </p>
               </div>
+              {editable ? (
+                <>
+                  <div className="space-y-1">
+                    <Label className="text-xs invisible" aria-hidden>
+                      Roll
+                    </Label>
+                    <Tooltip
+                      content={
+                        data.combat.currentHp !== 0
+                          ? "Death saves apply at 0 hit points"
+                          : null
+                      }
+                    >
+                      <span className="inline-flex w-full">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full"
+                          disabled={data.combat.currentHp !== 0}
+                          onClick={() => setDeathSaveRollOpen(true)}
+                        >
+                          Roll
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs invisible" aria-hidden>
+                      Reset
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() =>
+                        updateCombat({
+                          deathSaves: { successes: 0, failures: 0 },
+                        })
+                      }
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                </>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -1789,12 +1826,14 @@ export function CharacterSheet({
                 </p>
               )}
               {derivedAttacks.map((attack) => {
-                const attackTooltip = appendExhaustionSheetNote(
-                  formatAttackRollLine(attack),
+                const hitTooltip = appendExhaustionSheetNote(
+                  formatAttackBonusTooltip(attack) ?? formatAttackRollLine(attack),
                   attack.rollType === "attack"
                     ? getExhaustionAttackSaveSheetNote(data)
                     : null
                 );
+                const damageTooltip = formatDamageBonusTooltip(attack);
+                const rangeTooltip = formatAttackRangeTooltip(attack);
 
                 if (attack.source !== "manual") {
                   return (
@@ -1812,13 +1851,25 @@ export function CharacterSheet({
                                   : "Special"}
                           </Badge>
                         </div>
-                        <Tooltip content={attackTooltip}>
-                          <p className="text-sm text-muted-foreground cursor-default">
-                            {formatAttackRollLine(attack)} ·{" "}
-                            {attack.damageDice} {attack.damageType}
-                            {attack.range && ` · ${attack.range}`}
-                          </p>
-                        </Tooltip>
+                        <p className="text-sm text-muted-foreground cursor-default">
+                          <Tooltip content={hitTooltip}>
+                            <span>{formatAttackRollLine(attack)}</span>
+                          </Tooltip>
+                          {" · "}
+                          <Tooltip content={damageTooltip}>
+                            <span>
+                              {attack.damageDice} {attack.damageType}
+                            </span>
+                          </Tooltip>
+                          {attack.range ? (
+                            <>
+                              {" · "}
+                              <Tooltip content={rangeTooltip}>
+                                <span>{attack.range}</span>
+                              </Tooltip>
+                            </>
+                          ) : null}
+                        </p>
                         {attack.notes && (
                           <p className="text-xs text-muted-foreground mt-0.5">{attack.notes}</p>
                         )}
@@ -1901,10 +1952,17 @@ export function CharacterSheet({
                         <p className="font-medium text-sm">{manualAttack.name}</p>
                         <Badge variant="outline" className="text-xs">Special</Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground cursor-default">
                         {formatModifier(manualAttack.attackBonus)} to hit ·{" "}
                         {manualAttack.damageDice} {manualAttack.damageType}
-                        {manualAttack.range && ` · ${manualAttack.range}`}
+                        {manualAttack.range ? (
+                          <>
+                            {" · "}
+                            <Tooltip content={formatWeaponRangeBandTooltip(manualAttack.range)}>
+                              <span>{manualAttack.range}</span>
+                            </Tooltip>
+                          </>
+                        ) : null}
                       </p>
                     </div>
                   )}
@@ -2491,21 +2549,10 @@ export function CharacterSheet({
                     const itemTooltip = catalogItem
                       ? formatItemTooltip(catalogItem)
                       : formatCustomInventoryItemTooltip(item);
-                    const unitWeightLb = resolveItemWeightLb(item, catalogItem);
-                    const weightLine = formatInventoryItemWeightLine(
-                      unitWeightLb,
-                      item.quantity
+                    const valueWeightLine = formatInventoryValueWeightLine(item, catalogItem);
+                    const showMetaBlock = Boolean(
+                      detail || valueWeightLine || (editable && !item.itemId) || editable
                     );
-                    const customWeightLabel =
-                      !item.itemId && item.weightLb != null && !weightLine
-                        ? formatWeightLb(item.weightLb)
-                        : null;
-                    const customCostLabel =
-                      !item.itemId && item.costGp != null
-                        ? formatItemCostGp(item.costGp)
-                        : null;
-                    const showWeightRow =
-                      editable || !!weightLine || !!customWeightLabel || !!customCostLabel;
                     const isEmptyWaterskin = isEmptyWaterskinItem(item);
                     const fillPreview = isEmptyWaterskin
                       ? fillEmptyWaterskin(data.inventory.items, item.id)
@@ -2520,9 +2567,46 @@ export function CharacterSheet({
                     const fillTooltip = canFillWaterskin
                       ? "Fill with water (1 empty waterskin → 1 waterskin)"
                       : `Over capacity — filling would exceed ${formatWeightLb(encumbrance.maxCapacityLb)}`;
+                    const equipUnequipTooltip = formatUnequipPreviewTooltip(
+                      !item.equipped
+                        ? getUnequipPreviewOnEquip(
+                            data.inventory.items,
+                            i,
+                            catalogItems,
+                            data.basicInfo.species
+                          )
+                        : null
+                    );
+                    const mainWieldUnequipTooltip = formatUnequipPreviewTooltip(
+                      !wieldMain
+                        ? getUnequipPreviewOnWield(
+                            data.inventory.items,
+                            i,
+                            "main",
+                            catalogItems
+                          )
+                        : null
+                    );
+                    const offWieldUnequipTooltip = formatUnequipPreviewTooltip(
+                      !wieldOff
+                        ? getUnequipPreviewOnWield(
+                            data.inventory.items,
+                            i,
+                            "off",
+                            catalogItems
+                          )
+                        : null
+                    );
+
 
                     return (
-                      <div key={item.id} className="min-w-0 rounded-md border p-2 space-y-1">
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "min-w-0 rounded-md border p-2 space-y-1",
+                          getInventoryItemCategoryClass(item, catalogItem)
+                        )}
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             {editable ? (
@@ -2550,22 +2634,24 @@ export function CharacterSheet({
                               </Tooltip>
                             )}
                             {canToggleWornGear && (editable || canToggleEquipment) && (
-                              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none shrink-0">
-                                <Checkbox
-                                  checked={item.equipped}
-                                  onCheckedChange={(checked) => {
-                                    const items = setItemEquipped(
-                                      data.inventory.items,
-                                      i,
-                                      !!checked,
-                                      catalogItems,
-                                      data.basicInfo.species
-                                    );
-                                    update({ inventory: { ...data.inventory, items } });
-                                  }}
-                                />
-                                Equipped
-                              </label>
+                              <Tooltip content={equipUnequipTooltip}>
+                                <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none shrink-0">
+                                  <Checkbox
+                                    checked={item.equipped}
+                                    onCheckedChange={(checked) => {
+                                      const items = setItemEquipped(
+                                        data.inventory.items,
+                                        i,
+                                        !!checked,
+                                        catalogItems,
+                                        data.basicInfo.species
+                                      );
+                                      update({ inventory: { ...data.inventory, items } });
+                                    }}
+                                  />
+                                  Equipped
+                                </label>
+                              </Tooltip>
                             )}
                             {isArmor && usesNaturalArmor && (editable || canToggleEquipment) && (
                               <Tooltip content="Natural armor prevents equipping">
@@ -2577,53 +2663,57 @@ export function CharacterSheet({
                             )}
                             {isWeapon && (editable || canToggleEquipment) && (
                               <>
-                                <label
-                                  className={`flex items-center gap-1.5 text-xs select-none shrink-0 ${
-                                    mainHandEnabled || wieldMain
-                                      ? "cursor-pointer"
-                                      : "cursor-not-allowed opacity-50"
-                                  }`}
-                                >
-                                  <Checkbox
-                                    checked={wieldMain}
-                                    disabled={!mainHandEnabled && !wieldMain}
-                                    onCheckedChange={(checked) => {
-                                      const items = setWeaponWield(
-                                        data.inventory.items,
-                                        i,
-                                        "main",
-                                        !!checked,
-                                        catalogItems
-                                      );
-                                      update({ inventory: { ...data.inventory, items } });
-                                    }}
-                                  />
-                                  Main
-                                </label>
-                                {showOffHand && (
+                                <Tooltip content={mainWieldUnequipTooltip}>
                                   <label
                                     className={`flex items-center gap-1.5 text-xs select-none shrink-0 ${
-                                      offHandEnabled || wieldOff
+                                      mainHandEnabled || wieldMain
                                         ? "cursor-pointer"
                                         : "cursor-not-allowed opacity-50"
                                     }`}
                                   >
                                     <Checkbox
-                                      checked={wieldOff}
-                                      disabled={!offHandEnabled && !wieldOff}
+                                      checked={wieldMain}
+                                      disabled={!mainHandEnabled && !wieldMain}
                                       onCheckedChange={(checked) => {
                                         const items = setWeaponWield(
                                           data.inventory.items,
                                           i,
-                                          "off",
+                                          "main",
                                           !!checked,
                                           catalogItems
                                         );
                                         update({ inventory: { ...data.inventory, items } });
                                       }}
                                     />
-                                    Off-hand
+                                    Main
                                   </label>
+                                </Tooltip>
+                                {showOffHand && (
+                                  <Tooltip content={offWieldUnequipTooltip}>
+                                    <label
+                                      className={`flex items-center gap-1.5 text-xs select-none shrink-0 ${
+                                        offHandEnabled || wieldOff
+                                          ? "cursor-pointer"
+                                          : "cursor-not-allowed opacity-50"
+                                      }`}
+                                    >
+                                      <Checkbox
+                                        checked={wieldOff}
+                                        disabled={!offHandEnabled && !wieldOff}
+                                        onCheckedChange={(checked) => {
+                                          const items = setWeaponWield(
+                                            data.inventory.items,
+                                            i,
+                                            "off",
+                                            !!checked,
+                                            catalogItems
+                                          );
+                                          update({ inventory: { ...data.inventory, items } });
+                                        }}
+                                      />
+                                      Off-hand
+                                    </label>
+                                  </Tooltip>
                                 )}
                               </>
                             )}
@@ -2704,20 +2794,20 @@ export function CharacterSheet({
                           )}
                         </div>
 
-                        {detail ? (
-                          <p className="text-xs text-muted-foreground">{detail}</p>
-                        ) : null}
-                        {showWeightRow ? (
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-                              {!item.itemId && editable ? (
-                                <>
+                        {showMetaBlock ? (
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-0.5 min-w-0">
+                              {detail ? (
+                                <p className="text-xs text-muted-foreground">{detail}</p>
+                              ) : null}
+                              {editable && !item.itemId ? (
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
                                   <DraftNumberInput
                                     optional
                                     allowDecimal
                                     min={0}
                                     className="w-16 h-7 text-xs"
-                                    placeholder="0"
+                                    placeholder="lb"
                                     aria-label="Weight in pounds"
                                     value={item.weightLb}
                                     onCommit={(weightLb) => {
@@ -2726,7 +2816,7 @@ export function CharacterSheet({
                                       applyInventoryItems(items);
                                     }}
                                   />
-                                  <span>lb</span>
+                                  {item.weightLb != null && item.weightLb > 0 ? <span>lb</span> : null}
                                   {item.quantity > 1 &&
                                   item.weightLb != null &&
                                   item.weightLb > 0 ? (
@@ -2738,7 +2828,7 @@ export function CharacterSheet({
                                     optional
                                     allowDecimal
                                     min={0}
-                                    className="w-16 h-7 text-xs ml-2"
+                                    className="w-16 h-7 text-xs"
                                     placeholder="gp"
                                     aria-label="Value in gold pieces"
                                     value={item.costGp}
@@ -2748,19 +2838,11 @@ export function CharacterSheet({
                                       applyInventoryItems(items);
                                     }}
                                   />
-                                  <span>gp</span>
-                                </>
-                              ) : (
-                                <>
-                                  {weightLine ? <span>{weightLine}</span> : null}
-                                  {customWeightLabel ? <span>{customWeightLabel}</span> : null}
-                                  {customCostLabel ? (
-                                    <span className={weightLine || customWeightLabel ? "ml-2" : undefined}>
-                                      {customCostLabel}
-                                    </span>
-                                  ) : null}
-                                </>
-                              )}
+                                  {item.costGp != null && item.costGp > 0 ? <span>gp</span> : null}
+                                </div>
+                              ) : valueWeightLine ? (
+                                <p className="text-xs text-muted-foreground">{valueWeightLine}</p>
+                              ) : null}
                             </div>
                             {editable ? (
                               <Button
@@ -2989,6 +3071,20 @@ export function CharacterSheet({
         </TabsContent>
       </Tabs>
     </div>
+    {mounted && deathSaveRollOpen && canMutate
+      ? createPortal(
+          <DeathSaveRollModal
+            data={data}
+            onCancel={() => setDeathSaveRollOpen(false)}
+            onApply={(combat) => {
+              updateCombat(combat);
+              setDeathSaveRollOpen(false);
+            }}
+          />,
+          document.body
+        )
+      : null}
+    </>
   );
 }
 

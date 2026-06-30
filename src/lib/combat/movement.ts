@@ -1,7 +1,7 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { getCharacterEffectiveSpeedFt } from "@/lib/character/combat-derivation";
 import { applyBattleOverEconomyReset, isBattleOver } from "@/lib/combat/battle-over";
-import { isFootprintOnBlocked, tokensCollideForMovement } from "@/lib/combat/collision";
+import { isFootprintOnBlocked, tokenBlocksMovementDestination, tokensCollideForMovement } from "@/lib/combat/collision";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import type { Item } from "@/lib/schemas/item";
@@ -175,6 +175,7 @@ export function canEndFootprintAt(
     for (let dx = 0; dx < movingToken.width; dx++) {
       const occupant = tokenAtCell(state, x + dx, y + dy, movingToken.id);
       if (!occupant) continue;
+      if (tokenBlocksMovementDestination(occupant)) return false;
       if (tokensCollideForMovement(movingToken, occupant)) return false;
     }
   }
@@ -186,9 +187,10 @@ export function getMovementBudgetFeet(
   speedFt: number,
   usedFeet: number,
   dashUsed: boolean,
-  actionUsed = false
+  actionUsed = false,
+  allowDash = true
 ): { normalRemainingFeet: number; maxRemainingFeet: number } {
-  const canExtendWithDash = !dashUsed && !actionUsed;
+  const canExtendWithDash = allowDash && !dashUsed && !actionUsed;
   const maxTotalFeet = dashUsed ? speedFt * 2 : canExtendWithDash ? speedFt * 2 : speedFt;
   const maxRemainingFeet = Math.max(0, maxTotalFeet - usedFeet);
   const normalRemainingFeet = dashUsed
@@ -209,16 +211,18 @@ export function computeReachableDestinations(
     usedFeet: number;
     dashUsed: boolean;
     actionUsed?: boolean;
+    allowDash?: boolean;
   }
 ): ReachableDestination[] {
-  const { speedFt, usedFeet, dashUsed, actionUsed = false } = options;
-  const canExtendWithDash = canUseDashMovement(dashUsed, actionUsed);
+  const { speedFt, usedFeet, dashUsed, actionUsed = false, allowDash = true } = options;
+  const canExtendWithDash = allowDash && canUseDashMovement(dashUsed, actionUsed);
   const tileFeet = state.tileFeet;
   const { normalRemainingFeet, maxRemainingFeet } = getMovementBudgetFeet(
     speedFt,
     usedFeet,
     dashUsed,
-    actionUsed
+    actionUsed,
+    allowDash
   );
 
   if (maxRemainingFeet <= 0) return [];

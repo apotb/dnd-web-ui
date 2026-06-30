@@ -9,6 +9,12 @@ function isHostileToken(token: CombatToken): boolean {
   return token.kind === "enemy";
 }
 
+/** Party, ally, and enemy tokens occupy cells and cannot be movement destinations. */
+export function tokenBlocksMovementDestination(token: CombatToken): boolean {
+  if (isHiddenEnemy(token)) return false;
+  return isFriendlyToken(token) || isHostileToken(token);
+}
+
 /** Whether two tokens block each other during movement pathfinding. */
 export function tokensCollideForMovement(a: CombatToken, b: CombatToken): boolean {
   if (a.id === b.id) return false;

@@ -290,9 +290,11 @@ export function formatHitDiceTooltip(
   if (!cls) return null;
   const total = getHitDiceTotal(data, catalogClasses, level);
   const remaining = getHitDiceRemaining(data, catalogClasses, level);
-  const spent = total - remaining;
-  const lines = [`${cls.name}: d${cls.hitDie}`, `${remaining} remaining`];
-  if (spent > 0) lines.push(`${spent} spent`);
+  const lines = [
+    `${cls.name}: d${cls.hitDie}`,
+    `${remaining} remaining`,
+    `${total} maximum`,
+  ];
   return lines.join("\n");
 }
 
@@ -306,6 +308,26 @@ export function formatInitiativeTooltip(data: CharacterData): string {
   const parts = [`Dexterity: ${formatModifier(dexMod)}`];
   if (bonus !== 0) parts.push(`Bonus: ${formatModifier(bonus)}`);
   return parts.join("\n");
+}
+
+export function formatDeathSavesTooltip(_data: CharacterData): string {
+  return [
+    "When you start your turn with 0 hit points, make a death saving throw (d20, no ability modifier).",
+    "10 or higher: 1 success. 9 or lower: 1 failure.",
+    "",
+    "Natural 20: regain 1 HP and wake up; death saves reset.",
+    "Natural 1: counts as 2 failures.",
+    "",
+    "3 successes: you become stable (unconscious at 0 HP, no more death saves until you take damage).",
+    "3 failures: you die.",
+    "",
+    "Damage while at 0 HP: 1 automatic failure (2 if a critical hit).",
+    "Any healing that restores HP ends the dying state and resets death saves to 0.",
+    "",
+    "While dying: you are unconscious; attack rolls against you have advantage; hits from within 5 ft of you are critical hits if the attacker can see you.",
+    "",
+    "An ally can use an action to try a DC 10 Wisdom (Medicine) check to stabilize you (no HP restored).",
+  ].join("\n");
 }
 
 /** Sync stored max HP, hit dice, cap current HP, and exhaustion level from stack. */

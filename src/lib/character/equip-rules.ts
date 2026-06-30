@@ -94,6 +94,109 @@ function inventoryDisplayName(
   return (catalogItem?.name ?? item.name ?? "").trim();
 }
 
+export interface UnequipPreviewEntry {
+  name: string;
+  detail?: string;
+}
+
+function diffUnequippedOnEquip(
+  before: InventoryItem[],
+  after: InventoryItem[],
+  excludeIndex: number,
+  catalogItems: Record<string, Item>
+): UnequipPreviewEntry[] {
+  const entries: UnequipPreviewEntry[] = [];
+
+  for (let i = 0; i < before.length; i++) {
+    if (i === excludeIndex) continue;
+    const previous = before[i];
+    const next = after[i];
+    const catalog = resolveCatalog(previous, catalogItems);
+    const slot = getItemEquipSlot(catalog, previous);
+    const name = inventoryDisplayName(previous, catalog);
+    if (!name) continue;
+
+    if (slot === "weapon") {
+      const hadMain = getEffectiveWieldMain(previous, catalog);
+      const hasMain = getEffectiveWieldMain(next, catalog);
+      const hadOff = getEffectiveWieldOff(previous);
+      const hasOff = getEffectiveWieldOff(next);
+
+      if (hadMain && !hasMain) entries.push({ name, detail: "main hand" });
+      if (hadOff && !hasOff) entries.push({ name, detail: "off-hand" });
+    } else if (previous.equipped && !next.equipped) {
+      entries.push({ name });
+    }
+  }
+
+  return entries;
+}
+
+/** Items that would be unequipped when equipping armor or a shield. */
+export function getUnequipPreviewOnEquip(
+  items: InventoryItem[],
+  index: number,
+  catalogItems: Record<string, Item>,
+  speciesDisplayName = ""
+): UnequipPreviewEntry[] | null {
+  const target = items[index];
+  if (!target || target.equipped) return null;
+
+  const targetCatalog = resolveCatalog(target, catalogItems);
+  const targetSlot = getItemEquipSlot(targetCatalog, target);
+  if (!targetSlot || targetSlot === "weapon") return null;
+  if (
+    targetSlot === "armor" &&
+    hasNaturalArmorSpecies(speciesDisplayName)
+  ) {
+    return null;
+  }
+
+  const after = setItemEquipped(items, index, true, catalogItems, speciesDisplayName);
+  const entries = diffUnequippedOnEquip(items, after, index, catalogItems);
+  return entries.length > 0 ? entries : null;
+}
+
+/** Items that would be unequipped when wielding a weapon in a hand. */
+export function getUnequipPreviewOnWield(
+  items: InventoryItem[],
+  index: number,
+  hand: WeaponHand,
+  catalogItems: Record<string, Item>
+): UnequipPreviewEntry[] | null {
+  const target = items[index];
+  if (!target) return null;
+
+  const targetCatalog = resolveCatalog(target, catalogItems);
+  if (getItemEquipSlot(targetCatalog, target) !== "weapon") return null;
+
+  const alreadyWielded =
+    hand === "main"
+      ? getEffectiveWieldMain(target, targetCatalog)
+      : getEffectiveWieldOff(target);
+  if (alreadyWielded) return null;
+
+  if (hand === "off" && !canWieldOffHand(items, index, catalogItems)) return null;
+  if (hand === "main" && !canWieldMainHand(items, index, catalogItems)) return null;
+
+  const after = setWeaponWield(items, index, hand, true, catalogItems);
+  if (after === items) return null;
+
+  const entries = diffUnequippedOnEquip(items, after, index, catalogItems);
+  return entries.length > 0 ? entries : null;
+}
+
+export function formatUnequipPreviewTooltip(
+  entries: UnequipPreviewEntry[] | null | undefined
+): string | null {
+  if (!entries || entries.length === 0) return null;
+  const lines = entries.map((entry) =>
+    entry.detail ? `${entry.name} (${entry.detail})` : entry.name
+  );
+  if (lines.length === 1) return `Will unequip: ${lines[0]}`;
+  return `Will unequip:\n${lines.join("\n")}`;
+}
+
 /** Equippable items first (in use, then alpha), then other items alphabetically. */
 export function sortInventoryForDisplay(
   items: InventoryItem[],
