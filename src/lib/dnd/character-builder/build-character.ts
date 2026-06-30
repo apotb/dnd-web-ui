@@ -414,6 +414,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
       known: [],
       prepared: [],
       slots: {},
+      grantUses: {},
     };
   }
 
@@ -468,6 +469,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
       known: state.classId === "wizard" ? [...cantrips, ...spellbook] : cantrips,
       prepared: [...cantrips, ...level1],
       slots,
+      grantUses: {},
     };
   }
 
@@ -477,6 +479,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
     known: [...cantrips, ...level1],
     prepared: [],
     slots,
+    grantUses: {},
   };
 }
 
