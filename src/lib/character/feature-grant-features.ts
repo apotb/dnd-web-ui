@@ -3,6 +3,7 @@ import type { BackgroundChoices } from "@/lib/schemas/character";
 import {
   buildChoiceDescription,
   choicePlaceholder,
+  resolveFeatureCatalogs,
   type ChoiceOption,
   type ConfigurableGrantedFeature,
   type FeatureCatalogs,
@@ -11,9 +12,8 @@ import {
 import {
   findBackgroundByName,
   findSpeciesByDisplayName,
+  findSubclassByName,
 } from "@/lib/content/catalog-tooltip";
-import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
-import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import type { PhbBackground, PhbSpecies } from "@/lib/dnd/phb/types";
 
 export type GrantEditorKind =
@@ -53,10 +53,7 @@ export interface GrantConfigurableFeature extends ConfigurableGrantedFeature {
 }
 
 function resolveCatalogs(catalogs: FeatureCatalogs = {}) {
-  return {
-    species: catalogs.species?.length ? catalogs.species : PHB_SPECIES,
-    backgrounds: catalogs.backgrounds?.length ? catalogs.backgrounds : PHB_BACKGROUNDS,
-  };
+  return resolveFeatureCatalogs(catalogs);
 }
 
 function makeGrantFeature(
@@ -94,7 +91,7 @@ export function deriveGrantConfigurableFeatures(
   data: CharacterData,
   catalogs: FeatureCatalogs = {}
 ): GrantConfigurableFeature[] {
-  const { species: speciesList, backgrounds } = resolveCatalogs(catalogs);
+  const { species: speciesList, backgrounds, classes } = resolveCatalogs(catalogs);
   const features: GrantConfigurableFeature[] = [];
   const speciesMatch = findSpeciesByDisplayName(data.basicInfo.species, speciesList);
   const species = speciesMatch?.species;
@@ -314,6 +311,37 @@ export function deriveGrantConfigurableFeatures(
           { value: "wizard", label: "Wizard" },
         ],
         { kind: "magic-initiate", storage: { area: "featureChoices", key: "magicInitiateClass" } }
+      )
+    );
+  }
+
+  const subclassMatch = findSubclassByName(
+    data.basicInfo.class ?? "",
+    data.basicInfo.subclass ?? "",
+    classes
+  );
+  if (
+    subclassMatch?.cls.id === "druid" &&
+    (subclassMatch.subclass.id === "nature" || subclassMatch.subclass.id === "land")
+  ) {
+    const isNature = subclassMatch.subclass.id === "nature";
+    const rules = isNature
+      ? "You learn one druid cantrip of your choice."
+      : "You learn one additional druid cantrip of your choice.";
+    features.push(
+      makeGrantFeature(
+        "subclass",
+        isNature ? "Acolyte of Nature Cantrip" : "Bonus Cantrip",
+        rules,
+        buildChoiceDescription(rules, featureChoices.bonusDruidCantripId || null),
+        "fightingStyle",
+        featureChoices.bonusDruidCantripId,
+        [],
+        {
+          kind: "cantrip",
+          storage: { area: "featureChoices", key: "bonusDruidCantripId" },
+          spellListId: "druid",
+        }
       )
     );
   }

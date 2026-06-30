@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { fetchCatalogClassesClient } from "@/lib/content/catalog-client";
 import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
-import { PHB_SPECIES } from "@/lib/dnd/phb/species";
+import { ALL_SPECIES } from "@/lib/dnd/phb/species";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import { getItemsBySlugsClient } from "@/lib/items/catalog-client";
 import type { Item } from "@/lib/schemas/item";
@@ -37,7 +37,7 @@ export function useCombatCatalog(characters: ParsedCharacter[]) {
 
   const featureCatalogs = useMemo(
     () => ({
-      species: PHB_SPECIES,
+      species: ALL_SPECIES,
       classes: classCatalog,
       backgrounds: PHB_BACKGROUNDS,
     }),

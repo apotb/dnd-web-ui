@@ -88,6 +88,7 @@ export function CombatAttackReviewModal({
       pending.targets.map((target) => {
         const computed = computeDamageApplied(target, pending.rollType, {
           damageDice: pending.damageDice,
+          saveHalfDamageOnSuccess: pending.saveHalfDamageOnSuccess,
         });
         const final = target.finalDamage ?? computed;
         return [target.tokenId, final !== computed ? String(final) : ""];
@@ -210,7 +211,10 @@ export function CombatAttackReviewModal({
         const overrideText = damageOverrides[target.tokenId] ?? "";
         const afterHp = projectedHp(target, pending.rollType, overrideText, damageDice);
         const rolls = damageRollInputs[target.tokenId] ?? [];
-        const computedDamage = computeDamageApplied(target, pending.rollType, { damageDice });
+        const computedDamage = computeDamageApplied(target, pending.rollType, {
+          damageDice,
+          saveHalfDamageOnSuccess: pending.saveHalfDamageOnSuccess,
+        });
         const damageBreakdown = formatDamageAppliedBreakdown(
           target,
           pending.rollType,

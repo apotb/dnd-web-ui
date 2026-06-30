@@ -143,6 +143,8 @@ export interface PhbSpell {
   description: string;
   ritual?: boolean;
   concentration?: boolean;
+  /** Class spell list IDs this spell appears on (e.g. wizard, cleric). */
+  classes?: string[];
 }
 
 export interface PhbFeat {

@@ -7,14 +7,17 @@ import type {
 } from "@/lib/schemas/character";
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import type { FeatureCatalogs } from "@/lib/character/feature-choices";
+import { resolveFeatureCatalogs } from "@/lib/character/feature-choices";
 import {
   findBackgroundByName,
   findSpeciesByDisplayName,
 } from "@/lib/content/catalog-tooltip";
 import { getFeat } from "@/lib/dnd/phb/feats";
-import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
-import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
-import { PHB_SPECIES } from "@/lib/dnd/phb/species";
+import {
+  resolveAllSpellGrants,
+  type SpellGrantSpec,
+} from "@/lib/character/spell-grants";
+import { syncGrantUses } from "@/lib/character/spell-grant-uses";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import type { PhbBackground, PhbSpecies } from "@/lib/dnd/phb/types";
 import {
@@ -24,12 +27,8 @@ import type { CharacterCreatorState } from "@/lib/dnd/character-builder/types";
 
 export const MANAGED_SPELL_GRANT_PREFIX = "grant:";
 
-interface SpellGrantSpec {
-  grantKey: string;
-  spellId: string;
-  level: number;
-  notes?: string;
-}
+export type { SpellGrantSpec } from "@/lib/character/spell-grants";
+export { resolveAllSpellGrants } from "@/lib/character/spell-grants";
 
 export interface SkillGrantSpec {
   grantKey: string;
@@ -52,128 +51,24 @@ interface ToolGrantSpec {
   tools: string[];
 }
 
-/** Fixed racial spells keyed by `speciesId` or `speciesId:subspeciesId`. */
-const FIXED_SPECIES_SPELLS: Record<string, SpellGrantSpec[]> = {
-  "elf:drow": [
-    { grantKey: "grant:species:drow-magic", spellId: "dancing-lights", level: 0 },
-  ],
-  "gnome:forest": [
-    { grantKey: "grant:species:natural-illusionist", spellId: "minor-illusion", level: 0 },
-  ],
-  aasimar: [{ grantKey: "grant:species:light-bearer", spellId: "light", level: 0 }],
-  githyanki: [{ grantKey: "grant:species:githyanki-psionics", spellId: "mage-hand", level: 0 }],
-  githzerai: [{ grantKey: "grant:species:githzerai-psionics", spellId: "mage-hand", level: 0 }],
-};
-
-/** Tiefling subspecies share thaumaturgy at 1st level. */
-const TIEFLING_CANTrip: SpellGrantSpec = {
-  grantKey: "grant:species:infernal-legacy",
-  spellId: "thaumaturgy",
-  level: 0,
-};
-
 function resolveCatalogs(catalogs: FeatureCatalogs = {}) {
-  return {
-    species: catalogs.species?.length ? catalogs.species : PHB_SPECIES,
-    classes: catalogs.classes?.length ? catalogs.classes : PHB_CLASSES,
-    backgrounds: catalogs.backgrounds?.length ? catalogs.backgrounds : PHB_BACKGROUNDS,
-  };
-}
-
-function speciesKey(speciesId: string, subspeciesId?: string): string {
-  return subspeciesId ? `${speciesId}:${subspeciesId}` : speciesId;
+  return resolveFeatureCatalogs(catalogs);
 }
 
 function spellEntryFromGrant(spec: SpellGrantSpec, existing?: Spell): Spell {
   const catalog = getSpell(spec.spellId);
+  const notes = spec.usage
+    ? (catalog?.school ?? "")
+    : (spec.notes ?? catalog?.school ?? "");
   return {
     id: existing?.id ?? crypto.randomUUID(),
     spellId: spec.spellId,
     name: catalog?.name ?? spec.spellId,
     level: spec.level,
     prepared: existing?.prepared ?? true,
-    notes: spec.notes ?? catalog?.school ?? "",
+    notes,
     grantKey: spec.grantKey,
   };
-}
-
-function resolveFixedSpeciesSpells(
-  species: PhbSpecies,
-  subspeciesId?: string
-): SpellGrantSpec[] {
-  const grants: SpellGrantSpec[] = [];
-  const key = speciesKey(species.id, subspeciesId);
-  if (FIXED_SPECIES_SPELLS[key]) grants.push(...FIXED_SPECIES_SPELLS[key]);
-  if (FIXED_SPECIES_SPELLS[species.id]) grants.push(...FIXED_SPECIES_SPELLS[species.id]);
-  if (species.id === "tiefling") grants.push(TIEFLING_CANTrip);
-  return grants;
-}
-
-function resolvePickableSpeciesCantrip(
-  species: PhbSpecies,
-  subspeciesId: string | undefined,
-  speciesChoices: SpeciesChoices
-): SpellGrantSpec | null {
-  if (species.id === "elf" && subspeciesId === "high" && speciesChoices.speciesCantripId) {
-    return {
-      grantKey: "grant:species:high-elf-cantrip",
-      spellId: speciesChoices.speciesCantripId,
-      level: 0,
-      notes: "High Elf cantrip",
-    };
-  }
-  return null;
-}
-
-function resolveMagicInitiateSpells(
-  featureChoices: CharacterData["featureChoices"]
-): SpellGrantSpec[] {
-  if (featureChoices.variantHumanFeat !== "magic-initiate") return [];
-  const listId = featureChoices.magicInitiateClass;
-  if (!listId) return [];
-
-  const grants: SpellGrantSpec[] = [];
-  featureChoices.magicInitiateCantripIds?.forEach((spellId, index) => {
-    if (!spellId) return;
-    grants.push({
-      grantKey: `grant:feat:magic-initiate:cantrip:${index}`,
-      spellId,
-      level: 0,
-      notes: `Magic Initiate (${listId})`,
-    });
-  });
-
-  if (featureChoices.magicInitiateSpellId) {
-    grants.push({
-      grantKey: "grant:feat:magic-initiate:spell",
-      spellId: featureChoices.magicInitiateSpellId,
-      level: 1,
-      notes: `Magic Initiate (${listId}) · 1/long rest`,
-    });
-  }
-
-  return grants;
-}
-
-export function resolveAllSpellGrants(
-  data: CharacterData,
-  catalogs: FeatureCatalogs = {}
-): SpellGrantSpec[] {
-  const { species: speciesList } = resolveCatalogs(catalogs);
-  const match = findSpeciesByDisplayName(data.basicInfo.species, speciesList);
-  const species = match?.species;
-  const subspeciesId = match?.subspecies?.id;
-  const speciesChoices = data.speciesChoices ?? {};
-  const grants: SpellGrantSpec[] = [];
-
-  if (species) {
-    grants.push(...resolveFixedSpeciesSpells(species, subspeciesId));
-    const pick = resolvePickableSpeciesCantrip(species, subspeciesId, speciesChoices);
-    if (pick) grants.push(pick);
-  }
-
-  grants.push(...resolveMagicInitiateSpells(data.featureChoices ?? {}));
-  return grants;
 }
 
 function mergeGrantSpells(known: Spell[], grants: SpellGrantSpec[]): Spell[] {
@@ -190,7 +85,7 @@ function mergeGrantSpells(known: Spell[], grants: SpellGrantSpec[]): Spell[] {
     spellEntryFromGrant(spec, byGrantKey.get(spec.grantKey))
   );
 
-  return [...managed, ...grantSpells];
+  return [...grantSpells, ...managed];
 }
 
 function resolveSpeciesSkillGrants(
@@ -484,10 +379,15 @@ export function syncFeatureGrants(
   const spellGrants = resolveAllSpellGrants(data, catalogs);
   const known = mergeGrantSpells(data.spells.known, spellGrants);
   const prepared = mergeGrantSpells(data.spells.prepared, spellGrants.filter((g) => g.level === 0 || g.grantKey.includes("magic-initiate")));
+  const spells = syncGrantUses(
+    { ...data.spells, known, prepared },
+    data,
+    catalogs
+  );
 
   let next: CharacterData = {
     ...data,
-    spells: { ...data.spells, known, prepared },
+    spells,
     weaponProficiencies: resolveStoredWeaponProficiencies(data, catalogs),
     toolProficiencies: resolveStoredToolProficiencies(data, catalogs),
     armorProficiencies: resolveStoredArmorProficiencies(data, catalogs),

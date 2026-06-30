@@ -1,11 +1,18 @@
 "use client";
 
 import { CombatAttackReviewCard } from "@/components/combat/combat-attack-review-card";
+import { getTokenSaveModifier } from "@/lib/combat/attack-resolution";
+import type { ParsedCharacter } from "@/lib/character/utils";
+import type { PhbClass } from "@/lib/dnd/phb/types";
+import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 
 interface CombatDmApprovalTrayProps {
   pendingAttacks: PendingAttack[];
   tokens: CombatToken[];
+  charactersById: Record<string, ParsedCharacter>;
+  enemiesBySlug: Record<string, { data: EnemyData }>;
+  classCatalog?: PhbClass[];
   resolveDisadvantageLabel?: (
     pending: PendingAttack,
     targetTokenId: string
@@ -28,6 +35,9 @@ function getAttackerLabel(pending: PendingAttack, tokens: CombatToken[]): string
 export function CombatDmApprovalTray({
   pendingAttacks,
   tokens,
+  charactersById,
+  enemiesBySlug,
+  classCatalog,
   resolveDisadvantageLabel,
   resolvingAttackId,
   submittingSaveId,
@@ -36,6 +46,21 @@ export function CombatDmApprovalTray({
   onSubmitDmSaves,
 }: CombatDmApprovalTrayProps) {
   if (pendingAttacks.length === 0) return null;
+
+  function resolveSaveModifier(
+    pending: PendingAttack,
+    targetTokenId: string
+  ): number | null {
+    const token = tokens.find((entry) => entry.id === targetTokenId);
+    if (!token) return null;
+    const character = token.characterId ? charactersById[token.characterId] ?? null : null;
+    const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
+    return getTokenSaveModifier(token, pending.saveAbility, {
+      character,
+      enemyData,
+      classCatalog,
+    });
+  }
 
   return (
     <section className="combat-dm-approval-tray" aria-label="Pending action approvals">
@@ -56,6 +81,7 @@ export function CombatDmApprovalTray({
                 ? (targetTokenId) => resolveDisadvantageLabel(pending, targetTokenId)
                 : undefined
             }
+            resolveSaveModifier={(targetTokenId) => resolveSaveModifier(pending, targetTokenId)}
             submitting={resolvingAttackId === pending.id}
             submittingSaves={submittingSaveId === pending.id}
             onReject={() => onReject(pending.id)}

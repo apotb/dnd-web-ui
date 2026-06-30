@@ -15,6 +15,9 @@ import {
   formatModifier,
   getAbilityModifiers,
 } from "@/lib/dnd/calculations";
+import { getConditionDisplayName } from "@/lib/dnd/conditions";
+import type { PhbCondition } from "@/lib/dnd/conditions";
+import { fetchCatalogConditionsClient } from "@/lib/content/catalog-client";
 import { getTopSkills, skillShortLabel } from "@/lib/dnd/party-summary";
 import type { ParsedCalendarEvent } from "@/lib/schemas/calendar-event";
 import type { PartyData } from "@/lib/schemas/party";
@@ -84,6 +87,11 @@ export function CampaignOverview({
   }, [characters, userId]);
   const [activeTab, setActiveTab] = useState<OverviewTab | null>(null);
   const [restored, setRestored] = useState(false);
+  const [conditionCatalog, setConditionCatalog] = useState<PhbCondition[]>([]);
+
+  useEffect(() => {
+    fetchCatalogConditionsClient().then(setConditionCatalog);
+  }, []);
 
   useEffect(() => {
     setRestored(false);
@@ -152,6 +160,7 @@ export function CampaignOverview({
                     character={character}
                     campaignId={campaignId}
                     userId={userId}
+                    conditionCatalog={conditionCatalog}
                   />
                 ))}
               </div>
@@ -226,10 +235,12 @@ function PartyMemberSummary({
   character,
   campaignId,
   userId,
+  conditionCatalog,
 }: {
   character: ParsedCharacter;
   campaignId: string;
   userId: string | null;
+  conditionCatalog: PhbCondition[];
 }) {
   const isUserCharacter = !!userId && character.owner_user_id === userId;
   const data = character.data;
@@ -302,7 +313,10 @@ function PartyMemberSummary({
         </p>
         {combat.conditions.length > 0 && (
           <p className="retro-member-line">
-            <strong>Cond:</strong> {combat.conditions.join(", ")}
+            <strong>Cond:</strong>{" "}
+            {combat.conditions
+              .map((slug) => getConditionDisplayName(slug, conditionCatalog))
+              .join(", ")}
           </p>
         )}
       </div>

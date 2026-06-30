@@ -2319,6 +2319,53 @@ html.campaign-bg-active .retro-back-link {
   justify-content: space-between;
 }
 
+.short-rest-feature-panel {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.15);
+  text-align: left;
+}
+
+.short-rest-feature-title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.short-rest-slot-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.short-rest-slot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.short-rest-slot-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.short-rest-slot-count {
+  min-width: 1.25rem;
+  text-align: center;
+  font-weight: 700;
+}
+
+.candy-btn-sm {
+  min-width: 2rem;
+  padding: 2px 8px;
+}
+
 .initiative-roll-modal .retro-muted {
   text-align: center;
 }
@@ -3820,6 +3867,52 @@ html.campaign-bg-active .retro-back-link {
   margin-bottom: 12px;
 }
 
+.combat-awaiting-saves-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.combat-awaiting-saves-summary {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.combat-save-roll-entry {
+  padding: 10px 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: 6px;
+}
+
+.combat-save-roll-entry-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.combat-save-roll-entry-row {
+  margin-bottom: 0;
+}
+
+.combat-save-roll-outcome {
+  margin: 8px 0 0;
+  font-size: 0.92em;
+  font-weight: 700;
+  color: #15803d;
+}
+
+.combat-save-roll-outcome-fail {
+  color: #800000;
+}
+
+.dehydration-save-roll-input .candy-input,
+.dehydration-save-roll-input .combat-roll-input {
+  width: 100%;
+}
+
 .combat-attack-submit-target-block {
   padding: 8px 10px;
   border: 1px dashed rgba(148, 163, 184, 0.35);
@@ -3934,6 +4027,10 @@ html.campaign-bg-active .retro-back-link {
   min-height: 88px;
 }
 
+.combat-attack-body-compact {
+  min-height: 0;
+}
+
 .combat-attack-grid {
   flex: 1;
   display: grid;
@@ -3941,6 +4038,10 @@ html.campaign-bg-active .retro-back-link {
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 6px;
   min-width: 0;
+}
+
+.combat-attack-grid-compact {
+  align-content: start;
 }
 
 .combat-attack-option-empty {
@@ -4085,6 +4186,30 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-roll-modal {
   max-width: 420px;
+}
+
+.lay-on-hands-target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lay-on-hands-target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  text-align: left;
+}
+
+.lay-on-hands-target--selected {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .combat-roll-actions {
@@ -4549,7 +4674,7 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-token-label-expanded {
   justify-content: flex-start;
-  gap: 1px;
+  gap: 3px;
   padding: 2px 6px 2px;
   min-width: 72px;
 }
@@ -4628,7 +4753,7 @@ html.campaign-bg-active .retro-back-link {
   background: transparent;
   font-size: inherit;
   font-weight: 600;
-  line-height: 1.05;
+  line-height: 1.2;
   text-align: center;
   white-space: nowrap;
 }
@@ -4637,9 +4762,46 @@ html.campaign-bg-active .retro-back-link {
   display: block;
   font-size: max(0.92em, 10px);
   font-weight: 500;
-  line-height: 1.1;
+  line-height: 1.2;
   text-align: center;
   white-space: nowrap;
+}
+
+.combat-token-status-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: max(0.82em, 9px);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  background: rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fde68a;
+}
+
+.combat-shell-defense-effects {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.combat-save-roll-mode {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+}
+
+.combat-save-roll-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.combat-save-roll-sep {
+  opacity: 0.7;
 }
 
 .combat-token-party {

@@ -1,4 +1,10 @@
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
+import type { FeatureCatalogs } from "@/lib/character/feature-choices";
+import {
+  getGrantUsesForRest,
+  hasGrantUsesRestoringOnRest,
+  resetGrantUses,
+} from "@/lib/character/spell-grant-uses";
 import {
   calculateEffectiveMaxHpBreakdown,
   getHitDiceRemaining,
@@ -9,6 +15,7 @@ import {
 import { abilityModifier } from "@/lib/dnd/calculations";
 import { removeOneExhaustionLevel } from "@/lib/dnd/exhaustion";
 import { sameHarptosDate, type HarptosDate } from "@/lib/dnd/harptos-calendar";
+import { getLongRestMechanicalPreview, getShortRestMechanicalPreview, resetMechanicalFeatureUses } from "@/lib/dnd/mechanical-features";
 import type { CharacterData, Feature } from "@/lib/schemas/character";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import type { PhbSpecies } from "@/lib/dnd/phb/types";
@@ -25,6 +32,13 @@ export interface RestAllowed {
 }
 
 export type RestAvailability = RestAllowed | RestBlockReason;
+
+function restCatalogs(
+  classes?: PhbClass[],
+  speciesList?: PhbSpecies[]
+): FeatureCatalogs {
+  return { classes, species: speciesList };
+}
 
 export function hasLongRestedToday(
   data: CharacterData,
@@ -97,9 +111,11 @@ function resetFeatureUses(
 /** Labels for abilities that recharge on a short rest for this character. */
 export function getShortRestRestorations(
   data: CharacterData,
-  classes?: PhbClass[]
+  classes?: PhbClass[],
+  speciesList?: PhbSpecies[]
 ): string[] {
   const items: string[] = [];
+  const catalogs = restCatalogs(classes, speciesList);
 
   if (isWarlock(data, classes)) {
     const hasUsedSlots = Object.values(data.spells.slots).some(
@@ -118,14 +134,20 @@ export function getShortRestRestorations(
     }
   }
 
+  items.push(...getShortRestMechanicalPreview(data, catalogs));
+  items.push(...getGrantUsesForRest(data, "short", catalogs));
+
   return items;
 }
 
 /** Labels for custom features that recharge on a long rest. */
 export function getLongRestRestorations(
-  data: CharacterData
+  data: CharacterData,
+  classes?: PhbClass[],
+  speciesList?: PhbSpecies[]
 ): string[] {
   const items: string[] = [];
+  const catalogs = restCatalogs(classes, speciesList);
 
   for (const feature of data.features) {
     if (!feature.uses) continue;
@@ -135,6 +157,9 @@ export function getLongRestRestorations(
       items.push(`${name} (${feature.uses.current}/${feature.uses.max})`);
     }
   }
+
+  items.push(...getGrantUsesForRest(data, "long", catalogs));
+  items.push(...getLongRestMechanicalPreview(data, catalogs));
 
   return items;
 }
@@ -200,10 +225,18 @@ export function applyShortRestFinish(
   speciesList?: PhbSpecies[]
 ): CharacterData {
   const warlock = isWarlock(data, classes);
+  const catalogs = restCatalogs(classes, speciesList);
+  const withMechanical = resetMechanicalFeatureUses(data, "short", catalogs);
+  const spells = resetGrantUses(
+    resetSpellSlots(withMechanical.spells, "warlock-only", warlock),
+    "short",
+    withMechanical,
+    catalogs
+  );
   const next: CharacterData = clearPendingShortRest({
-    ...data,
-    spells: resetSpellSlots(data.spells, "warlock-only", warlock),
-    features: resetFeatureUses(data.features, "short"),
+    ...withMechanical,
+    spells,
+    features: resetFeatureUses(withMechanical.features, "short"),
   });
   return syncCombatDerivedStats(next, classes, speciesList);
 }
@@ -243,18 +276,29 @@ export function applyLongRest(
 
   const afterExhaustion = getDataAfterLongRestExhaustionReduction(data);
   const restoreHp = getLongRestHpRestoreTarget(data, classes, speciesList);
+  const catalogs = restCatalogs(classes, speciesList);
+  const withMechanical = resetMechanicalFeatureUses(
+    afterExhaustion,
+    "long",
+    catalogs
+  );
 
   const next: CharacterData = {
-    ...afterExhaustion,
+    ...withMechanical,
     combat: {
-      ...afterExhaustion.combat,
+      ...withMechanical.combat,
       currentHp: restoreHp,
       hitDiceSpent: nextSpent,
       lastLongRestDate: campaignDate,
       concentration: { active: false, spell: "" },
     },
-    spells: resetSpellSlots(afterExhaustion.spells, "all", isWarlock(data, classes)),
-    features: resetFeatureUses(afterExhaustion.features, "long"),
+    spells: resetGrantUses(
+      resetSpellSlots(withMechanical.spells, "all", isWarlock(data, classes)),
+      "long",
+      withMechanical,
+      catalogs
+    ),
+    features: resetFeatureUses(withMechanical.features, "long"),
   };
 
   return syncCombatDerivedStats(next, classes, speciesList);
@@ -293,6 +337,15 @@ export function describeLongRestEffects(
     Object.values(data.spells.slots).some((slot) => slot.used > 0)
   ) {
     lines.push("Restore all spell slots");
+  }
+  if (
+    hasGrantUsesRestoringOnRest(
+      data,
+      "long",
+      restCatalogs(classes, speciesList)
+    )
+  ) {
+    lines.push("Restore innate spell uses");
   }
   if (data.combat.concentration?.active) {
     lines.push("End concentration");

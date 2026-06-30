@@ -189,6 +189,7 @@ export function CharacterSheetsList({
                   canDelete={isDm}
                   initialWorldData={initialWorldData}
                   ownedCharacterId={ownedCharacterId}
+                  partyCharacters={characters}
                 />
               </section>
             </>

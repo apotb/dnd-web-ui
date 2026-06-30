@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { ConditionsEditor } from "@/components/character/conditions-editor";
 import { DeathSaveRollModal } from "@/components/character/death-save-roll-modal";
 import { Input } from "@/components/ui/input";
 import { DraftNumberInput } from "@/components/ui/draft-number-input";
@@ -38,6 +39,8 @@ import {
   SKILL_LABELS,
   abilityModifier,
   formatModifier,
+  formatSpellAttackTooltip,
+  formatSpellSaveDcTooltip,
   getAbilityModifiers,
   getPassivePerception,
   getProficiencyBonus,
@@ -60,7 +63,11 @@ import {
   canAddLeveledSpell,
   canPrepareAnother,
   countCantrips,
+  countGrantedCantrips,
+  countGrantedLeveled,
   countLeveledKnown,
+  countPlayerCantrips,
+  countPlayerLeveledKnown,
   countPreparedLeveled,
   formatSlotSummary,
   formatLevelPreparedSummary,
@@ -68,7 +75,6 @@ import {
   getSpellcastingLimits,
   isKnownCaster,
   isPreparedCaster,
-  isWizard,
   normalizeSpellPreparedFlags,
   syncSpellcastingFromClass,
 } from "@/lib/dnd/spellcasting";
@@ -91,9 +97,11 @@ import {
   getSpellsBySlugsClient,
   fetchCatalogBackgroundsClient,
   fetchCatalogClassesClient,
+  fetchCatalogConditionsClient,
   fetchCatalogSpeciesClient,
   type CatalogSpellRow,
 } from "@/lib/content/catalog-client";
+import type { PhbCondition } from "@/lib/dnd/conditions";
 import {
   findBackgroundByName,
   findClassByName,
@@ -115,6 +123,7 @@ import {
 } from "@/lib/dnd/character-actions";
 import {
   deriveGrantedFeatures,
+  enrichMechanicalFeature,
   featureSourceLabel,
   isConfigurableGrantedFeature,
   isGrantConfigurableFeature,
@@ -125,6 +134,22 @@ import {
   clearMagicInitiateChoices,
   syncFeatureGrants,
 } from "@/lib/character/feature-grant-sync";
+import {
+  buildSpellGrantSourceMap,
+  buildSpellGrantUsageMap,
+  hasManagedSpellGrants,
+  isManagedGrantSpell,
+  spellGrantSourceLabel,
+} from "@/lib/character/spell-sources";
+import {
+  getGrantUsesRemaining,
+  useGrantSpell,
+} from "@/lib/character/spell-grant-uses";
+import {
+  adjustMechanicalFeatureUse,
+  getMechanicalFeatureDef,
+  LAY_ON_HANDS_ID,
+} from "@/lib/dnd/mechanical-features";
 import { optionLabel } from "@/lib/ui/select-display";
 import { GrantFeatureRow } from "@/components/character/grant-feature-row";
 import {
@@ -204,9 +229,28 @@ interface CharacterSheetProps {
   campaignDate?: HarptosDate;
   /** Show short/long rest controls (owner or DM). */
   canRest?: boolean;
+  /** Prefer combat board Lay on Hands while on an active encounter token. */
+  layOnHandsCombatPreferred?: boolean;
+  onUseLayOnHands?: () => void;
 }
 
-function GrantedFeatureRow({ feature }: { feature: GrantedFeature }) {
+function GrantedFeatureRow({
+  feature,
+  canAdjust,
+  onAdjustUse,
+  onUseLayOnHands,
+  layOnHandsCombatPreferred,
+  pendingShortRest,
+}: {
+  feature: GrantedFeature;
+  canAdjust?: boolean;
+  onAdjustUse?: (featureId: string, delta: number) => void;
+  onUseLayOnHands?: () => void;
+  layOnHandsCombatPreferred?: boolean;
+  pendingShortRest?: boolean;
+}) {
+  const mechanical = getMechanicalFeatureDef(feature.id);
+
   return (
     <div className="rounded-md border border-dashed bg-muted/30 p-3 space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -214,16 +258,101 @@ function GrantedFeatureRow({ feature }: { feature: GrantedFeature }) {
         <Badge variant="outline" className="text-xs shrink-0">
           {featureSourceLabel(feature.source)}
         </Badge>
+        {mechanical?.kind === "short-rest-slots" && feature.uses ? (
+          <Badge
+            variant={feature.uses.current > 0 ? "default" : "secondary"}
+            className="text-xs shrink-0"
+          >
+            {feature.uses.current > 0
+              ? pendingShortRest
+                ? "Available this short rest"
+                : "Available (use during short rest)"
+              : "Used until long rest"}
+          </Badge>
+        ) : null}
+        {mechanical?.kind === "short-rest-heal" && feature.uses ? (
+          <Badge
+            variant={feature.uses.current > 0 ? "default" : "secondary"}
+            className="text-xs shrink-0"
+          >
+            {feature.uses.current > 0
+              ? `${feature.uses.current}/${feature.uses.max} remaining`
+              : "Recharges on short rest"}
+          </Badge>
+        ) : null}
       </div>
       <p className="text-sm text-muted-foreground whitespace-pre-wrap">
         {feature.description}
       </p>
-      {feature.uses && (
+      {feature.uses && mechanical?.kind === "uses" ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span>
+            Uses: {feature.uses.current}/{feature.uses.max} ({feature.restReset}{" "}
+            rest)
+          </span>
+          {canAdjust && onAdjustUse ? (
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-6 w-6 p-0"
+                disabled={feature.uses.current <= 0}
+                onClick={() => onAdjustUse(feature.id, -1)}
+                aria-label={`Spend ${feature.name}`}
+              >
+                −
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-6 w-6 p-0"
+                disabled={feature.uses.current >= feature.uses.max}
+                onClick={() => onAdjustUse(feature.id, 1)}
+                aria-label={`Restore ${feature.name} use`}
+              >
+                +
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {feature.uses && mechanical?.kind === "hp-pool" ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span>
+            Pool: {feature.uses.current}/{feature.uses.max} HP ({feature.restReset}{" "}
+            rest)
+          </span>
+          {canAdjust && onUseLayOnHands && feature.id === LAY_ON_HANDS_ID ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={feature.uses.current <= 0 || layOnHandsCombatPreferred}
+              onClick={onUseLayOnHands}
+              title={
+                layOnHandsCombatPreferred
+                  ? "Use Lay on Hands from the combat board during an encounter."
+                  : undefined
+              }
+            >
+              Use Lay on Hands
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {feature.uses &&
+      mechanical?.kind !== "uses" &&
+      mechanical?.kind !== "hp-pool" &&
+      mechanical?.kind !== "short-rest-slots" &&
+      mechanical?.kind !== "short-rest-heal" ? (
         <p className="text-xs">
           Uses: {feature.uses.current}/{feature.uses.max} ({feature.restReset}{" "}
           rest)
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -450,6 +579,8 @@ export function CharacterSheet({
   onPersistPortrait,
   campaignDate,
   canRest = false,
+  layOnHandsCombatPreferred = false,
+  onUseLayOnHands,
 }: CharacterSheetProps) {
   const canMutate = editable || canToggleEquipment;
   const canEditAbilities = editable && isDm;
@@ -521,6 +652,7 @@ export function CharacterSheet({
   const [catalogSpells, setCatalogSpells] = useState<Record<string, CatalogSpellRow>>({});
   const [catalogSpecies, setCatalogSpecies] = useState<PhbSpecies[]>([]);
   const [catalogBackgrounds, setCatalogBackgrounds] = useState<PhbBackground[]>([]);
+  const [conditionCatalog, setConditionCatalog] = useState<PhbCondition[]>([]);
   const [loadedClasses, setLoadedClasses] = useState<PhbClass[]>([]);
   const [itemPickerOpen, setItemPickerOpen] = useState(false);
   const [itemPickerSwapIndex, setItemPickerSwapIndex] = useState<number | null>(null);
@@ -629,6 +761,7 @@ export function CharacterSheet({
   useEffect(() => {
     fetchCatalogSpeciesClient().then(setCatalogSpecies);
     fetchCatalogBackgroundsClient().then(setCatalogBackgrounds);
+    fetchCatalogConditionsClient().then(setConditionCatalog);
     if (!classes?.length) {
       fetchCatalogClassesClient().then(setLoadedClasses);
     }
@@ -676,17 +809,28 @@ export function CharacterSheet({
     [data.spells.slots]
   );
   const cantripCount = useMemo(
-    () => countCantrips(data.spells.known),
+    () => countPlayerCantrips(data.spells.known),
+    [data.spells.known]
+  );
+  const grantedCantripCount = useMemo(
+    () => countGrantedCantrips(data.spells.known),
     [data.spells.known]
   );
   const leveledKnownCount = useMemo(
-    () => countLeveledKnown(data.spells.known),
+    () => countPlayerLeveledKnown(data.spells.known),
+    [data.spells.known]
+  );
+  const grantedLeveledCount = useMemo(
+    () => countGrantedLeveled(data.spells.known),
     [data.spells.known]
   );
   const preparedLeveledCount = useMemo(
     () => countPreparedLeveled(data.spells.known),
     [data.spells.known]
   );
+  const spellAttackBonus = useMemo(() => getSpellAttackBonus(data), [data]);
+  const spellSaveDcTooltip = useMemo(() => formatSpellSaveDcTooltip(data), [data]);
+  const spellAttackTooltip = useMemo(() => formatSpellAttackTooltip(data), [data]);
   const canManageSpellPrep = useMemo(() => {
     if (!canMutate || !resolvedClass?.spellcasting) return false;
     return isPreparedCaster(resolvedClass) && !isKnownCaster(resolvedClass);
@@ -694,21 +838,37 @@ export function CharacterSheet({
 
   const updateBasicWithSync = (patch: Partial<CharacterData["basicInfo"]>) => {
     const nextBasic = { ...data.basicInfo, ...patch };
-    const nextPatch: Partial<CharacterData> = { basicInfo: nextBasic };
+    let merged: CharacterData = { ...data, basicInfo: nextBasic };
     if (patch.xp !== undefined && resolvedClass?.spellcasting) {
-      nextPatch.spells = syncSpellcastingFromClass(
-        { ...data, basicInfo: nextBasic },
-        resolvedClass,
-        levelFromXp(nextBasic.xp ?? 0)
-      );
+      merged = {
+        ...merged,
+        spells: syncSpellcastingFromClass(
+          merged,
+          resolvedClass,
+          levelFromXp(nextBasic.xp ?? 0)
+        ),
+      };
     }
     if (patch.xp !== undefined) {
-      nextPatch.inspiration = clampInspiration(data.inspiration ?? 0, {
-        ...data,
-        ...nextPatch,
+      merged = {
+        ...merged,
+        inspiration: clampInspiration(data.inspiration ?? 0, merged),
+      };
+      merged = syncFeatureGrants(merged, {
+        species: catalogSpecies,
+        classes: classCatalog,
+        backgrounds: catalogBackgrounds,
       });
     }
-    update(nextPatch);
+    update({
+      basicInfo: merged.basicInfo,
+      ...(patch.xp !== undefined
+        ? {
+            spells: merged.spells,
+            inspiration: merged.inspiration,
+          }
+        : {}),
+    });
   };
 
   function applyXpDelta() {
@@ -803,6 +963,19 @@ export function CharacterSheet({
       },
     });
   };
+
+  const useGrantSpellUse = (grantKey: string) => {
+    if (!canMutate || !onChange) return;
+    const next = useGrantSpell(data, grantKey);
+    if (resolvedClass?.spellcasting) {
+      onChange({
+        ...next,
+        spells: syncSpellcastingFromClass(next, resolvedClass, level),
+      });
+      return;
+    }
+    onChange(next);
+  };
   const knownSpellSlugs = data.spells.known
     .map((s) => s.spellId)
     .filter((s): s is string => !!s);
@@ -884,8 +1057,27 @@ export function CharacterSheet({
     }),
     [catalogSpecies, classCatalog, catalogBackgrounds]
   );
+  const showSpellCard = useMemo(
+    () =>
+      !!(resolvedClass?.spellcasting && spellLimits) ||
+      hasManagedSpellGrants(data, featureCatalogs),
+    [resolvedClass, spellLimits, data, featureCatalogs]
+  );
+  const spellGrantSourceMap = useMemo(
+    () => buildSpellGrantSourceMap(data, featureCatalogs),
+    [data, featureCatalogs]
+  );
+  const spellGrantUsageMap = useMemo(
+    () => buildSpellGrantUsageMap(data, featureCatalogs),
+    [data, featureCatalogs]
+  );
   const grantedFeatures = useMemo(
-    () => deriveGrantedFeatures(data, featureCatalogs),
+    () =>
+      deriveGrantedFeatures(data, featureCatalogs).map((feature) =>
+        feature.locked
+          ? enrichMechanicalFeature(feature, data, featureCatalogs)
+          : feature
+      ),
     [data, featureCatalogs]
   );
   const weaponProficiencyEntries = useMemo(
@@ -1049,6 +1241,13 @@ export function CharacterSheet({
     const next = Math.max(0, Math.min(profBonus, inspiration + delta));
     if (next === inspiration) return;
     update({ inspiration: next });
+  }
+
+  const canAdjustMechanical = canMutate || canRest;
+
+  function handleAdjustMechanicalUse(featureId: string, delta: number) {
+    if (!canAdjustMechanical || !onChange) return;
+    update(adjustMechanicalFeatureUse(data, featureId, delta, featureCatalogs));
   }
 
   return (
@@ -1727,31 +1926,12 @@ export function CharacterSheet({
               <CardTitle className="text-base">Conditions & Concentration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                {data.combat.conditions.length === 0 ? (
-                  <span className="text-sm text-muted-foreground">None</span>
-                ) : (
-                  data.combat.conditions.map((c) => (
-                    <Badge key={c} variant="secondary">
-                      {c}
-                    </Badge>
-                  ))
-                )}
-              </div>
-              {editable && (
-                <Input
-                  placeholder="Conditions (comma-separated)"
-                  value={data.combat.conditions.join(", ")}
-                  onChange={(e) =>
-                    updateCombat({
-                      conditions: e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                />
-              )}
+              <ConditionsEditor
+                conditions={data.combat.conditions}
+                catalog={conditionCatalog}
+                editable={editable}
+                onChange={(conditions) => updateCombat({ conditions })}
+              />
               <div className="flex items-center gap-2">
                 <Checkbox
                   checked={data.combat.concentration.active}
@@ -1972,12 +2152,26 @@ export function CharacterSheet({
             </CardContent>
           </Card>
 
-          {resolvedClass?.spellcasting && spellLimits && (
+          {showSpellCard && (
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
               <CardTitle className="text-base">Spellcasting</CardTitle>
+              {editable && resolvedClass?.spellcasting && spellLimits ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    swapSpellIndexRef.current = null;
+                    setSpellPickerOpen(true);
+                  }}
+                >
+                  + Add Spell
+                </Button>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-3">
+              {resolvedClass?.spellcasting && spellLimits ? (
+                <>
               <div className="grid gap-3 sm:grid-cols-3">
                 <Stat
                   label="Spellcasting Ability"
@@ -1990,24 +2184,28 @@ export function CharacterSheet({
                 <Stat
                   label="Spell Save DC"
                   value={getSpellSaveDc(data) ?? "—"}
+                  tooltip={spellSaveDcTooltip}
                 />
                 <Stat
                   label="Spell Attack"
                   value={
-                    getSpellAttackBonus(data) !== null
-                      ? formatModifier(getSpellAttackBonus(data)!)
+                    spellAttackBonus !== null
+                      ? formatModifier(spellAttackBonus)
                       : "—"
                   }
+                  tooltip={spellAttackTooltip}
                 />
               </div>
 
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
                 <span className={cantripCount > spellLimits.cantripsKnown ? "text-destructive font-medium" : "text-muted-foreground"}>
                   Cantrips: {cantripCount}/{spellLimits.cantripsKnown}
+                  {grantedCantripCount > 0 ? ` + ${grantedCantripCount} granted` : ""}
                 </span>
                 {spellLimits.spellsKnown !== null ? (
                   <span className={leveledKnownCount > spellLimits.spellsKnown ? "text-destructive font-medium" : "text-muted-foreground"}>
                     Spells known: {leveledKnownCount}/{spellLimits.spellsKnown}
+                    {grantedLeveledCount > 0 ? ` + ${grantedLeveledCount} granted` : ""}
                   </span>
                 ) : null}
                 {spellLimits.preparedSpells !== null ? (
@@ -2029,54 +2227,36 @@ export function CharacterSheet({
                   </span>
                 ) : null}
               </div>
+                </>
+              ) : null}
 
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <Label>
-                    {resolvedClass && isWizard(resolvedClass)
-                      ? "Spellbook"
-                      : resolvedClass && isKnownCaster(resolvedClass)
-                        ? "Spells Known"
-                        : "Spells"}
-                  </Label>
-                  {editable && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        swapSpellIndexRef.current = null;
-                        setSpellPickerOpen(true);
-                      }}
-                    >
-                      + Add Spell
-                    </Button>
-                  )}
-                </div>
-                {data.spells.known.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {editable
-                      ? 'Click "+ Add Spell" to pick from the catalog.'
-                      : "No spells."}
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {knownSpellGroups.map((group) => {
+              {data.spells.known.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {editable && resolvedClass?.spellcasting && spellLimits
+                    ? 'Click "+ Add Spell" to pick from the catalog.'
+                    : "No spells."}
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {knownSpellGroups.map((group) => {
                       const slotInfo =
-                        group.level > 0
+                        group.level > 0 && spellLimits
                           ? getSpellSlotAtLevel(data.spells.slots, group.level)
                           : null;
-                      const levelPreparedSummary = formatLevelPreparedSummary(
-                        group.spells.map(({ spell }) => spell),
-                        group.level,
-                        {
-                          cantripsKnown: spellLimits.cantripsKnown,
-                          preparedSpellLimit: spellLimits.preparedSpells,
-                          usesPreparedList: spellLimits.usesPreparedList,
-                          isKnownCaster: resolvedClass
-                            ? isKnownCaster(resolvedClass)
-                            : false,
-                        }
-                      );
+                      const levelPreparedSummary = spellLimits
+                        ? formatLevelPreparedSummary(
+                            group.spells.map(({ spell }) => spell),
+                            group.level,
+                            {
+                              cantripsKnown: spellLimits.cantripsKnown,
+                              preparedSpellLimit: spellLimits.preparedSpells,
+                              usesPreparedList: spellLimits.usesPreparedList,
+                              isKnownCaster: resolvedClass
+                                ? isKnownCaster(resolvedClass)
+                                : false,
+                            }
+                          )
+                        : null;
 
                       return (
                       <div key={group.level} className="space-y-2">
@@ -2131,23 +2311,45 @@ export function CharacterSheet({
                             : null;
                           const displayName = catalogSpell?.name ?? spell.name;
                           const spellTooltip = catalogSpell?.description || null;
+                          const isGrantSpell = isManagedGrantSpell(spell);
+                          const grantSource = spellGrantSourceLabel(spell, spellGrantSourceMap);
+                          const grantUsage = spell.grantKey
+                            ? spellGrantUsageMap.get(spell.grantKey)
+                            : undefined;
+                          const grantUsesRemaining =
+                            isGrantSpell && spell.grantKey
+                              ? getGrantUsesRemaining(
+                                  spell.grantKey,
+                                  data,
+                                  featureCatalogs
+                                )
+                              : null;
                           const showPrepareToggle =
+                            !isGrantSpell &&
                             spell.level > 0 &&
                             resolvedClass &&
                             isPreparedCaster(resolvedClass) &&
                             !isKnownCaster(resolvedClass);
                           const atPrepareLimit =
-                            spellLimits.preparedSpells !== null &&
+                            spellLimits?.preparedSpells != null &&
                             !spell.prepared &&
-                            !canPrepareAnother(data.spells.known, spellLimits.preparedSpells);
+                            !canPrepareAnother(
+                              data.spells.known,
+                              spellLimits.preparedSpells
+                            );
 
                           return (
                             <div
                               key={spell.id}
-                              className="rounded-md border p-2.5 space-y-1.5 min-w-0"
+                              className={cn(
+                                "rounded-md p-2.5 space-y-1.5 min-w-0",
+                                isGrantSpell
+                                  ? "border border-dashed bg-muted/30"
+                                  : "border"
+                              )}
                             >
                               <div className="flex flex-wrap items-center gap-2">
-                                {editable ? (
+                                {editable && !isGrantSpell ? (
                                   <Tooltip content={spellTooltip}>
                                     <button
                                       type="button"
@@ -2167,29 +2369,56 @@ export function CharacterSheet({
                                   </Tooltip>
                                 ) : (
                                   <Tooltip content={spellTooltip}>
-                                    <span className="font-medium text-sm cursor-default truncate">
+                                    <span className="font-medium text-sm cursor-default truncate flex-1 min-w-0">
                                       {displayName}
                                     </span>
                                   </Tooltip>
                                 )}
-                                {spell.level === 0 ? (
-                                  <Badge variant="secondary" className="text-xs shrink-0">
-                                    Prepared
+                                {grantSource ? (
+                                  <Badge variant="outline" className="text-xs shrink-0">
+                                    {grantSource}
                                   </Badge>
-                                ) : showPrepareToggle && spell.prepared && !canManageSpellPrep ? (
+                                ) : null}
+                                {showPrepareToggle && spell.prepared && !canManageSpellPrep ? (
                                   <Badge variant="secondary" className="text-xs shrink-0">
                                     Prepared
                                   </Badge>
                                 ) : null}
                               </div>
                               {catalogSpell ? (
-                                <SpellGlossaryMeta spell={catalogSpell} />
-                              ) : spell.notes ? (
+                                <SpellGlossaryMeta
+                                  spell={catalogSpell}
+                                  usageLabel={grantUsage}
+                                />
+                              ) : spell.notes && !isGrantSpell ? (
                                 <p className="text-xs text-muted-foreground capitalize truncate">
                                   {spell.notes}
                                 </p>
                               ) : null}
-                              {(canManageSpellPrep && showPrepareToggle) || editable ? (
+                              {grantUsesRemaining ? (
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                  <span>
+                                    Uses: {grantUsesRemaining.current}/
+                                    {grantUsesRemaining.max} remaining
+                                  </span>
+                                  {canMutate && spell.grantKey ? (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 px-2 text-xs normal-case tracking-normal"
+                                      disabled={grantUsesRemaining.current <= 0}
+                                      onClick={() =>
+                                        useGrantSpellUse(spell.grantKey!)
+                                      }
+                                    >
+                                      Use
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              {(canManageSpellPrep && showPrepareToggle) ||
+                              (editable && !isGrantSpell) ? (
                                 <div className="flex flex-wrap items-center gap-3 pt-1">
                                   {canManageSpellPrep && showPrepareToggle ? (
                                     <label
@@ -2203,7 +2432,7 @@ export function CharacterSheet({
                                         onCheckedChange={(checked) => {
                                           if (
                                             checked &&
-                                            spellLimits.preparedSpells !== null &&
+                                            spellLimits?.preparedSpells != null &&
                                             !canPrepareAnother(
                                               data.spells.known,
                                               spellLimits.preparedSpells
@@ -2219,7 +2448,7 @@ export function CharacterSheet({
                                       Prepared
                                     </label>
                                   ) : null}
-                                  {editable ? (
+                                  {editable && !isGrantSpell ? (
                                     <Button
                                       size="sm"
                                       variant="ghost"
@@ -2243,9 +2472,8 @@ export function CharacterSheet({
                       </div>
                       );
                     })}
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </CardContent>
           </Card>
           )}
@@ -3009,7 +3237,15 @@ export function CharacterSheet({
                     onFavoredHumanoidSpeciesChange={updateFavoredHumanoidSpecies}
                   />
                 ) : (
-                  <GrantedFeatureRow key={feature.id} feature={feature} />
+                  <GrantedFeatureRow
+                    key={feature.id}
+                    feature={feature}
+                    canAdjust={canAdjustMechanical}
+                    onAdjustUse={handleAdjustMechanicalUse}
+                    onUseLayOnHands={onUseLayOnHands}
+                    layOnHandsCombatPreferred={layOnHandsCombatPreferred}
+                    pendingShortRest={data.combat.pendingShortRest}
+                  />
                 )
               )}
               {customFeatures.map((feature, i) => (
@@ -3088,11 +3324,25 @@ export function CharacterSheet({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
+function Stat({
+  label,
+  value,
+  tooltip,
+}: {
+  label: string;
+  value: string | number;
+  tooltip?: string | null;
+}) {
+  const content = (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-lg font-semibold">{value}</p>
+      <p className={cn("text-lg font-semibold", tooltip && "cursor-default")}>
+        {value}
+      </p>
     </div>
   );
+  if (tooltip) {
+    return <Tooltip content={tooltip}>{content}</Tooltip>;
+  }
+  return content;
 }

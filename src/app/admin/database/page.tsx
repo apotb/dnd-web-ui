@@ -10,6 +10,7 @@ import { FeatsManager } from "../feats/feats-manager";
 import { LanguagesManager } from "../languages/languages-manager";
 import { EnemiesManager } from "../enemies/enemies-manager";
 import { EncountersManager } from "../encounters/encounters-manager";
+import { ConditionsManager } from "../conditions/conditions-manager";
 import type { Item } from "@/lib/schemas/item";
 import { parseEnemyData } from "@/lib/schemas/enemy";
 import type { Encounter } from "@/lib/types/database";
@@ -20,10 +21,11 @@ const CATEGORIES = [
   { id: "species",     label: "Species" },
   { id: "classes",     label: "Classes" },
   { id: "backgrounds", label: "Backgrounds" },
-  { id: "feats",       label: "Feats" },
+  { id: "feats",       label: "Features" },
   { id: "languages",   label: "Languages" },
   { id: "enemies",     label: "Enemies" },
   { id: "encounters",  label: "Encounters" },
+  { id: "conditions",  label: "Conditions" },
 ] as const;
 
 type Category = (typeof CATEGORIES)[number]["id"];
@@ -121,7 +123,20 @@ export default async function DatabasePage({
         enemiesBySlug={enemiesBySlug}
       />
     );
-  } else {
+  } else if (cat === "conditions") {
+    const { data } = await supabase
+      .from("conditions")
+      .select("slug,name,description,is_standard,source")
+      .order("name");
+    const entries = (data ?? []).map((r) => ({
+      slug: r.slug as string,
+      name: r.name as string,
+      description: r.description as string,
+      isStandard: r.is_standard as boolean,
+      source: r.source as string,
+    }));
+    content = <ConditionsManager entries={entries} />;
+  } else if (cat === "feats") {
     const { data } = await supabase.from("feats").select("slug,name,description,prerequisite,source,data").order("name");
     const entries = (data ?? []).map((r) => ({ slug: r.slug as string, name: r.name as string, description: r.description as string, prerequisite: (r.prerequisite as string | null) ?? "", source: r.source as string, extra: r.data as Record<string, unknown> }));
     content = <FeatsManager entries={entries} />;

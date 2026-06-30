@@ -1,36 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { parseD20Roll, SaveRollField } from "@/components/combat/combat-roll-fields";
+import { parseD20Roll } from "@/components/combat/combat-roll-fields";
+import { CombatSaveRollEntry } from "@/components/combat/combat-save-roll-entry";
+import { computeEffectiveSaveRollValue } from "@/lib/combat/attack-resolution";
 import type { PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatSaveRollModalProps {
   target: PendingAttackTarget;
   saveAbility?: string;
   saveDc?: number;
+  saveModifier?: number | null;
+  damageType?: string;
+  saveHalfDamageOnSuccess?: boolean;
   onCancel: () => void;
-  onSubmit: (saveRoll: number, saveTotal: number) => void;
+  onSubmit: (saveRoll: number, saveTotal: number, saveRoll2?: number | null) => void;
   submitting?: boolean;
-}
-
-function parseIntOrZero(value: string): number {
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function CombatSaveRollModal({
   target,
   saveAbility,
   saveDc,
+  saveModifier = null,
+  damageType,
+  saveHalfDamageOnSuccess = true,
   onCancel,
   onSubmit,
   submitting = false,
 }: CombatSaveRollModalProps) {
   const [saveRoll, setSaveRoll] = useState("");
-  const [saveMod, setSaveMod] = useState("");
+  const [saveRoll2, setSaveRoll2] = useState("");
   const saveRollValue = parseD20Roll(saveRoll);
-  const saveTotal = (saveRollValue ?? 0) + parseIntOrZero(saveMod);
-  const canSubmit = saveRollValue != null;
+  const saveRoll2Value = parseD20Roll(saveRoll2);
+  const usedRoll = computeEffectiveSaveRollValue(saveRollValue, saveRoll2Value, {
+    saveAdvantage: target.saveAdvantage,
+    saveDisadvantage: target.saveDisadvantage,
+  });
+  const saveTotal =
+    usedRoll != null && saveModifier != null ? usedRoll + saveModifier : null;
+  const canSubmit = usedRoll != null && saveModifier != null;
 
   return (
     <div className="supply-picker-overlay" onClick={onCancel}>
@@ -39,32 +48,29 @@ export function CombatSaveRollModal({
         onClick={(event) => event.stopPropagation()}
       >
         <p className="retro-box-title">Saving throw</p>
-        <p className="retro-muted">
+        <p className="retro-muted combat-awaiting-saves-summary">
           {target.label} — DC {saveDc ?? "?"}
           {saveAbility ? ` ${saveAbility}` : ""} save
+          {saveHalfDamageOnSuccess
+            ? " · half damage on a successful save"
+            : " · no damage on a successful save"}
         </p>
 
-        <div className="combat-attack-submit-fields">
-          <label className="combat-attack-submit-field">
-            <span>d20 roll</span>
-            <SaveRollField
-              value={saveRoll}
-              onChange={setSaveRoll}
-              disabled={submitting}
-            />
-          </label>
-          <label className="combat-attack-submit-field">
-            <span>Modifier</span>
-            <input
-              type="number"
-              className="candy-input"
-              value={saveMod}
-              onChange={(event) => setSaveMod(event.target.value)}
-              disabled={submitting}
-            />
-          </label>
-          <p className="retro-muted">Total: {saveTotal}</p>
-        </div>
+        <CombatSaveRollEntry
+          label=""
+          saveRoll={saveRoll}
+          saveRoll2={saveRoll2}
+          onSaveRollChange={setSaveRoll}
+          onSaveRoll2Change={setSaveRoll2}
+          saveModifier={saveModifier}
+          saveAdvantage={target.saveAdvantage}
+          saveDisadvantage={target.saveDisadvantage}
+          saveDc={saveDc}
+          baseDamage={target.damageAmount ?? null}
+          damageType={damageType}
+          saveHalfDamageOnSuccess={saveHalfDamageOnSuccess}
+          disabled={submitting}
+        />
 
         <div className="supply-picker-actions combat-roll-actions">
           <button type="button" className="candy-btn" onClick={onCancel} disabled={submitting}>
@@ -75,8 +81,12 @@ export function CombatSaveRollModal({
               type="button"
               className="candy-btn"
               onClick={() => {
-                if (saveRollValue == null) return;
-                onSubmit(saveRollValue, saveTotal);
+                if (usedRoll == null || saveModifier == null || saveTotal == null) return;
+                onSubmit(
+                  usedRoll,
+                  saveTotal,
+                  target.saveAdvantage || target.saveDisadvantage ? saveRoll2Value : null
+                );
               }}
               disabled={submitting || !canSubmit}
             >

@@ -53,57 +53,70 @@ function ComponentLetter({
 export function SpellGlossaryMeta({
   spell,
   showCastingTime = true,
+  usageLabel,
 }: {
   spell: CatalogSpellRow;
   showCastingTime?: boolean;
+  /** e.g. innate spell frequency shown after casting time and range. */
+  usageLabel?: string;
 }) {
   const letters = parseSpellComponentLetters(spell.components);
+  const hasPrimaryMeta =
+    !!spell.school ||
+    letters.length > 0 ||
+    spell.ritual ||
+    spell.concentration;
+  const actionRangeLine = [
+    showCastingTime ? spell.castingTime : "",
+    spell.range ?? "",
+    usageLabel ?? "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-      {spell.school ? (
-        <GlossaryTerm
-          label={spell.school}
-          tooltip={getSpellSchoolTooltip(spell.school) ?? spell.school}
-          className="capitalize"
-        />
-      ) : null}
+    <div className="space-y-0.5 text-xs text-muted-foreground">
+      {hasPrimaryMeta ? (
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          {spell.school ? (
+            <GlossaryTerm
+              label={spell.school}
+              tooltip={getSpellSchoolTooltip(spell.school) ?? spell.school}
+              className="capitalize"
+            />
+          ) : null}
 
-      {letters.length > 0 ? (
-        <span className="inline-flex items-center gap-1">
-          {letters.map((letter, index) => (
-            <span key={letter} className="inline-flex items-center gap-1">
-              {index > 0 ? <span aria-hidden="true">·</span> : null}
-              <ComponentLetter letter={letter} components={spell.components} />
+          {letters.length > 0 ? (
+            <span className="inline-flex items-center gap-1">
+              {letters.map((letter, index) => (
+                <span key={letter} className="inline-flex items-center gap-1">
+                  {index > 0 ? <span aria-hidden="true">·</span> : null}
+                  <ComponentLetter letter={letter} components={spell.components} />
+                </span>
+              ))}
             </span>
-          ))}
-        </span>
+          ) : null}
+
+          {spell.ritual ? (
+            <Tooltip content={SPELL_FLAG_TOOLTIPS.R}>
+              <Badge variant="outline" className="text-xs shrink-0 cursor-default px-1.5">
+                R
+              </Badge>
+            </Tooltip>
+          ) : null}
+
+          {spell.concentration ? (
+            <Tooltip content={SPELL_FLAG_TOOLTIPS.C}>
+              <Badge variant="outline" className="text-xs shrink-0 cursor-default px-1.5">
+                C
+              </Badge>
+            </Tooltip>
+          ) : null}
+        </div>
       ) : null}
 
-      {spell.ritual ? (
-        <Tooltip content={SPELL_FLAG_TOOLTIPS.R}>
-          <Badge variant="outline" className="text-xs shrink-0 cursor-default px-1.5">
-            R
-          </Badge>
-        </Tooltip>
-      ) : null}
-
-      {spell.concentration ? (
-        <Tooltip content={SPELL_FLAG_TOOLTIPS.C}>
-          <Badge variant="outline" className="text-xs shrink-0 cursor-default px-1.5">
-            C
-          </Badge>
-        </Tooltip>
-      ) : null}
-
-      {showCastingTime && spell.castingTime ? (
-        <span className="truncate">
-          {spell.school || letters.length > 0 || spell.ritual || spell.concentration
-            ? " · "
-            : ""}
-          {spell.castingTime}
-          {spell.range ? ` · ${spell.range}` : ""}
-        </span>
+      {actionRangeLine ? (
+        <div className="truncate">{actionRangeLine}</div>
       ) : null}
     </div>
   );

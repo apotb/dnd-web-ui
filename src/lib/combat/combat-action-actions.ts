@@ -117,6 +117,36 @@ export async function recordCombatActionUsed(
   return { next, error: error?.message };
 }
 
+export async function recordCombatLayOnHands(
+  campaignId: string,
+  state: CombatState,
+  options: {
+    isDm: boolean;
+    targetTokenId?: string;
+    targetCurrentHp?: number;
+  }
+): Promise<{ next: CombatState; error?: string }> {
+  const next = applyActionUsed(state);
+
+  if (next.turn.actionUsed === state.turn.actionUsed) {
+    return { next: state };
+  }
+
+  if (options.isDm) {
+    const error = await persistCombatState(campaignId, next);
+    return { next, error: error ?? undefined };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.rpc("record_combat_lay_on_hands", {
+    p_campaign_id: campaignId,
+    p_target_token_id: options.targetTokenId ?? null,
+    p_target_current_hp: options.targetCurrentHp ?? null,
+  });
+
+  return { next, error: error?.message };
+}
+
 export async function recordCombatObjectPickup(
   campaignId: string,
   state: CombatState,

@@ -25,20 +25,28 @@ import type {
   PendingAttack,
   PendingAttackTarget,
 } from "@/lib/schemas/combat-state";
-import type { InventoryItem } from "@/lib/schemas/character";
+import type { AbilityKey, InventoryItem } from "@/lib/schemas/character";
+import {
+  ABILITY_FULL_LABELS,
+  ABILITY_LABELS,
+  abilityModifier,
+  getSavingThrowTotal,
+} from "@/lib/dnd/calculations";
+import type { PhbClass } from "@/lib/dnd/phb/types";
+import { getCombatEffectAcBonus, getCombatEffectSaveRollMode, resolveEffectiveSaveRoll } from "@/lib/combat/feature-effects";
 
 export function getTokenAc(
   token: CombatToken,
   character: ParsedCharacter | null,
   enemyData: EnemyData | null
 ): number {
+  let ac = 10;
   if (token.kind === "party" && character) {
-    return character.data.combat.ac;
+    ac = character.data.combat.ac;
+  } else if (token.kind === "enemy" && enemyData) {
+    ac = enemyData.armorClass.value;
   }
-  if (token.kind === "enemy" && enemyData) {
-    return enemyData.armorClass.value;
-  }
-  return 10;
+  return ac + getCombatEffectAcBonus(token);
 }
 
 export function getTokenCurrentHp(
@@ -61,6 +69,71 @@ export function getTokenMaxHp(
   if (token.kind === "party" && character) return character.data.combat.maxHp;
   if (token.kind === "enemy" && enemyData) return enemyData.hitPoints.average;
   return 0;
+}
+
+const SAVE_ABILITY_KEYS: AbilityKey[] = ["str", "dex", "con", "int", "wis", "cha"];
+
+export function parseSaveAbilityKey(saveAbility?: string): AbilityKey | null {
+  if (!saveAbility) return null;
+  const normalized = saveAbility.trim().toLowerCase();
+  if (SAVE_ABILITY_KEYS.includes(normalized as AbilityKey)) {
+    return normalized as AbilityKey;
+  }
+  for (const key of SAVE_ABILITY_KEYS) {
+    if (ABILITY_LABELS[key].toLowerCase() === normalized) return key;
+    if (ABILITY_FULL_LABELS[key].toLowerCase() === normalized) return key;
+  }
+  return null;
+}
+
+export function getTokenSaveModifier(
+  token: CombatToken,
+  saveAbility: string | undefined,
+  context: {
+    character: ParsedCharacter | null;
+    enemyData: EnemyData | null;
+    classCatalog?: PhbClass[];
+  }
+): number | null {
+  const ability = parseSaveAbilityKey(saveAbility);
+  if (!ability) return null;
+
+  if (token.kind === "party" && context.character) {
+    return getSavingThrowTotal(
+      context.character.data,
+      ability,
+      context.classCatalog
+    );
+  }
+
+  if ((token.kind === "enemy" || token.kind === "ally") && context.enemyData) {
+    return abilityModifier(context.enemyData.abilityScores[ability]);
+  }
+
+  return null;
+}
+
+export function getTokenSaveRollMode(
+  token: CombatToken,
+  saveAbility: string | undefined
+): "advantage" | "disadvantage" | null {
+  return getCombatEffectSaveRollMode(token, parseSaveAbilityKey(saveAbility));
+}
+
+export function computeEffectiveSaveRollValue(
+  saveRoll: number | null,
+  saveRoll2: number | null,
+  options: { saveAdvantage?: boolean; saveDisadvantage?: boolean }
+): number | null {
+  if (saveRoll == null) return null;
+  const mode = options.saveAdvantage
+    ? "advantage"
+    : options.saveDisadvantage
+      ? "disadvantage"
+      : null;
+  if (!mode) return saveRoll;
+  if (saveRoll2 == null) return null;
+  return resolveEffectiveSaveRoll(saveRoll, saveRoll2, mode);
 }
 
 export function resolveEffectiveAttackRoll(
@@ -343,11 +416,15 @@ export function buildPendingTargetFromToken(
     saveSubmitted: !context.requiresSave,
     needsDmSave,
     attackDisadvantage: false,
+    saveAdvantage: false,
+    saveDisadvantage: false,
   };
 }
 
 export interface ComputeDamageAppliedOptions {
   damageDice?: string;
+  /** When false, a successful save deals no damage (e.g. Sacred Flame). Default true. */
+  saveHalfDamageOnSuccess?: boolean;
 }
 
 export interface DamageRollComponents {
@@ -412,7 +489,8 @@ export function computeDamageApplied(
   }
 
   if (target.requiresSave && target.saveSucceeded === true) {
-    return Math.floor(damage / 2);
+    const halfOnSuccess = options?.saveHalfDamageOnSuccess ?? true;
+    return halfOnSuccess ? Math.floor(damage / 2) : 0;
   }
 
   return damage;
@@ -467,11 +545,53 @@ export function canSubmitOpportunityAttack(
   return true;
 }
 
+export function computeSaveSucceeded(
+  saveTotal: number,
+  saveDc: number | null | undefined
+): boolean {
+  return saveDc != null ? saveTotal >= saveDc : false;
+}
+
+export function previewSaveDamage(
+  baseDamage: number,
+  saveSucceeded: boolean,
+  saveHalfDamageOnSuccess = true
+): number {
+  if (!saveSucceeded) return baseDamage;
+  return saveHalfDamageOnSuccess ? Math.floor(baseDamage / 2) : 0;
+}
+
+export function formatSaveOutcomeLabel(options: {
+  saveSucceeded: boolean;
+  damage: number;
+  damageType?: string;
+  saveHalfDamageOnSuccess?: boolean;
+}): string {
+  const dmg = options.damageType
+    ? `${options.damage} ${options.damageType}`
+    : String(options.damage);
+
+  if (options.saveSucceeded) {
+    if (options.saveHalfDamageOnSuccess === false || options.damage === 0) {
+      return "Success — no damage";
+    }
+    return `Success — ${dmg} (half damage)`;
+  }
+
+  if (options.damage === 0) {
+    return "Failure — no damage";
+  }
+
+  return `Failure — ${dmg} (full damage)`;
+}
+
 export function transitionToDmReview(pending: PendingAttack): PendingAttack {
+  const damageOptions = {
+    damageDice: pending.damageDice,
+    saveHalfDamageOnSuccess: pending.saveHalfDamageOnSuccess,
+  };
   const targets = pending.targets.map((target) => {
-    const finalDamage = computeDamageApplied(target, pending.rollType, {
-      damageDice: pending.damageDice,
-    });
+    const finalDamage = computeDamageApplied(target, pending.rollType, damageOptions);
     return { ...target, finalDamage };
   });
 

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "npx tsx --test src/lib/combat/feature-effects.test.ts src/lib/dnd/conditions.test.ts src/lib/dnd/mechanical-features.test.ts src/lib/character/spell-grants.test.ts src/lib/character/spell-grant-uses.test.ts",
     "db:push": "npx supabase db push",
     "db:push:dry": "npx supabase db push --dry-run",
     "db:migration:list": "npx supabase migration list",

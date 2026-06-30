@@ -6,6 +6,7 @@ import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import type { Item } from "@/lib/schemas/item";
 import type { PhbSpecies } from "@/lib/dnd/phb/types";
+import { getCombatEffectSpeedOverride } from "@/lib/combat/feature-effects";
 
 export interface GridPosition {
   x: number;
@@ -71,16 +72,13 @@ export function getTokenSpeedFt(
   options: TokenSpeedOptions = {}
 ): number {
   const { catalogItems = {}, speciesList } = options;
+  let speed = 30;
   if (token.kind === "party" && character) {
-    return getCharacterEffectiveSpeedFt(character.data, catalogItems, speciesList);
+    speed = getCharacterEffectiveSpeedFt(character.data, catalogItems, speciesList);
+  } else if (token.kind === "enemy" && enemyData) {
+    speed = parseEnemySpeedFt(enemyData.speed);
   }
-  if (token.kind === "enemy" && enemyData) {
-    return parseEnemySpeedFt(enemyData.speed);
-  }
-  if (token.kind === "ally") {
-    return 30;
-  }
-  return 30;
+  return getCombatEffectSpeedOverride(token, speed);
 }
 
 function footprintInBounds(

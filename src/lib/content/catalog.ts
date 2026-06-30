@@ -17,10 +17,11 @@ import type {
 import { ALL_SPECIES, normalizePhbSpecies } from "@/lib/dnd/phb/species";
 import { ALL_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
-import { PHB_SPELLS, SPELL_LISTS } from "@/lib/dnd/phb/spells";
+import { ALL_SPELLS, SPELL_LISTS } from "@/lib/dnd/phb/spells";
 import { PHB_FEATS } from "@/lib/dnd/phb/feats";
 import { ALL_LANGUAGES } from "@/lib/dnd/phb/languages";
 import type { Language } from "@/lib/schemas/language";
+import { PHB_CONDITIONS, type PhbCondition } from "@/lib/dnd/conditions";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -134,6 +135,17 @@ function phbLanguageFallback(): Language[] {
   }));
 }
 
+function rowToCondition(row: Record<string, unknown>): PhbCondition | null {
+  if (typeof row.slug !== "string" || typeof row.name !== "string") return null;
+  return {
+    slug: row.slug,
+    name: row.name,
+    description: typeof row.description === "string" ? row.description : "",
+    isStandard: row.is_standard === true,
+    source: typeof row.source === "string" ? row.source : "SRD",
+  };
+}
+
 // ── Derive classes array from SPELL_LISTS (for built-in spells) ───────────────
 
 function buildSpellClassesMap(): Map<string, string[]> {
@@ -150,7 +162,7 @@ function buildSpellClassesMap(): Map<string, string[]> {
 const SPELL_CLASSES_MAP = buildSpellClassesMap();
 
 function toCatalogSpell(s: PhbSpell): CatalogSpell {
-  return { ...s, classes: SPELL_CLASSES_MAP.get(s.id) ?? [] };
+  return { ...s, classes: s.classes ?? SPELL_CLASSES_MAP.get(s.id) ?? [] };
 }
 
 // ── Fetch functions ───────────────────────────────────────────────────────────
@@ -180,7 +192,7 @@ export async function fetchCatalogSpells(): Promise<CatalogSpell[]> {
   const supabase = await createServerClient();
   const { data } = await supabase.from("spells").select("*").order("level").order("name");
   const rows = (data ?? []).map(rowToSpell).filter(Boolean) as CatalogSpell[];
-  return rows.length > 0 ? rows : PHB_SPELLS.map(toCatalogSpell);
+  return rows.length > 0 ? rows : ALL_SPELLS.map(toCatalogSpell);
 }
 
 export async function fetchCatalogFeats(): Promise<PhbFeat[]> {
@@ -195,6 +207,13 @@ export async function fetchCatalogLanguages(): Promise<Language[]> {
   const { data } = await supabase.from("languages").select("*").order("name");
   const rows = (data ?? []).map(rowToLanguage).filter(Boolean) as Language[];
   return rows.length > 0 ? rows : phbLanguageFallback();
+}
+
+export async function fetchCatalogConditions(): Promise<PhbCondition[]> {
+  const supabase = await createServerClient();
+  const { data } = await supabase.from("conditions").select("*").order("name");
+  const rows = (data ?? []).map(rowToCondition).filter(Boolean) as PhbCondition[];
+  return rows.length > 0 ? rows : PHB_CONDITIONS;
 }
 
 /** Fetch the full catalog in one parallel call. */
@@ -248,29 +267,6 @@ export async function seedBackgrounds(): Promise<{ seeded: number; error?: strin
     data: b,
   }));
   const { error } = await supabase.from("backgrounds").upsert(rows, { onConflict: "slug" });
-  if (error) return { seeded: 0, error: error.message };
-  return { seeded: rows.length };
-}
-
-export async function seedSpells(): Promise<{ seeded: number; error?: string }> {
-  const supabase = await createServerClient();
-  const classesMap = buildSpellClassesMap();
-  const rows = PHB_SPELLS.map((s) => ({
-    slug: s.id,
-    name: s.name,
-    level: s.level,
-    school: s.school,
-    casting_time: s.castingTime,
-    range: s.range,
-    components: s.components,
-    duration: s.duration,
-    description: s.description,
-    ritual: s.ritual ?? false,
-    concentration: s.concentration ?? false,
-    classes: classesMap.get(s.id) ?? [],
-    source: "PHB",
-  }));
-  const { error } = await supabase.from("spells").upsert(rows, { onConflict: "slug" });
   if (error) return { seeded: 0, error: error.message };
   return { seeded: rows.length };
 }
@@ -414,6 +410,41 @@ export async function upsertLanguageEntry(
 export async function deleteLanguageEntry(slug: string): Promise<{ error?: string }> {
   const supabase = await createServerClient();
   const { error } = await supabase.from("languages").delete().eq("slug", slug);
+  return { error: error?.message };
+}
+
+export async function upsertConditionEntry(
+  slug: string,
+  name: string,
+  description: string,
+  isStandard: boolean,
+  source: string
+): Promise<{ error?: string }> {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("conditions").upsert(
+    {
+      slug,
+      name,
+      description,
+      is_standard: isStandard,
+      source,
+    },
+    { onConflict: "slug" }
+  );
+  return { error: error?.message };
+}
+
+export async function deleteConditionEntry(slug: string): Promise<{ error?: string }> {
+  const supabase = await createServerClient();
+  const { data } = await supabase
+    .from("conditions")
+    .select("is_standard")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (data?.is_standard) {
+    return { error: "Standard conditions cannot be deleted." };
+  }
+  const { error } = await supabase.from("conditions").delete().eq("slug", slug);
   return { error: error?.message };
 }
 

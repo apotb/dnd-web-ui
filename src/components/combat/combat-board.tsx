@@ -46,6 +46,12 @@ import {
 import { getCharacterPortraitUrl } from "@/lib/character/portrait-storage";
 import { preloadImageUrls } from "@/lib/image-preload";
 import type { ParsedCharacter } from "@/lib/character/utils";
+import {
+  applyLayOnHands,
+  getEffectiveMaxHp,
+  type LayOnHandsMode,
+} from "@/lib/dnd/mechanical-features";
+import type { LayOnHandsCombatTarget } from "@/lib/combat/combat-mechanical-actions";
 import { speciesSubtitleLabel } from "@/lib/content/catalog-tooltip";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import {
@@ -85,6 +91,8 @@ import { CombatMovementOverlay } from "@/components/combat/combat-movement-overl
 import { CombatCollisionOverlay } from "@/components/combat/combat-collision-overlay";
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
 import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
+import { CombatShellDefenseConfirmModal } from "@/components/combat/combat-shell-defense-confirm-modal";
+import { CombatLayOnHandsModal } from "@/components/combat/combat-lay-on-hands-modal";
 import { CombatOtherActionsModal } from "@/components/combat/combat-other-actions-modal";
 import { CombatOpportunityAttackModal } from "@/components/combat/combat-opportunity-attack-modal";
 import { CombatOpportunityAttackPanel } from "@/components/combat/combat-opportunity-attack-panel";
@@ -107,8 +115,11 @@ import {
   isOtherActionsOption,
   isDashActionOption,
   isDisengageActionOption,
+  isEmergeFromShellOption,
   isHelpActionOption,
   isImplementedCombatOption,
+  isLayOnHandsOption,
+  isShellDefenseEnterOption,
   isUseObjectActionOption,
   COMBAT_USE_OBJECT_OPTION_ID,
   type CombatOption,
@@ -120,6 +131,7 @@ import {
   recordCombatDash,
   recordCombatDisengage,
   recordCombatEquipmentChange,
+  recordCombatLayOnHands,
   recordCombatObjectPickup,
 } from "@/lib/combat/combat-action-actions";
 import { hasEquippableInventoryItems } from "@/lib/combat/object-equipment-change";
@@ -137,6 +149,16 @@ import {
   submitCombatSaveRoll,
   type CharacterHpUpdate,
 } from "@/lib/combat/attack-actions";
+import {
+  recordCombatFeatureEffectEnter,
+  recordCombatFeatureEffectExit,
+} from "@/lib/combat/feature-effect-actions";
+import {
+  getTokenStatusLabels,
+  isTokenRestrictedByEffects,
+  SHELL_DEFENSE_EFFECT_ID,
+} from "@/lib/combat/feature-effects";
+import { getTokenAc, getTokenSaveModifier } from "@/lib/combat/attack-resolution";
 import {
   buildTargetList,
   findPlayerSaveContext,
@@ -550,6 +572,8 @@ export function CombatBoard({
   const [pendingDashDestination, setPendingDashDestination] =
     useState<ReachableDestination | null>(null);
   const [pendingDashActionConfirm, setPendingDashActionConfirm] = useState(false);
+  const [pendingShellDefenseConfirm, setPendingShellDefenseConfirm] = useState(false);
+  const [pendingLayOnHands, setPendingLayOnHands] = useState(false);
   const [pendingOtherActionsConfirm, setPendingOtherActionsConfirm] = useState(false);
   const [pendingOpportunityAttackMove, setPendingOpportunityAttackMove] = useState<{
     destination: ReachableDestination;
@@ -1082,8 +1106,13 @@ export function CombatBoard({
     movementUsedFeet,
     dashUsed
   );
-  const canUseDash = !battleOver && !dashUsed && !actionUsed;
-  const showMovePanel = remainingMovementFeet > 0 || canUseDash;
+  const actingTokenRestricted = actingToken
+    ? isTokenRestrictedByEffects(actingToken)
+    : false;
+  const canUseDash =
+    !battleOver && !dashUsed && !actionUsed && !actingTokenRestricted;
+  const showMovePanel =
+    (remainingMovementFeet > 0 || canUseDash) && !actingTokenRestricted;
   const dashPreviewFeet = getDashPreviewRemainingFeet(
     currentSpeedFt,
     movementUsedFeet,
@@ -1146,6 +1175,7 @@ export function CombatBoard({
       freeObjectInteractionUsed,
       combatState,
       token: actingToken,
+      partyCharacters: localCharacters,
       canUseObject: canUseObjectAction,
       battleOver,
     });
@@ -1164,6 +1194,7 @@ export function CombatBoard({
     dashUsed,
     featureCatalogs,
     freeObjectInteractionUsed,
+    localCharacters,
     twoWeaponFightingUsedOffHand,
   ]);
 
@@ -1423,6 +1454,40 @@ export function CombatBoard({
     if (isDashActionOption(option)) {
       if (battleOver || dashUsed || actionUsed) return;
       setPendingDashActionConfirm(true);
+      return;
+    }
+
+    if (isShellDefenseEnterOption(option)) {
+      if (!actingToken || battleOver || actionUsed) return;
+      setPendingShellDefenseConfirm(true);
+      return;
+    }
+
+    if (isLayOnHandsOption(option)) {
+      if (!actingToken || !actingTokenCharacter || battleOver || actionUsed) return;
+      setPendingLayOnHands(true);
+      return;
+    }
+
+    if (isEmergeFromShellOption(option)) {
+      if (!actingToken || battleOver || bonusActionUsed) return;
+      const { next, error } = await recordCombatFeatureEffectExit(
+        campaignId,
+        combatState,
+        {
+          isDm,
+          tokenId: actingToken.id,
+          effectId: SHELL_DEFENSE_EFFECT_ID,
+          character: actingTokenCharacter,
+        }
+      );
+      if (error) {
+        showAlert(error);
+        return;
+      }
+      if (isDm) {
+        setDraft(next);
+      }
       return;
     }
 
@@ -1730,7 +1795,11 @@ export function CombatBoard({
     }
   }
 
-  async function handleSubmitPlayerSave(saveRoll: number, saveTotal: number) {
+  async function handleSubmitPlayerSave(
+    saveRoll: number,
+    saveTotal: number,
+    saveRoll2?: number | null
+  ) {
     if (!playerSaveContext) return;
     setSubmittingSaveId(playerSaveContext.pending.id);
     const { next, error, characterUpdates } = await submitCombatSaveRoll(campaignId, combatState, {
@@ -1739,6 +1808,7 @@ export function CombatBoard({
       tokenId: playerSaveContext.target.tokenId,
       saveRoll,
       saveTotal,
+      saveRoll2,
       charactersById,
     });
     setSubmittingSaveId(null);
@@ -1754,7 +1824,7 @@ export function CombatBoard({
 
   async function handleSubmitDmSaves(
     pendingAttackId: string,
-    saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number }>
+    saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number; saveRoll2?: number | null }>
   ) {
     setSubmittingSaveId(pendingAttackId);
     const { next, error, characterUpdates } = await submitCombatDmSaveRolls(
@@ -1821,6 +1891,20 @@ export function CombatBoard({
       userId
     );
   }, [pendingAttacks, combatState.tokens, charactersById, userId]);
+
+  const playerSaveModifier = useMemo(() => {
+    if (!playerSaveContext) return null;
+    const token = combatState.tokens.find(
+      (entry) => entry.id === playerSaveContext.target.tokenId
+    );
+    if (!token) return null;
+    const character = token.characterId ? charactersById[token.characterId] ?? null : null;
+    return getTokenSaveModifier(token, playerSaveContext.pending.saveAbility, {
+      character,
+      enemyData: null,
+      classCatalog,
+    });
+  }, [playerSaveContext, combatState.tokens, charactersById, classCatalog]);
 
   useEffect(() => {
     if (!isDm) return;
@@ -2057,6 +2141,108 @@ export function CombatBoard({
     setMovementMode(true);
     clearAttackFlow();
     clearObjectInteractionMode();
+  }
+
+  async function handleConfirmShellDefense() {
+    if (!actingToken) return;
+    const { next, error } = await recordCombatFeatureEffectEnter(
+      campaignId,
+      combatState,
+      {
+        isDm,
+        tokenId: actingToken.id,
+        effectId: SHELL_DEFENSE_EFFECT_ID,
+        character: actingTokenCharacter,
+      }
+    );
+    setPendingShellDefenseConfirm(false);
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+  }
+
+  async function handleConfirmLayOnHands(input: {
+    target: LayOnHandsCombatTarget;
+    mode: LayOnHandsMode;
+    healAmount: number;
+  }) {
+    if (!actingToken || !actingTokenCharacter) return;
+
+    const result = applyLayOnHands(
+      actingTokenCharacter.data,
+      input.target.character.data,
+      input.mode,
+      input.healAmount,
+      featureCatalogs
+    );
+    if (!result) {
+      showAlert("Lay on Hands could not be applied.");
+      return;
+    }
+
+    const targetToken = input.target.token;
+    const targetCharacter = input.target.character;
+    const maxHp =
+      targetToken.maxHp ?? getEffectiveMaxHp(result.targetData, featureCatalogs);
+    const nextHp = result.targetData.combat.currentHp;
+    const nextWithHp = updateTokenInState(combatState, targetToken.id, {
+      currentHp: nextHp,
+      maxHp,
+    });
+
+    const { next, error } = await recordCombatLayOnHands(campaignId, nextWithHp, {
+      isDm,
+      targetTokenId: targetToken.id,
+      targetCurrentHp: nextHp,
+    });
+    if (error) {
+      showAlert(error);
+      return;
+    }
+
+    const paladinSave = await saveCharacterData(
+      actingTokenCharacter.id,
+      result.paladinData,
+      undefined,
+      { isDm, originalData: actingTokenCharacter.data }
+    );
+    if (paladinSave.error) {
+      showAlert(paladinSave.error);
+      return;
+    }
+
+    if (targetCharacter.id !== actingTokenCharacter.id) {
+      const targetSave = await saveCharacterData(
+        targetCharacter.id,
+        result.targetData,
+        undefined,
+        { isDm, originalData: targetCharacter.data }
+      );
+      if (targetSave.error) {
+        showAlert(targetSave.error);
+        return;
+      }
+    }
+
+    setLocalCharacters((current) =>
+      current.map((entry) => {
+        if (entry.id === actingTokenCharacter.id) {
+          return { ...entry, data: result.paladinData };
+        }
+        if (entry.id === targetCharacter.id) {
+          return { ...entry, data: result.targetData };
+        }
+        return entry;
+      })
+    );
+
+    if (isDm) {
+      setDraft(next);
+    }
   }
 
   async function handleConfirmOtherActions() {
@@ -2955,6 +3141,8 @@ export function CombatBoard({
             calculateAcBreakdown(character.data, catalogItems, classCatalog)
           )
         : null;
+    const effectiveAc = getTokenAc(token, character, enemy?.data ?? null);
+    const statusLabels = getTokenStatusLabels(token);
     const isExpanded =
       isHovered &&
       ((token.kind === "enemy" && (isDm ? enemy != null : true)) ||
@@ -3037,14 +3225,19 @@ export function CombatBoard({
                 {partyAcTooltip ? (
                   <Tooltip content={partyAcTooltip}>
                     <span className="combat-token-label-detail">
-                      AC {character.data.combat.ac}
+                      AC {effectiveAc}
                     </span>
                   </Tooltip>
                 ) : (
                   <span className="combat-token-label-detail">
-                    AC {character.data.combat.ac}
+                    AC {effectiveAc}
                   </span>
                 )}
+                {statusLabels.map((label) => (
+                  <span key={label} className="combat-token-status-chip">
+                    {label}
+                  </span>
+                ))}
                 <span className="combat-token-label-detail">
                   HP {token.currentHp ?? character.data.combat.currentHp}/
                   {token.maxHp ?? character.data.combat.maxHp}
@@ -3747,6 +3940,9 @@ export function CombatBoard({
               <CombatDmApprovalTray
                 pendingAttacks={dmApprovalTrayAttacks}
                 tokens={combatState.tokens}
+                charactersById={charactersById}
+                enemiesBySlug={enemiesBySlug}
+                classCatalog={classCatalog}
                 resolveDisadvantageLabel={resolvePendingDisadvantageLabel}
                 resolvingAttackId={resolvingAttackId}
                 submittingSaveId={submittingSaveId}
@@ -3828,9 +4024,14 @@ export function CombatBoard({
           target={playerSaveContext.target}
           saveAbility={playerSaveContext.pending.saveAbility}
           saveDc={playerSaveContext.pending.saveDc}
+          saveModifier={playerSaveModifier}
+          damageType={playerSaveContext.pending.damageType}
+          saveHalfDamageOnSuccess={playerSaveContext.pending.saveHalfDamageOnSuccess}
           submitting={submittingSaveId === playerSaveContext.pending.id}
           onCancel={() => {}}
-          onSubmit={(saveRoll, saveTotal) => void handleSubmitPlayerSave(saveRoll, saveTotal)}
+          onSubmit={(saveRoll, saveTotal, saveRoll2) =>
+            void handleSubmitPlayerSave(saveRoll, saveTotal, saveRoll2)
+          }
         />
       ) : null}
       {endTurnConfirmOpen ? (
@@ -3881,6 +4082,23 @@ export function CombatBoard({
           message="Use Dash? This will consume your action and grant extra movement equal to your speed."
           onConfirm={() => void handleConfirmDashAction()}
           onCancel={() => setPendingDashActionConfirm(false)}
+        />
+      ) : null}
+      {pendingShellDefenseConfirm ? (
+        <CombatShellDefenseConfirmModal
+          onConfirm={() => void handleConfirmShellDefense()}
+          onCancel={() => setPendingShellDefenseConfirm(false)}
+        />
+      ) : null}
+      {pendingLayOnHands && actingToken && actingTokenCharacter ? (
+        <CombatLayOnHandsModal
+          actorToken={actingToken}
+          actorCharacter={actingTokenCharacter}
+          combatState={combatState}
+          partyCharacters={localCharacters}
+          featureCatalogs={featureCatalogs}
+          onConfirm={handleConfirmLayOnHands}
+          onClose={() => setPendingLayOnHands(false)}
         />
       ) : null}
       {pendingOtherActionsConfirm ? (

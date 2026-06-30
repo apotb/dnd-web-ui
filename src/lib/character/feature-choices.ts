@@ -12,9 +12,9 @@ import {
   TWO_HUMANOID_SPECIES_OPTION,
 } from "@/lib/dnd/phb/favored-enemy-humanoids";
 import { getFeat, PHB_FEATS } from "@/lib/dnd/phb/feats";
-import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
+import { ALL_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
-import { PHB_SPECIES } from "@/lib/dnd/phb/species";
+import { ALL_SPECIES } from "@/lib/dnd/phb/species";
 import type { PhbBackground, PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 
 export type FeatureSource = "species" | "class" | "subclass" | "background";
@@ -63,12 +63,16 @@ function featOptions(): ChoiceOption[] {
   return PHB_FEATS.map((f) => ({ value: f.id, label: f.name }));
 }
 
-function resolveCatalogs(catalogs: FeatureCatalogs = {}) {
+export function resolveFeatureCatalogs(catalogs: FeatureCatalogs = {}) {
   return {
-    species: catalogs.species?.length ? catalogs.species : PHB_SPECIES,
+    species: catalogs.species?.length ? catalogs.species : ALL_SPECIES,
     classes: catalogs.classes?.length ? catalogs.classes : PHB_CLASSES,
-    backgrounds: catalogs.backgrounds?.length ? catalogs.backgrounds : PHB_BACKGROUNDS,
+    backgrounds: catalogs.backgrounds?.length ? catalogs.backgrounds : ALL_BACKGROUNDS,
   };
+}
+
+function resolveCatalogs(catalogs: FeatureCatalogs = {}) {
+  return resolveFeatureCatalogs(catalogs);
 }
 
 export function buildChoiceDescription(rules: string, selection: string | null): string {

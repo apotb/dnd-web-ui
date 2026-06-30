@@ -52,12 +52,12 @@ export function CharacterRestButtons({
     [data, classes, speciesList]
   );
   const longRestRestorations = useMemo(
-    () => getLongRestRestorations(data),
-    [data]
+    () => getLongRestRestorations(data, classes, speciesList),
+    [data, classes, speciesList]
   );
   const shortRestRestorations = useMemo(
-    () => getShortRestRestorations(data, classes),
-    [data, classes]
+    () => getShortRestRestorations(data, classes, speciesList),
+    [data, classes, speciesList]
   );
 
   const pendingShortRest = data.combat.pendingShortRest;

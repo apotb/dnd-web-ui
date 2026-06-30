@@ -31,7 +31,25 @@ import { getWeaponProperties, type Item } from "@/lib/schemas/item";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { canUseHelpAction, isTokenEngaged } from "@/lib/combat/engagement";
 import { isBattleOver, isTokenOnMapEdge } from "@/lib/combat/battle-over";
+import {
+  canShowLayOnHandsOption,
+  findLayOnHandsAction,
+  hasLayOnHandsValidTarget,
+  isLayOnHandsOption,
+} from "@/lib/combat/combat-mechanical-actions";
 import { parseAttackRangeSpec } from "@/lib/combat/targeting";
+import {
+  EMERGE_FROM_SHELL_ACTION_ID,
+  SHELL_DEFENSE_ENTER_ACTION_ID,
+  canTakeReactions,
+  filterOptionGroupsForTokenEffects,
+  isRegisteredCombatFeatureAction,
+  isRegisteredFeatureEnterAction,
+  isTokenInShellDefense,
+  isTokenRestrictedByEffects,
+} from "@/lib/combat/feature-effects";
+
+export { isLayOnHandsOption } from "@/lib/combat/combat-mechanical-actions";
 
 export type CombatOptionKind =
   | "attack"
@@ -339,6 +357,70 @@ export function isOtherActionsOption(option: CombatOption): boolean {
   return option.action?.id === COMBAT_OTHER_ACTIONS_ACTION_ID;
 }
 
+export function isShellDefenseEnterOption(option: CombatOption): boolean {
+  return option.action?.id === SHELL_DEFENSE_ENTER_ACTION_ID;
+}
+
+export function isEmergeFromShellOption(option: CombatOption): boolean {
+  return option.action?.id === EMERGE_FROM_SHELL_ACTION_ID;
+}
+
+function buildLayOnHandsOption(
+  character: ParsedCharacter,
+  characterActions: CharacterActionEntry[],
+  token: CombatToken,
+  combatState: CombatState,
+  partyCharacters: ParsedCharacter[],
+  turn: { actionUsed: boolean },
+  featureCatalogs: FeatureCatalogs,
+  battleOver = false
+): CombatOption | null {
+  if (!canShowLayOnHandsOption(token, turn, battleOver)) return null;
+  if (
+    !hasLayOnHandsValidTarget(
+      token,
+      character,
+      combatState,
+      partyCharacters,
+      featureCatalogs
+    )
+  ) {
+    return null;
+  }
+
+  const action = findLayOnHandsAction(characterActions);
+  if (!action) return null;
+
+  return {
+    id: `action:${action.id}`,
+    name: action.name,
+    subtitle: actionSubtitle(action),
+    tooltip: formatActionTooltip(action),
+    kind: "action",
+    action,
+  };
+}
+
+function buildRegisteredFeatureActionOptions(
+  characterActions: CharacterActionEntry[],
+  turn: { actionUsed: boolean },
+  token: CombatToken,
+  battleOver = false
+): CombatOption[] {
+  if (battleOver || turn.actionUsed || isTokenInShellDefense(token)) return [];
+
+  return characterActions
+    .filter((action) => isRegisteredFeatureEnterAction(action.id))
+    .map((action) => ({
+      id: `action:${action.id}`,
+      name: action.name,
+      subtitle: actionSubtitle(action),
+      tooltip: formatActionTooltip(action),
+      kind: "action" as const,
+      action,
+    }));
+}
+
 function buildStandardActionOptions(
   turn: {
     actionUsed: boolean;
@@ -441,6 +523,8 @@ export function getOpportunityAttackOptionsForToken(
     classCatalog: PhbClass[];
   }
 ): CombatOption[] {
+  if (!canTakeReactions(token)) return [];
+
   if (context.character) {
     return getOpportunityAttackOptionsForCharacter(
       context.character,
@@ -470,6 +554,9 @@ function buildPartyOptionGroups(
   catalogItems: Record<string, Item>,
   classCatalog: PhbClass[],
   featureCatalogs: FeatureCatalogs,
+  token: CombatToken,
+  combatState: CombatState,
+  partyCharacters: ParsedCharacter[],
   turn: {
     actionUsedForTwoWeapon: boolean;
     twoWeaponFightingUsedOffHand: boolean | null;
@@ -483,6 +570,14 @@ function buildPartyOptionGroups(
   canUseObject: boolean,
   options?: { battleOver?: boolean }
 ): { actions: CombatOption[]; bonusActions: CombatOption[] } {
+  if (isTokenRestrictedByEffects(token)) {
+    return filterOptionGroupsForTokenEffects(
+      token,
+      { actions: [], bonusActions: [] },
+      turn
+    ) as { actions: CombatOption[]; bonusActions: CombatOption[] };
+  }
+
   const attacks = getAllAttacks(character.data, catalogItems, classCatalog);
   const characterActions = getAllCharacterActions(character.data, featureCatalogs).filter(
     (action) => action.id !== "core:move"
@@ -532,18 +627,43 @@ function buildPartyOptionGroups(
           attackToCombatOption(attack, character.data, "attack", twf)
         );
 
-  const actionOptions: CombatOption[] = buildStandardActionOptions(
+  const actionOptions: CombatOption[] = [
+    ...buildStandardActionOptions(
+      turn,
+      isEngaged,
+      canUseHelp,
+      canUseObject,
+      options?.battleOver
+    ),
+    ...buildRegisteredFeatureActionOptions(
+      characterActions,
+      turn,
+      token,
+      options?.battleOver
+    ),
+  ];
+
+  const layOnHands = buildLayOnHandsOption(
+    character,
+    characterActions,
+    token,
+    combatState,
+    partyCharacters,
     turn,
-    isEngaged,
-    canUseHelp,
-    canUseObject,
+    featureCatalogs,
     options?.battleOver
   );
+  if (layOnHands) {
+    actionOptions.push(layOnHands);
+  }
 
   const bonusActionOptions: CombatOption[] = turn.bonusActionUsed
     ? []
     : characterActions
-        .filter((action) => action.cost === "bonus-action")
+        .filter(
+          (action) =>
+            action.cost === "bonus-action" && !isRegisteredFeatureEnterAction(action.id)
+        )
         .map((action) => ({
           id: `bonus-action:${action.id}`,
           name: action.name,
@@ -661,7 +781,11 @@ export function isImplementedCombatOption(option: CombatOption): boolean {
     isDashActionOption(option) ||
     isUseObjectActionOption(option) ||
     isOtherActionsOption(option) ||
-    isLeaveAreaOption(option)
+    isLeaveAreaOption(option) ||
+    isShellDefenseEnterOption(option) ||
+    isEmergeFromShellOption(option) ||
+    isLayOnHandsOption(option) ||
+    (option.action != null && isRegisteredCombatFeatureAction(option.action.id))
   );
 }
 
@@ -681,6 +805,7 @@ export function getCombatOptionGroupsForToken(
     freeObjectInteractionUsed: boolean;
     combatState: CombatState;
     token: CombatToken;
+    partyCharacters?: ParsedCharacter[];
     canUseObject: boolean;
     battleOver?: boolean;
   }
@@ -693,6 +818,9 @@ export function getCombatOptionGroupsForToken(
       context.catalogItems,
       context.classCatalog,
       context.featureCatalogs,
+      token,
+      context.combatState,
+      context.partyCharacters ?? [],
       {
         actionUsedForTwoWeapon: context.actionUsedForTwoWeapon,
         twoWeaponFightingUsedOffHand: context.twoWeaponFightingUsedOffHand,

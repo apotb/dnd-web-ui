@@ -163,11 +163,11 @@ export function calculateAcBreakdown(
     }
     total = armor.base + dexBonus;
   } else if (speciesId === "lizardfolk") {
-    pushSource(sources, "Natural armor", 13);
+    pushSource(sources, "Natural Armor", 13);
     pushSource(sources, "Dexterity", dexMod);
     total = 13 + dexMod;
   } else if (speciesId === "tortle") {
-    pushSource(sources, "Natural armor", 17);
+    pushSource(sources, "Natural Armor", 17);
     total = 17;
   } else if (classId === "barbarian") {
     pushSource(sources, "Base", 10);

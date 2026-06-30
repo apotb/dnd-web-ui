@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/client";
 import { ALL_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import { ALL_SPECIES, normalizePhbSpecies } from "@/lib/dnd/phb/species";
-import { PHB_SPELLS, SPELL_LISTS } from "@/lib/dnd/phb/spells";
+import { ALL_SPELLS, SPELL_LISTS } from "@/lib/dnd/phb/spells";
+import { PHB_CONDITIONS, type PhbCondition } from "@/lib/dnd/conditions";
 import type { PhbBackground, PhbClass, PhbSpecies, PhbSpell } from "@/lib/dnd/phb/types";
 
 export interface CatalogSpellRow {
@@ -48,11 +49,11 @@ function phbSpellToRow(spell: PhbSpell): CatalogSpellRow {
     description: spell.description,
     ritual: spell.ritual ?? false,
     concentration: spell.concentration ?? false,
-    classes: SPELL_CLASSES_MAP.get(spell.id) ?? [],
+    classes: spell.classes ?? SPELL_CLASSES_MAP.get(spell.id) ?? [],
   };
 }
 
-const PHB_SPELL_ROWS = PHB_SPELLS.map(phbSpellToRow);
+const PHB_SPELL_ROWS = ALL_SPELLS.map(phbSpellToRow);
 
 function mapSpellRow(row: Record<string, unknown>): CatalogSpellRow | null {
   if (typeof row.slug !== "string" || typeof row.name !== "string") return null;
@@ -222,4 +223,25 @@ export async function fetchCatalogClassesClient(): Promise<PhbClass[]> {
     .map((row) => rowToClass(row as Record<string, unknown>))
     .filter(Boolean) as PhbClass[];
   return rows.length > 0 ? rows : PHB_CLASSES;
+}
+
+function mapConditionRow(row: Record<string, unknown>): PhbCondition | null {
+  if (typeof row.slug !== "string" || typeof row.name !== "string") return null;
+  return {
+    slug: row.slug,
+    name: row.name,
+    description: typeof row.description === "string" ? row.description : "",
+    isStandard: row.is_standard === true,
+    source: typeof row.source === "string" ? row.source : "SRD",
+  };
+}
+
+/** Fetch conditions catalog for character sheet picker and tooltips. */
+export async function fetchCatalogConditionsClient(): Promise<PhbCondition[]> {
+  const supabase = createClient();
+  const { data } = await supabase.from("conditions").select("*").order("name");
+  const rows = (data ?? [])
+    .map((row) => mapConditionRow(row as Record<string, unknown>))
+    .filter((c): c is PhbCondition => c !== null);
+  return rows.length > 0 ? rows : PHB_CONDITIONS;
 }

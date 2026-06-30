@@ -1,4 +1,5 @@
 import type { Spell } from "@/lib/schemas/character";
+import { isManagedGrantSpell } from "@/lib/character/spell-sources";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 
 export function spellLevelLabel(level: number): string {
@@ -58,9 +59,14 @@ export function groupKnownSpellsByLevel(
     .map((level) => ({
       level,
       label: spellLevelLabel(level),
-      spells: (byLevel.get(level) ?? []).sort((a, b) =>
-        a.spell.name.localeCompare(b.spell.name, undefined, { sensitivity: "base" })
-      ),
+      spells: (byLevel.get(level) ?? []).sort((a, b) => {
+        const aGrant = isManagedGrantSpell(a.spell) ? 0 : 1;
+        const bGrant = isManagedGrantSpell(b.spell) ? 0 : 1;
+        if (aGrant !== bGrant) return aGrant - bGrant;
+        return a.spell.name.localeCompare(b.spell.name, undefined, {
+          sensitivity: "base",
+        });
+      }),
     }));
 }
 

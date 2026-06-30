@@ -9,10 +9,15 @@ import { Tooltip } from "@/components/ui/tooltip";
 const COLUMNS = 4;
 const VISIBLE_ROWS = 2;
 const SCROLL_ROWS = 2;
-const VISIBLE_SLOTS = COLUMNS * VISIBLE_ROWS;
 
 function totalRows(optionCount: number): number {
   return Math.ceil(optionCount / COLUMNS);
+}
+
+function visibleRowCount(optionCount: number, rowOffset: number): number {
+  const rows = totalRows(optionCount);
+  const remainingRows = Math.max(0, rows - rowOffset);
+  return Math.min(VISIBLE_ROWS, remainingRows);
 }
 
 function maxRowOffset(optionCount: number): number {
@@ -51,14 +56,16 @@ export function CombatOptionPanel({
   const rowLimit = maxRowOffset(options.length);
   const clampedRowOffset = Math.min(rowOffset, rowLimit);
   const startIndex = clampedRowOffset * COLUMNS;
+  const rowsToShow = visibleRowCount(options.length, clampedRowOffset);
+  const visibleSlotCount = rowsToShow * COLUMNS;
   const visibleCells = useMemo(() => {
-    const slice = options.slice(startIndex, startIndex + VISIBLE_SLOTS);
+    const slice = options.slice(startIndex, startIndex + visibleSlotCount);
     const cells: (CombatOption | null)[] = [...slice];
-    while (cells.length < VISIBLE_SLOTS) {
+    while (cells.length < visibleSlotCount) {
       cells.push(null);
     }
     return cells;
-  }, [options, startIndex]);
+  }, [options, startIndex, visibleSlotCount]);
 
   const canScrollUp = clampedRowOffset > 0;
   const canScrollDown = clampedRowOffset < rowLimit;
@@ -74,8 +81,17 @@ export function CombatOptionPanel({
     }
 
     return (
-      <div className="combat-attack-body">
-        <div className="combat-attack-grid">
+      <div
+        className={`combat-attack-body${
+          rowsToShow < VISIBLE_ROWS ? " combat-attack-body-compact" : ""
+        }`}
+      >
+        <div
+          className={`combat-attack-grid${
+            rowsToShow < VISIBLE_ROWS ? " combat-attack-grid-compact" : ""
+          }`}
+          style={{ gridTemplateRows: `repeat(${rowsToShow}, minmax(0, 1fr))` }}
+        >
           {visibleCells.map((option, index) =>
             option ? (
               (() => {
@@ -150,6 +166,7 @@ export function CombatOptionPanel({
     onSelectOption,
     options.length,
     rowLimit,
+    rowsToShow,
     selectedOptionId,
     pendingOptionId,
     selectionLocked,

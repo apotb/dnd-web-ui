@@ -27,6 +27,8 @@ import {
 } from "@/lib/dnd/calculations";
 import { levelFromXp } from "@/lib/dnd/xp";
 import { canCastSpellWithRemainingSlots } from "@/lib/dnd/spellcasting";
+import { canCastGrantSpell } from "@/lib/character/spell-grant-uses";
+import { isManagedGrantSpell } from "@/lib/character/spell-sources";
 import {
   getCharacterLevel,
   getNaturalAttackSpecs,
@@ -44,6 +46,8 @@ interface OffensiveSpellMeta {
   damageType: string;
   range: string;
   saveAbility?: string;
+  /** When false, a successful save deals no damage (e.g. Sacred Flame). Default true for saves. */
+  saveHalfDamageOnSuccess?: boolean;
   /** Scale dice at character levels 5, 11, and 17 (cantrip progression). */
   cantripScaling?: boolean;
   /** Eldritch blast adds beams at those same breakpoints. */
@@ -106,6 +110,7 @@ const OFFENSIVE_SPELL_METADATA: Record<string, OffensiveSpellMeta> = {
   "sacred-flame": {
     rollType: "save",
     saveAbility: "Dex",
+    saveHalfDamageOnSuccess: false,
     damageDice: "1d8",
     damageType: "radiant",
     range: "60 ft",
@@ -129,6 +134,7 @@ const OFFENSIVE_SPELL_METADATA: Record<string, OffensiveSpellMeta> = {
   "vicious-mockery": {
     rollType: "save",
     saveAbility: "Wis",
+    saveHalfDamageOnSuccess: false,
     damageDice: "1d4",
     damageType: "psychic",
     range: "60 ft",
@@ -320,6 +326,8 @@ export interface DerivedAttack {
   rollType?: OffensiveSpellRollType;
   saveAbility?: string;
   saveDc?: number;
+  /** When false, a successful save deals no damage. Default true for save attacks. */
+  saveHalfDamageOnSuccess?: boolean;
   /** slug of the catalog item that generated this attack, if any */
   itemId?: string;
   /** Inventory row id for the equipped weapon stack, if any. */
@@ -615,9 +623,6 @@ export function deriveWeaponAttacks(
       }
       if (wp.weaponProperties.includes("finesse")) notes.push("Finesse");
       if (monkWeapon) notes.push("Monk weapon");
-      if (mode !== "thrown" && wp.weaponProperties.includes("reach")) {
-        notes.push("Reach (10 ft)");
-      }
 
       const attackRange =
         mode === "thrown" ? throwRange : isRanged ? singleRange : meleeRange;
@@ -779,6 +784,8 @@ function buildOffensiveSpellEntry(
     rollType: meta.rollType,
     saveAbility: meta.saveAbility,
     saveDc: meta.rollType === "save" ? saveDc : undefined,
+    saveHalfDamageOnSuccess:
+      meta.rollType === "save" ? meta.saveHalfDamageOnSuccess ?? true : undefined,
   };
 }
 
@@ -799,9 +806,13 @@ export function deriveSpellAttacks(character: CharacterData): DerivedAttack[] {
   const attacks: DerivedAttack[] = [];
 
   for (const spell of character.spells.known) {
+    if (isManagedGrantSpell(spell) && !canCastGrantSpell(spell, character)) {
+      continue;
+    }
     if (spell.level > 0 && !spell.prepared) continue;
     if (
       spell.level > 0 &&
+      !isManagedGrantSpell(spell) &&
       !canCastSpellWithRemainingSlots(character.spells.slots, spell.level)
     ) {
       continue;

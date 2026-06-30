@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadEnemyPortrait, resolveCombatImageUrl } from "@/lib/combat/storage";
 import { deleteEnemyEntry, upsertEnemyEntry } from "@/lib/content/catalog";
+import { LazyPortrait } from "@/components/ui/lazy-portrait";
 import {
   createDefaultEnemyData,
   formatAbilityScore,
@@ -31,6 +32,7 @@ interface EnemyRow {
 }
 
 const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"] as const;
+const PAGE_SIZE = 50;
 
 function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -43,6 +45,7 @@ function emptyBlock(): EnemyNamedBlock {
 export function EnemiesManager({ entries }: { entries: EnemyRow[] }) {
   const [list, setList] = useState(entries);
   const [filter, setFilter] = useState("");
+  const [page, setPage] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editSlug, setEditSlug] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -62,6 +65,23 @@ export function EnemiesManager({ entries }: { entries: EnemyRow[] }) {
       ),
     [filter, list]
   );
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageStart = page * PAGE_SIZE;
+  const visibleRows = useMemo(
+    () => filtered.slice(pageStart, pageStart + PAGE_SIZE),
+    [filtered, pageStart]
+  );
+
+  useEffect(() => {
+    setPage(0);
+  }, [filter]);
+
+  useEffect(() => {
+    if (page > pageCount - 1) {
+      setPage(Math.max(0, pageCount - 1));
+    }
+  }, [page, pageCount]);
 
   function openCreate() {
     setEditSlug(null);
@@ -187,7 +207,11 @@ export function EnemiesManager({ entries }: { entries: EnemyRow[] }) {
           <Button onClick={openCreate}>+ Add Enemy</Button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          {filtered.length} of {list.length} enemies
+          {filtered.length === 0
+            ? `0 of ${list.length} enemies`
+            : filtered.length > PAGE_SIZE
+              ? `Showing ${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, filtered.length)} of ${filtered.length} (${list.length} total)`
+              : `${filtered.length} of ${list.length} enemies`}
         </p>
       </div>
 
@@ -205,28 +229,30 @@ export function EnemiesManager({ entries }: { entries: EnemyRow[] }) {
           <p className="text-sm text-muted-foreground text-center py-8">No enemies found.</p>
         ) : null}
 
-        {filtered.map((row, idx) => {
+        {visibleRows.map((row, idx) => {
           const portraitUrl = row.data.portraitPath
             ? resolveCombatImageUrl(supabase, row.data.portraitPath)
             : null;
+          const portraitFallback = (
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+              {row.name.slice(0, 1)}
+            </div>
+          );
 
           return (
             <div
               key={row.slug}
-              className={`grid grid-cols-[40px_1fr_72px_72px_120px_160px] items-center gap-0 px-4 py-2.5 ${idx !== filtered.length - 1 ? "border-b" : ""}`}
+              className={`grid grid-cols-[40px_1fr_72px_72px_120px_160px] items-center gap-0 px-4 py-2.5 ${idx !== visibleRows.length - 1 || pageCount > 1 ? "border-b" : ""}`}
             >
               <div className="flex items-center justify-center">
                 {portraitUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <LazyPortrait
                     src={portraitUrl}
-                    alt=""
-                    className="portrait-cover-top h-8 w-8 rounded-full"
+                    imageClassName="portrait-cover-top h-8 w-8 rounded-full"
+                    fallback={portraitFallback}
                   />
                 ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-                    {row.name.slice(0, 1)}
-                  </div>
+                  portraitFallback
                 )}
               </div>
               <div className="min-w-0 pr-4">
@@ -266,6 +292,30 @@ export function EnemiesManager({ entries }: { entries: EnemyRow[] }) {
             </div>
           );
         })}
+
+        {pageCount > 1 ? (
+          <div className="flex items-center justify-between gap-2 px-4 py-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page === 0}
+              onClick={() => setPage((current) => current - 1)}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Page {page + 1} of {pageCount}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

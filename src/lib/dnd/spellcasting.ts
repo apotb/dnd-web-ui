@@ -1,4 +1,5 @@
 import type { AbilityKey, CharacterData, Spell } from "@/lib/schemas/character";
+import { isManagedGrantSpell } from "@/lib/character/spell-sources";
 import { abilityModifier } from "@/lib/dnd/calculations";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 
@@ -171,8 +172,24 @@ export function countCantrips(known: Spell[]): number {
   return known.filter((s) => s.level === 0).length;
 }
 
+export function countPlayerCantrips(known: Spell[]): number {
+  return known.filter((s) => s.level === 0 && !isManagedGrantSpell(s)).length;
+}
+
 export function countLeveledKnown(known: Spell[]): number {
   return known.filter((s) => s.level > 0).length;
+}
+
+export function countPlayerLeveledKnown(known: Spell[]): number {
+  return known.filter((s) => s.level > 0 && !isManagedGrantSpell(s)).length;
+}
+
+export function countGrantedCantrips(known: Spell[]): number {
+  return known.filter((s) => s.level === 0 && isManagedGrantSpell(s)).length;
+}
+
+export function countGrantedLeveled(known: Spell[]): number {
+  return known.filter((s) => s.level > 0 && isManagedGrantSpell(s)).length;
 }
 
 export function countPreparedLeveled(known: Spell[]): number {
@@ -194,8 +211,7 @@ export function formatLevelPreparedSummary(
   if (total === 0) return null;
 
   if (level === 0) {
-    const max = options.cantripsKnown ?? total;
-    return `Prepared: ${total}/${max}`;
+    return null;
   }
 
   if (options.isKnownCaster) {
@@ -272,7 +288,7 @@ export function syncSpellcastingFromClass(
 }
 
 export function canAddCantrip(currentKnown: Spell[], limit: number): boolean {
-  return countCantrips(currentKnown) < limit;
+  return countPlayerCantrips(currentKnown) < limit;
 }
 
 export function canAddLeveledSpell(
@@ -280,7 +296,7 @@ export function canAddLeveledSpell(
   limits: SpellcastingLimits
 ): boolean {
   if (limits.spellsKnown !== null) {
-    return countLeveledKnown(currentKnown) < limits.spellsKnown;
+    return countPlayerLeveledKnown(currentKnown) < limits.spellsKnown;
   }
   return true;
 }

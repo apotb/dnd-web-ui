@@ -3,6 +3,7 @@ import {
   buildPendingTargetFromToken,
   computeDamageApplied,
   computeHitFromRoll,
+  getTokenSaveRollMode,
   transitionToDmReview,
 } from "@/lib/combat/attack-resolution";
 import {
@@ -248,6 +249,8 @@ export function createPendingAttack(
     return {
       ...base,
       attackDisadvantage,
+      saveAdvantage: getTokenSaveRollMode(token, attack.saveAbility) === "advantage",
+      saveDisadvantage: getTokenSaveRollMode(token, attack.saveAbility) === "disadvantage",
       damageText,
       damageRolls,
       damageAmount,
@@ -290,6 +293,7 @@ export function createPendingAttack(
     attackBonus: attack.attackBonus,
     saveDc: attack.saveDc,
     saveAbility: attack.saveAbility,
+    saveHalfDamageOnSuccess: attack.saveHalfDamageOnSuccess ?? true,
     damageType: attack.damageType,
     damageDice: resolvedDamageDice,
     isMainHandWeapon: option.attack
@@ -318,7 +322,8 @@ export function applySaveRoll(
   pending: PendingAttack,
   tokenId: string,
   saveRoll: number,
-  saveTotal: number
+  saveTotal: number,
+  saveRoll2?: number | null
 ): PendingAttack {
   const targets = pending.targets.map((target) => {
     if (target.tokenId !== tokenId) return target;
@@ -326,6 +331,7 @@ export function applySaveRoll(
     return {
       ...target,
       saveRoll,
+      saveRoll2: saveRoll2 ?? null,
       saveTotal,
       saveSucceeded,
       saveSubmitted: true,
@@ -341,11 +347,11 @@ export function applySaveRoll(
 
 export function applyDmSaveRolls(
   pending: PendingAttack,
-  saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number }>
+  saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number; saveRoll2?: number | null }>
 ): PendingAttack {
   let next = pending;
   for (const save of saves) {
-    next = applySaveRoll(next, save.tokenId, save.saveRoll, save.saveTotal);
+    next = applySaveRoll(next, save.tokenId, save.saveRoll, save.saveTotal, save.saveRoll2);
   }
   return next;
 }

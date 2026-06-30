@@ -64,6 +64,9 @@ export const pendingAttackTargetSchema = z.object({
   damageRolls: z.array(z.number().int().min(1)).optional(),
   damageAmount: z.number().int().min(0).nullable().optional(),
   saveRoll: z.number().int().min(1).max(20).nullable().optional(),
+  saveRoll2: z.number().int().min(1).max(20).nullable().optional(),
+  saveAdvantage: z.boolean().default(false),
+  saveDisadvantage: z.boolean().default(false),
   saveTotal: z.number().int().nullable().optional(),
   saveSucceeded: z.boolean().nullable().optional(),
   finalDamage: z.number().int().min(0).nullable().optional(),
@@ -81,6 +84,7 @@ export const pendingAttackSchema = z.object({
   attackBonus: z.number().int().optional(),
   saveDc: z.number().int().optional(),
   saveAbility: z.string().optional(),
+  saveHalfDamageOnSuccess: z.boolean().default(true),
   damageType: z.string().optional(),
   damageDice: z.string().optional(),
   isMainHandWeapon: z.boolean().default(false),
@@ -138,6 +142,8 @@ export const combatTokenSchema = z.object({
   pickupQuantity: z.number().int().min(1).default(1),
   /** When true, enemy tokens are invisible to players until revealed. */
   hidden: z.boolean().default(false),
+  /** Active combat feature effects (e.g. shell-defense). Persists across turns until removed. */
+  activeEffects: z.array(z.string()).default([]),
 });
 
 export const pendingOpportunityAttacksSchema = z.object({

@@ -574,7 +574,8 @@ export const EXTENDED_SPECIES: PhbSpecies[] = [
       },
       {
         name: "Shell Defense",
-        description: "As an action, you can withdraw into your shell. Until you emerge, you gain a +4 bonus to AC, advantage on Strength and Constitution saving throws, and are prone. Your speed is 0 and you can't benefit from your speed.",
+        description:
+          "As an action, you can withdraw into your shell. Until you emerge, you gain a +4 bonus to AC, advantage on Strength and Constitution saving throws, and disadvantage on Dexterity saving throws, and you are prone. Your speed is 0 and can't increase. You can't take reactions, and the only action you can take is a bonus action to emerge from your shell.",
       },
       {
         name: "Survival Instinct",

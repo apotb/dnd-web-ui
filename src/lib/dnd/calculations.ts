@@ -179,6 +179,76 @@ export function getSpellAttackBonus(data: CharacterData): number | null {
   return getProficiencyBonus(data) + mods[ability];
 }
 
+export function getSpellcastingAbilityModifier(data: CharacterData): number | null {
+  const ability = data.spells.spellcastingAbility;
+  if (!ability) return null;
+  return getAbilityModifiers(data.abilityScores)[ability];
+}
+
+export function formatSpellcastingAbilityModifierTooltip(
+  data: CharacterData
+): string | null {
+  const ability = data.spells.spellcastingAbility;
+  if (!ability) return null;
+
+  const mods = getAbilityModifiers(data.abilityScores);
+  const lines: string[] = [];
+  const breakdown = data.abilityScoreBreakdown?.[ability];
+
+  if (breakdown?.sources?.length) {
+    lines.push(
+      ...breakdown.sources.map(
+        (s) => `${s.label}: ${s.value >= 0 ? "+" : ""}${s.value}`
+      )
+    );
+    lines.push(`Score: ${data.abilityScores[ability]}`);
+  }
+
+  lines.push(`${ABILITY_FULL_LABELS[ability]}: ${formatModifier(mods[ability])}`);
+  return lines.join("\n");
+}
+
+export function formatSpellSaveDcTooltip(data: CharacterData): string | null {
+  if (data.spells.spellSaveDcOverride !== undefined) {
+    return `Override: ${data.spells.spellSaveDcOverride}`;
+  }
+
+  const ability = data.spells.spellcastingAbility;
+  if (!ability) return null;
+
+  const mods = getAbilityModifiers(data.abilityScores);
+  const prof = getProficiencyBonus(data);
+  const mod = mods[ability];
+  const dc = 8 + prof + mod;
+
+  return [
+    "Base: 8",
+    `Proficiency: ${formatModifier(prof)}`,
+    `${ABILITY_FULL_LABELS[ability]}: ${formatModifier(mod)}`,
+    `DC: ${dc}`,
+  ].join("\n");
+}
+
+export function formatSpellAttackTooltip(data: CharacterData): string | null {
+  if (data.spells.spellAttackBonusOverride !== undefined) {
+    return `Override: ${formatModifier(data.spells.spellAttackBonusOverride)}`;
+  }
+
+  const ability = data.spells.spellcastingAbility;
+  if (!ability) return null;
+
+  const mods = getAbilityModifiers(data.abilityScores);
+  const prof = getProficiencyBonus(data);
+  const mod = mods[ability];
+  const attack = prof + mod;
+
+  return [
+    `Proficiency Bonus: ${formatModifier(prof)}`,
+    `Spellcasting Ability Modifier: ${formatModifier(mod)}`,
+    `Spell Attack: ${formatModifier(attack)}`,
+  ].join("\n");
+}
+
 export function getEffectiveHp(currentHp: number, tempHp: number): {
   current: number;
   temp: number;

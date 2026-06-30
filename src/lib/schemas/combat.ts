@@ -91,20 +91,21 @@ export function sortCombatantsByInitiative<
   });
 }
 
+/** @deprecated Use PHB_CONDITIONS / fetchCatalogConditions instead. */
 export const COMMON_CONDITIONS = [
-  "Blinded",
-  "Charmed",
-  "Deafened",
-  "Exhaustion",
-  "Frightened",
-  "Grappled",
-  "Incapacitated",
-  "Invisible",
-  "Paralyzed",
-  "Petrified",
-  "Poisoned",
-  "Prone",
-  "Restrained",
-  "Stunned",
-  "Unconscious",
+  "blinded",
+  "charmed",
+  "deafened",
+  "exhaustion",
+  "frightened",
+  "grappled",
+  "incapacitated",
+  "invisible",
+  "paralyzed",
+  "petrified",
+  "poisoned",
+  "prone",
+  "restrained",
+  "stunned",
+  "unconscious",
 ] as const;

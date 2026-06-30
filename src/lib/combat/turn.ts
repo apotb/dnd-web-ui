@@ -189,6 +189,22 @@ export function applyDashActionUsed(state: CombatState): CombatState {
   };
 }
 
+export function applyBonusActionUsed(state: CombatState): CombatState {
+  if (!isBattleActive(state)) return state;
+  if (isBattleOver(state)) {
+    return { ...state, turn: applyBattleOverEconomyReset(state.turn) };
+  }
+  if (state.turn.bonusActionUsed) return state;
+
+  return {
+    ...state,
+    turn: {
+      ...state.turn,
+      bonusActionUsed: true,
+    },
+  };
+}
+
 export function applyDisengageUsed(state: CombatState): CombatState {
   if (!isBattleActive(state)) return state;
   if (isBattleOver(state)) {

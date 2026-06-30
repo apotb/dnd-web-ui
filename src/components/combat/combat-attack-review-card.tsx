@@ -11,6 +11,7 @@ import {
   parseD20Roll,
   SaveRollField,
 } from "@/components/combat/combat-roll-fields";
+import { CombatSaveRollEntry } from "@/components/combat/combat-save-roll-entry";
 import {
   computeDamageApplied,
   computeHitFromRoll,
@@ -25,6 +26,7 @@ interface CombatAttackReviewCardProps {
   pending: PendingAttack;
   attackerLabel: string;
   resolveDisadvantageLabel?: (targetTokenId: string) => string | null;
+  resolveSaveModifier?: (targetTokenId: string) => number | null;
   onReject: () => void;
   onConfirm: (pending: PendingAttack) => void;
   onSubmitDmSaves?: (
@@ -45,11 +47,6 @@ function parseOptionalInt(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseIntOrZero(value: string): number {
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function formatHpLine(target: PendingAttackTarget): string {
   const current = target.currentHp;
   const max = target.maxHp;
@@ -62,7 +59,8 @@ function projectedHp(
   target: PendingAttackTarget,
   rollType: PendingAttack["rollType"],
   overrideText: string,
-  damageDice: string
+  damageDice: string,
+  damageOptions?: { saveHalfDamageOnSuccess?: boolean }
 ): number | null {
   if (target.currentHp == null) return null;
   const damage = resolveFinalDamageApplied(
@@ -70,7 +68,7 @@ function projectedHp(
     rollType,
     overrideText,
     parseOptionalInt,
-    { damageDice }
+    { damageDice, ...damageOptions }
   );
   return Math.max(0, target.currentHp - damage);
 }
@@ -79,6 +77,7 @@ export function CombatAttackReviewCard({
   pending,
   attackerLabel,
   resolveDisadvantageLabel,
+  resolveSaveModifier,
   onReject,
   onConfirm,
   onSubmitDmSaves,
@@ -105,15 +104,14 @@ export function CombatAttackReviewCard({
       pending.targets.map((target) => {
         const computed = computeDamageApplied(target, pending.rollType, {
           damageDice: pending.damageDice,
+          saveHalfDamageOnSuccess: pending.saveHalfDamageOnSuccess,
         });
         const final = target.finalDamage ?? computed;
         return [target.tokenId, final !== computed ? String(final) : ""];
       })
     )
   );
-  const [dmSaveRolls, setDmSaveRolls] = useState<
-    Record<string, { saveRoll: string; saveMod: string }>
-  >({});
+  const [dmSaveRolls, setDmSaveRolls] = useState<Record<string, string>>({});
 
   const attackBonus = pending.attackBonus ?? 0;
   const damageDice = pending.damageDice ?? "";
@@ -219,7 +217,10 @@ export function CombatAttackReviewCard({
           pending.rollType,
           damageOverrides[target.tokenId] ?? "",
           parseOptionalInt,
-          { damageDice: pending.damageDice }
+          {
+            damageDice: pending.damageDice,
+            saveHalfDamageOnSuccess: pending.saveHalfDamageOnSuccess,
+          }
         ),
       })),
     });
@@ -229,26 +230,32 @@ export function CombatAttackReviewCard({
     if (!onSubmitDmSaves) return;
     onSubmitDmSaves(
       dmSaveTargets.map((target) => {
-        const entry = dmSaveRolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
-        const saveRoll = parseD20Roll(entry.saveRoll) ?? 0;
-        const saveTotal = saveRoll + parseIntOrZero(entry.saveMod);
+        const saveRoll = parseD20Roll(dmSaveRolls[target.tokenId] ?? "") ?? 0;
+        const saveMod = resolveSaveModifier?.(target.tokenId) ?? 0;
+        const saveTotal = saveRoll + saveMod;
         return { tokenId: target.tokenId, saveRoll, saveTotal };
       })
     );
   }
 
   const allDmSavesValid = dmSaveTargets.every((target) => {
-    const entry = dmSaveRolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
-    return parseD20Roll(entry.saveRoll) != null;
+    return parseD20Roll(dmSaveRolls[target.tokenId] ?? "") != null;
   });
+
+  const saveHalfDamageOnSuccess = pending.saveHalfDamageOnSuccess ?? true;
 
   const targetSections = useMemo(
     () =>
       draft.targets.map((target) => {
         const overrideText = damageOverrides[target.tokenId] ?? "";
-        const afterHp = projectedHp(target, pending.rollType, overrideText, damageDice);
+        const afterHp = projectedHp(target, pending.rollType, overrideText, damageDice, {
+          saveHalfDamageOnSuccess,
+        });
         const rolls = damageRollInputs[target.tokenId] ?? [];
-        const computedDamage = computeDamageApplied(target, pending.rollType, { damageDice });
+        const computedDamage = computeDamageApplied(target, pending.rollType, {
+          damageDice,
+          saveHalfDamageOnSuccess: pending.saveHalfDamageOnSuccess,
+        });
         const damageBreakdown = formatDamageAppliedBreakdown(
           target,
           pending.rollType,
@@ -432,55 +439,49 @@ export function CombatAttackReviewCard({
       </div>
 
       {isAwaitingSaves && dmSaveTargets.length > 0 ? (
-        <div className="combat-dm-save-roll-list">
-          <p className="retro-muted">
+        <div className="combat-awaiting-saves-panel">
+          <p className="combat-awaiting-saves-summary retro-muted">
             DC {pending.saveDc ?? "?"}
-            {pending.saveAbility ? ` ${pending.saveAbility}` : ""} — enter saves for creatures you
-            control.
+            {pending.saveAbility ? ` ${pending.saveAbility}` : ""} save
+            {damageDice || pending.damageType
+              ? ` · ${[damageDice, pending.damageType].filter(Boolean).join(" ")}`
+              : ""}
+            {saveHalfDamageOnSuccess
+              ? " · half damage on a successful save"
+              : " · no damage on a successful save"}
           </p>
-          {dmSaveTargets.map((target) => {
-            const entry = dmSaveRolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
-            const saveRollValue = parseD20Roll(entry.saveRoll);
-            const total = (saveRollValue ?? 0) + parseIntOrZero(entry.saveMod);
-            return (
-              <div key={target.tokenId} className="combat-attack-submit-target-block">
-                <strong>{target.label}</strong>
-                <label className="combat-attack-submit-field">
-                  <span>d20</span>
-                  <SaveRollField
-                    value={entry.saveRoll}
-                    onChange={(value) =>
-                      setDmSaveRolls((current) => ({
-                        ...current,
-                        [target.tokenId]: { ...entry, saveRoll: value },
-                      }))
-                    }
-                    disabled={busy}
-                  />
-                </label>
-                <label className="combat-attack-submit-field">
-                  <span>Mod</span>
-                  <input
-                    type="number"
-                    className="candy-input"
-                    value={entry.saveMod}
-                    onChange={(event) =>
-                      setDmSaveRolls((current) => ({
-                        ...current,
-                        [target.tokenId]: { ...entry, saveMod: event.target.value },
-                      }))
-                    }
-                    disabled={busy}
-                  />
-                </label>
-                <span className="retro-muted">= {total}</span>
-              </div>
-            );
-          })}
+          <div className="combat-dm-save-roll-list">
+            {dmSaveTargets.map((target) => {
+              const saveRoll = dmSaveRolls[target.tokenId] ?? "";
+              const saveMod = resolveSaveModifier?.(target.tokenId) ?? null;
+              return (
+                <CombatSaveRollEntry
+                  key={target.tokenId}
+                  label={target.label}
+                  subtitle={formatHpLine(target)}
+                  saveRoll={saveRoll}
+                  onSaveRollChange={(value) =>
+                    setDmSaveRolls((current) => ({
+                      ...current,
+                      [target.tokenId]: value,
+                    }))
+                  }
+                  saveModifier={saveMod}
+                  saveDc={pending.saveDc}
+                  baseDamage={target.damageAmount ?? null}
+                  damageType={pending.damageType}
+                  saveHalfDamageOnSuccess={saveHalfDamageOnSuccess}
+                  disabled={busy}
+                />
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
-      <div className="combat-attack-review-targets">{targetSections}</div>
+      {!(isAwaitingSaves && dmSaveTargets.length > 0) ? (
+        <div className="combat-attack-review-targets">{targetSections}</div>
+      ) : null}
 
       <div className="supply-picker-actions combat-roll-actions combat-attack-review-card-actions">
         <button type="button" className="candy-btn" onClick={onReject} disabled={busy}>

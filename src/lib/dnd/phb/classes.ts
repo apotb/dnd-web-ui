@@ -406,7 +406,11 @@ export const PHB_CLASSES: PhbClass[] = [
     ],
     features: [
       { name: "Divine Sense", description: "Detect celestials, fiends, and undead within 60 ft." },
-      { name: "Lay on Hands", description: "Pool of 5 × paladin level HP for healing." },
+      {
+        name: "Lay on Hands",
+        description:
+          "As an action, touch a creature to restore HP from a pool of 5 × paladin level, or spend 5 pool HP to cure one poison or disease.",
+      },
     ],
   },
   {

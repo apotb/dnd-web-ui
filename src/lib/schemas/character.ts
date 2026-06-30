@@ -181,6 +181,11 @@ export const spellSlotsSchema = z.record(
   })
 );
 
+export const spellGrantUsesSchema = z.object({
+  current: z.number().int().min(0).default(0),
+  max: z.number().int().min(0).default(0),
+});
+
 export const spellsSchema = z.object({
   spellcastingAbility: abilityKeySchema.optional(),
   /** When true, the spellcasting block is hidden on the read-only sheet. */
@@ -188,6 +193,8 @@ export const spellsSchema = z.object({
   spellSaveDcOverride: z.number().optional(),
   spellAttackBonusOverride: z.number().optional(),
   slots: spellSlotsSchema.default({}),
+  /** Remaining uses for feature-granted spells, keyed by grantKey. */
+  grantUses: z.record(z.string(), spellGrantUsesSchema).default({}),
   known: z.array(spellSchema).default([]),
   prepared: z.array(spellSchema).default([]),
 });
@@ -224,6 +231,8 @@ export const featureChoicesSchema = z.object({
   magicInitiateClass: z.enum(["", "cleric", "druid", "wizard"]).default(""),
   magicInitiateCantripIds: z.array(z.string()).max(2).default([]),
   magicInitiateSpellId: z.string().default(""),
+  /** Bonus druid cantrip from Nature Domain or Circle of the Land. */
+  bonusDruidCantripId: z.string().default(""),
 });
 
 /** Species creation choices persisted for edit-time grant sync. */
@@ -433,6 +442,10 @@ export const characterDataSchema = z.preprocess(
   /** Maps skills auto-added from feature grants to their grant key. */
   grantedSkillKeys: z.partialRecord(skillKeySchema, z.string()).optional(),
   features: z.array(featureSchema).default([]),
+  /** Persisted use counters for rules-derived mechanical features (keyed by granted feature id). */
+  featureUseState: z
+    .record(z.string(), z.object({ current: z.number().int().min(0) }))
+    .default({}),
   })
 );
 

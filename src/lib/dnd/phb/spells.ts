@@ -1,4 +1,5 @@
 import type { PhbSpell } from "./types";
+import { SRD_SPELLS, type GeneratedSpell } from "./srd-spells.generated";
 
 /** PHB cantrips and 1st-level spells appearing on at least one full caster class list. */
 export const PHB_SPELLS: PhbSpell[] = [
@@ -1014,217 +1015,52 @@ export const PHB_SPELLS: PhbSpell[] = [
   },
 ];
 
-/** 2014 PHB class spell list ids mapped to spell ids (cantrips and 1st level). */
-export const SPELL_LISTS: Record<string, string[]> = {
-  bard: [
-    "blade-ward",
-    "dancing-lights",
-    "friends",
-    "light",
-    "mage-hand",
-    "mending",
-    "message",
-    "minor-illusion",
-    "prestidigitation",
-    "true-strike",
-    "vicious-mockery",
-    "animal-friendship",
-    "bane",
-    "charm-person",
-    "comprehend-languages",
-    "cure-wounds",
-    "detect-magic",
-    "disguise-self",
-    "faerie-fire",
-    "feather-fall",
-    "guiding-hand",
-    "healing-word",
-    "heroism",
-    "hideous-laughter",
-    "identify",
-    "illusory-script",
-    "longstrider",
-    "silent-image",
-    "speak-with-animals",
-    "thunderwave",
-    "unseen-servant",
-  ],
-  cleric: [
-    "guidance",
-    "light",
-    "mending",
-    "resistance",
-    "sacred-flame",
-    "spare-the-dying",
-    "thaumaturgy",
-    "bane",
-    "bless",
-    "command",
-    "create-or-destroy-water",
-    "cure-wounds",
-    "detect-evil-and-good",
-    "detect-magic",
-    "detect-poison-and-disease",
-    "guiding-bolt",
-    "guiding-hand",
-    "healing-word",
-    "inflict-wounds",
-    "protection-from-evil-and-good",
-    "purify-food-and-drink",
-    "sanctuary",
-    "shield-of-faith",
-  ],
-  druid: [
-    "druidcraft",
-    "guidance",
-    "mending",
-    "poison-spray",
-    "produce-flame",
-    "resistance",
-    "shillelagh",
-    "thorn-whip",
-    "animal-friendship",
-    "charm-person",
-    "create-or-destroy-water",
-    "cure-wounds",
-    "detect-magic",
-    "detect-poison-and-disease",
-    "entangle",
-    "faerie-fire",
-    "fog-cloud",
-    "goodberry",
-    "guiding-hand",
-    "healing-word",
-    "jump",
-    "longstrider",
-    "purify-food-and-drink",
-    "speak-with-animals",
-    "thunderwave",
-  ],
-  sorcerer: [
-    "acid-splash",
-    "blade-ward",
-    "chill-touch",
-    "dancing-lights",
-    "fire-bolt",
-    "friends",
-    "light",
-    "mage-hand",
-    "mending",
-    "message",
-    "minor-illusion",
-    "poison-spray",
-    "prestidigitation",
-    "ray-of-frost",
-    "shocking-grasp",
-    "true-strike",
-    "burning-hands",
-    "charm-person",
-    "chromatic-orb",
-    "color-spray",
-    "comprehend-languages",
-    "detect-magic",
-    "disguise-self",
-    "expeditious-retreat",
-    "false-life",
-    "feather-fall",
-    "fog-cloud",
-    "grease",
-    "hideous-laughter",
-    "jump",
-    "mage-armor",
-    "magic-missile",
-    "ray-of-sickness",
-    "shield",
-    "silent-image",
-    "sleep",
-    "thunderwave",
-    "witch-bolt",
-  ],
-  warlock: [
-    "blade-ward",
-    "chill-touch",
-    "eldritch-blast",
-    "friends",
-    "mage-hand",
-    "minor-illusion",
-    "poison-spray",
-    "prestidigitation",
-    "true-strike",
-    "armor-of-agathys",
-    "arms-of-hadar",
-    "charm-person",
-    "comprehend-languages",
-    "expeditious-retreat",
-    "hellish-rebuke",
-    "hex",
-    "illusory-script",
-    "protection-from-evil-and-good",
-    "unseen-servant",
-    "witch-bolt",
-  ],
-  wizard: [
-    "acid-splash",
-    "blade-ward",
-    "chill-touch",
-    "dancing-lights",
-    "fire-bolt",
-    "friends",
-    "light",
-    "mage-hand",
-    "mending",
-    "message",
-    "minor-illusion",
-    "poison-spray",
-    "prestidigitation",
-    "ray-of-frost",
-    "shocking-grasp",
-    "true-strike",
-    "alarm",
-    "burning-hands",
-    "charm-person",
-    "chromatic-orb",
-    "color-spray",
-    "comprehend-languages",
-    "detect-magic",
-    "disguise-self",
-    "expeditious-retreat",
-    "false-life",
-    "feather-fall",
-    "find-familiar",
-    "fog-cloud",
-    "grease",
-    "guiding-hand",
-    "hideous-laughter",
-    "identify",
-    "illusory-script",
-    "jump",
-    "longstrider",
-    "mage-armor",
-    "magic-missile",
-    "protection-from-evil-and-good",
-    "ray-of-sickness",
-    "shield",
-    "silent-image",
-    "sleep",
-    "tensers-floating-disk",
-    "thunderwave",
-    "unseen-servant",
-    "witch-bolt",
-  ],
-};
+/** Merge hand-written PHB entries with full SRD catalog; PHB text wins on slug overlap. */
+function mergeSpellCatalogs(): GeneratedSpell[] {
+  const byId = new Map<string, GeneratedSpell>();
+  for (const spell of SRD_SPELLS) {
+    byId.set(spell.id, spell);
+  }
+  for (const spell of PHB_SPELLS) {
+    const srd = byId.get(spell.id);
+    byId.set(spell.id, {
+      ...(srd ?? { classes: [] }),
+      ...spell,
+      classes: srd?.classes ?? [],
+    });
+  }
+  return [...byId.values()].sort(
+    (a, b) => a.level - b.level || a.name.localeCompare(b.name)
+  );
+}
 
-const spellById = new Map(PHB_SPELLS.map((spell) => [spell.id, spell]));
+export const ALL_SPELLS: GeneratedSpell[] = mergeSpellCatalogs();
+
+export function buildSpellLists(spells: PhbSpell[]): Record<string, string[]> {
+  const lists: Record<string, string[]> = {};
+  for (const spell of spells) {
+    for (const listId of spell.classes ?? []) {
+      if (!lists[listId]) lists[listId] = [];
+      lists[listId].push(spell.id);
+    }
+  }
+  for (const ids of Object.values(lists)) {
+    ids.sort((a, b) => a.localeCompare(b));
+  }
+  return lists;
+}
+
+/** Class spell list ids mapped to spell slugs (all levels). */
+export const SPELL_LISTS: Record<string, string[]> = buildSpellLists(ALL_SPELLS);
+
+const spellById = new Map(ALL_SPELLS.map((spell) => [spell.id, spell]));
 
 export function getSpell(id: string): PhbSpell | undefined {
   return spellById.get(id);
 }
 
 export function getSpellsForList(listId: string): PhbSpell[] {
-  const ids = SPELL_LISTS[listId] ?? [];
-  return ids
-    .map((id) => spellById.get(id))
-    .filter((spell): spell is PhbSpell => spell !== undefined);
+  return ALL_SPELLS.filter((spell) => spell.classes?.includes(listId));
 }
 
 export function getCantripsForList(listId: string): PhbSpell[] {

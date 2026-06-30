@@ -632,6 +632,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       magicInitiateClass: "",
       magicInitiateCantripIds: [],
       magicInitiateSpellId: "",
+      bonusDruidCantripId: "",
     },
     speciesChoices: {
       halfElfAbilityBonuses: state.halfElfAbilityBonuses,
@@ -654,6 +655,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
     },
     classSkillChoices: state.classSkills,
     features: [],
+    featureUseState: {},
   };
 
   const syncedData = syncFeatureGrants(data, {

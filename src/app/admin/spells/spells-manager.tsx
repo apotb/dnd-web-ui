@@ -122,7 +122,7 @@ export function SpellsManager({ entries }: { entries: SpellRow[] }) {
           <span className="pr-4">Source</span>
           <span />
         </div>
-        {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No spells found. Click "Seed from PHB" to populate.</p>}
+        {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No spells found.</p>}
         {filtered.map((row, idx) => (
           <div key={row.slug} className={`grid grid-cols-[1fr_40px_130px_80px_160px] items-center gap-0 px-4 py-2.5 ${idx !== filtered.length - 1 ? "border-b" : ""}`}>
             <div className="min-w-0">

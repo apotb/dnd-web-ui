@@ -14,6 +14,7 @@ import { migrateSkillKeys } from "@/lib/character/skill-migration";
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
 import { migrateLanguageChoices } from "@/lib/character/language-choices";
+import { normalizeCombatConditions } from "@/lib/dnd/conditions";
 import { syncSpellcastingFromClass } from "@/lib/dnd/spellcasting";
 import { levelFromXp, xpForLevel } from "@/lib/dnd/xp";
 import type { Character } from "@/lib/types/database";
@@ -232,6 +233,18 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
 
   // --- Skill keys (display-name keys from pre-schema saves) ---
   raw = migrateSkillKeys(raw as unknown as CharacterData) as Record<string, unknown>;
+
+  // --- Combat conditions (legacy display names → catalog slugs) ---
+  const combat = raw.combat as Record<string, unknown> | undefined;
+  if (combat && Array.isArray(combat.conditions)) {
+    raw = {
+      ...raw,
+      combat: {
+        ...combat,
+        conditions: normalizeCombatConditions(combat.conditions as string[]),
+      },
+    };
+  }
 
   // --- Spellcasting ability, slots, and cantrip preparation from class ---
   const spellClass = resolveCharacterClass(raw as unknown as CharacterData);

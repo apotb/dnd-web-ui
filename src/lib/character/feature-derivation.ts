@@ -8,6 +8,7 @@ import {
 import {
   deriveConfigurableFeatures,
   isLegacyPersonalizedFeature,
+  resolveFeatureCatalogs,
   type ConfigurableGrantedFeature,
   type FeatureCatalogs,
   type FeatureSource,
@@ -18,9 +19,6 @@ import {
   isReplacedByGrantFeature,
   type GrantConfigurableFeature,
 } from "@/lib/character/feature-grant-features";
-import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
-import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
-import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 
 export type { FeatureCatalogs, FeatureSource, ConfigurableGrantedFeature };
 export { isConfigurableGrantedFeature, isLegacyPersonalizedFeature } from "@/lib/character/feature-choices";
@@ -28,6 +26,7 @@ export {
   isGrantConfigurableFeature,
   type GrantConfigurableFeature,
 } from "@/lib/character/feature-grant-features";
+export { enrichMechanicalFeature } from "@/lib/dnd/mechanical-features";
 
 export interface GrantedFeature extends Feature {
   source: FeatureSource;
@@ -51,16 +50,6 @@ export function isOverriddenClassFeature(
   return (
     CREATOR_OVERRIDDEN_CLASS_FEATURES[classId]?.includes(featureName) ?? false
   );
-}
-
-function resolveFeatureCatalogs(catalogs: FeatureCatalogs = {}) {
-  return {
-    species: catalogs.species?.length ? catalogs.species : PHB_SPECIES,
-    classes: catalogs.classes?.length ? catalogs.classes : PHB_CLASSES,
-    backgrounds: catalogs.backgrounds?.length
-      ? catalogs.backgrounds
-      : PHB_BACKGROUNDS,
-  };
 }
 
 function makeGrantedFeature(

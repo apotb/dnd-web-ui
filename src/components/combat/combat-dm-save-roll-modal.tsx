@@ -1,49 +1,94 @@
 "use client";
 
 import { useState } from "react";
-import { parseD20Roll, SaveRollField } from "@/components/combat/combat-roll-fields";
-import type { PendingAttackTarget } from "@/lib/schemas/combat-state";
+import { parseD20Roll } from "@/components/combat/combat-roll-fields";
+import { CombatSaveRollEntry } from "@/components/combat/combat-save-roll-entry";
+import {
+  computeEffectiveSaveRollValue,
+  getTokenSaveModifier,
+} from "@/lib/combat/attack-resolution";
+import type { ParsedCharacter } from "@/lib/character/utils";
+import type { PhbClass } from "@/lib/dnd/phb/types";
+import type { EnemyData } from "@/lib/schemas/enemy";
+import type { CombatToken, PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatDmSaveRollModalProps {
   targets: PendingAttackTarget[];
+  tokens: CombatToken[];
+  charactersById: Record<string, ParsedCharacter>;
+  enemiesBySlug: Record<string, { data: EnemyData }>;
+  classCatalog?: PhbClass[];
   saveAbility?: string;
   saveDc?: number;
+  damageType?: string;
+  saveHalfDamageOnSuccess?: boolean;
   onCancel: () => void;
-  onSubmit: (saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number }>) => void;
+  onSubmit: (
+    saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number; saveRoll2?: number | null }>
+  ) => void;
   submitting?: boolean;
-}
-
-function parseIntOrZero(value: string): number {
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function CombatDmSaveRollModal({
   targets,
+  tokens,
+  charactersById,
+  enemiesBySlug,
+  classCatalog,
   saveAbility,
   saveDc,
+  damageType,
+  saveHalfDamageOnSuccess = true,
   onCancel,
   onSubmit,
   submitting = false,
 }: CombatDmSaveRollModalProps) {
-  const [rolls, setRolls] = useState<
-    Record<string, { saveRoll: string; saveMod: string }>
-  >({});
+  const [rolls, setRolls] = useState<Record<string, string>>({});
+  const [rolls2, setRolls2] = useState<Record<string, string>>({});
+
+  function resolveSaveModifier(targetTokenId: string): number | null {
+    const token = tokens.find((entry) => entry.id === targetTokenId);
+    if (!token) return null;
+    const character = token.characterId ? charactersById[token.characterId] ?? null : null;
+    const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
+    return getTokenSaveModifier(token, saveAbility, {
+      character,
+      enemyData,
+      classCatalog,
+    });
+  }
 
   function handleSubmit() {
     onSubmit(
       targets.map((target) => {
-        const entry = rolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
-        const saveRoll = parseD20Roll(entry.saveRoll) ?? 0;
-        const saveTotal = saveRoll + parseIntOrZero(entry.saveMod);
-        return { tokenId: target.tokenId, saveRoll, saveTotal };
+        const saveRollValue = parseD20Roll(rolls[target.tokenId] ?? "");
+        const saveRoll2Value = parseD20Roll(rolls2[target.tokenId] ?? "");
+        const usedRoll = computeEffectiveSaveRollValue(saveRollValue, saveRoll2Value, {
+          saveAdvantage: target.saveAdvantage,
+          saveDisadvantage: target.saveDisadvantage,
+        }) ?? 0;
+        const saveMod = resolveSaveModifier(target.tokenId) ?? 0;
+        const saveTotal = usedRoll + saveMod;
+        return {
+          tokenId: target.tokenId,
+          saveRoll: usedRoll,
+          saveTotal,
+          saveRoll2:
+            target.saveAdvantage || target.saveDisadvantage ? saveRoll2Value : null,
+        };
       })
     );
   }
 
   const allSavesValid = targets.every((target) => {
-    const entry = rolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
-    return parseD20Roll(entry.saveRoll) != null;
+    const saveRollValue = parseD20Roll(rolls[target.tokenId] ?? "");
+    const saveRoll2Value = parseD20Roll(rolls2[target.tokenId] ?? "");
+    return (
+      computeEffectiveSaveRollValue(saveRollValue, saveRoll2Value, {
+        saveAdvantage: target.saveAdvantage,
+        saveDisadvantage: target.saveDisadvantage,
+      }) != null
+    );
   });
 
   return (
@@ -53,51 +98,43 @@ export function CombatDmSaveRollModal({
         onClick={(event) => event.stopPropagation()}
       >
         <p className="retro-box-title">Enter saving throws</p>
-        <p className="retro-muted">
+        <p className="retro-muted combat-awaiting-saves-summary">
           DC {saveDc ?? "?"}
-          {saveAbility ? ` ${saveAbility}` : ""} — enter saves for creatures you control.
+          {saveAbility ? ` ${saveAbility}` : ""} save
+          {saveHalfDamageOnSuccess
+            ? " · half damage on a successful save"
+            : " · no damage on a successful save"}
         </p>
 
         <div className="combat-dm-save-roll-list">
-          {targets.map((target) => {
-            const entry = rolls[target.tokenId] ?? { saveRoll: "", saveMod: "" };
-            const saveRollValue = parseD20Roll(entry.saveRoll);
-            const total = (saveRollValue ?? 0) + parseIntOrZero(entry.saveMod);
-            return (
-              <div key={target.tokenId} className="combat-attack-submit-target-block">
-                <strong>{target.label}</strong>
-                <label className="combat-attack-submit-field">
-                  <span>d20</span>
-                  <SaveRollField
-                    value={entry.saveRoll}
-                    onChange={(value) =>
-                      setRolls((current) => ({
-                        ...current,
-                        [target.tokenId]: { ...entry, saveRoll: value },
-                      }))
-                    }
-                    disabled={submitting}
-                  />
-                </label>
-                <label className="combat-attack-submit-field">
-                  <span>Mod</span>
-                  <input
-                    type="number"
-                    className="candy-input"
-                    value={entry.saveMod}
-                    onChange={(event) =>
-                      setRolls((current) => ({
-                        ...current,
-                        [target.tokenId]: { ...entry, saveMod: event.target.value },
-                      }))
-                    }
-                    disabled={submitting}
-                  />
-                </label>
-                <span className="retro-muted">= {total}</span>
-              </div>
-            );
-          })}
+          {targets.map((target) => (
+            <CombatSaveRollEntry
+              key={target.tokenId}
+              label={target.label}
+              saveRoll={rolls[target.tokenId] ?? ""}
+              saveRoll2={rolls2[target.tokenId] ?? ""}
+              onSaveRollChange={(value) =>
+                setRolls((current) => ({
+                  ...current,
+                  [target.tokenId]: value,
+                }))
+              }
+              onSaveRoll2Change={(value) =>
+                setRolls2((current) => ({
+                  ...current,
+                  [target.tokenId]: value,
+                }))
+              }
+              saveModifier={resolveSaveModifier(target.tokenId)}
+              saveAdvantage={target.saveAdvantage}
+              saveDisadvantage={target.saveDisadvantage}
+              saveDc={saveDc}
+              baseDamage={target.damageAmount ?? null}
+              damageType={damageType}
+              saveHalfDamageOnSuccess={saveHalfDamageOnSuccess}
+              disabled={submitting}
+            />
+          ))}
         </div>
 
         <div className="supply-picker-actions combat-roll-actions">

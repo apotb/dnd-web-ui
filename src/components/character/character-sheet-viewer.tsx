@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CharacterDeleteButton } from "@/components/character/character-delete-button";
 import { CharacterSheet } from "@/components/character/character-sheet";
 import { JsonImportExport } from "@/components/character/json-import-export";
 import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
+import { LayOnHandsModal } from "@/components/character/lay-on-hands-modal";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import { syncCharacterTopLevelFields } from "@/lib/character/utils";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
+import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import { getCampaignCalendarDate, type WorldData } from "@/lib/schemas/world";
 import type { CharacterData } from "@/lib/schemas/character";
-import type { PhbClass } from "@/lib/dnd/phb/types";
+import type { PhbBackground, PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 
 /** Wait for rapid edits (e.g. equip toggles) to settle before persisting. */
 const SAVE_DEBOUNCE_MS = 900;
@@ -26,6 +28,10 @@ interface CharacterSheetViewerProps {
   canDelete?: boolean;
   initialWorldData: WorldData;
   ownedCharacterId?: string | null;
+  initialPartyCharacters?: ParsedCharacter[];
+  /** Live party list from a parent that already subscribes to character updates. */
+  partyCharacters?: ParsedCharacter[];
+  layOnHandsCombatPreferred?: boolean;
 }
 
 export function CharacterSheetViewer({
@@ -37,13 +43,32 @@ export function CharacterSheetViewer({
   canDelete = false,
   initialWorldData,
   ownedCharacterId = null,
+  initialPartyCharacters = [],
+  partyCharacters: partyCharactersFromParent,
+  layOnHandsCombatPreferred = false,
 }: CharacterSheetViewerProps) {
   const worldData = useRealtimeWorldData(campaignId, initialWorldData);
+  const subscribedPartyCharacters = useRealtimeCharacters(
+    campaignId,
+    initialPartyCharacters,
+    isDm,
+    { enabled: partyCharactersFromParent == null }
+  );
+  const partyCharacters = partyCharactersFromParent ?? subscribedPartyCharacters;
+  const featureCatalogs = useMemo(
+    () => ({
+      classes,
+      species: [] as PhbSpecies[],
+      backgrounds: [] as PhbBackground[],
+    }),
+    [classes]
+  );
   const campaignDate = getCampaignCalendarDate(worldData);
   const [data, setData] = useState<CharacterData>(character.data);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [layOnHandsOpen, setLayOnHandsOpen] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataRef = useRef(data);
   const saveInFlightRef = useRef(false);
@@ -174,6 +199,26 @@ export function CharacterSheetViewer({
     await persistNow(next);
   }
 
+  async function handleLayOnHandsApply(result: {
+    paladinData: CharacterData;
+    targetId: string;
+    targetData: CharacterData;
+  }) {
+    await persistNow(result.paladinData);
+    if (result.targetId !== character.id) {
+      const target = partyCharacters.find((entry) => entry.id === result.targetId);
+      if (target) {
+        const { error } = await saveCharacterData(
+          result.targetId,
+          result.targetData,
+          classes,
+          { isDm, originalData: target.data }
+        );
+        if (error) setSaveError(error);
+      }
+    }
+  }
+
   async function handleImport(payload: {
     name: string;
     playerName: string;
@@ -268,7 +313,23 @@ export function CharacterSheetViewer({
         onPersistPortrait={canEdit ? persistPortrait : undefined}
         campaignDate={campaignDate}
         canRest={canEdit}
+        layOnHandsCombatPreferred={layOnHandsCombatPreferred}
+        onUseLayOnHands={
+          canEdit ? () => setLayOnHandsOpen(true) : undefined
+        }
       />
+      {mounted && layOnHandsOpen
+        ? createPortal(
+            <LayOnHandsModal
+              paladin={{ ...character, data }}
+              partyCharacters={partyCharacters}
+              featureCatalogs={featureCatalogs}
+              onApply={handleLayOnHandsApply}
+              onClose={() => setLayOnHandsOpen(false)}
+            />,
+            document.body
+          )
+        : null}
       {mounted && showShortRestHealModal
         ? createPortal(
             <ShortRestHealModal

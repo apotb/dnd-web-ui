@@ -265,6 +265,7 @@ export async function submitCombatSaveRoll(
     tokenId: string;
     saveRoll: number;
     saveTotal: number;
+    saveRoll2?: number | null;
     charactersById: Record<string, ParsedCharacter>;
   }
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
@@ -277,7 +278,8 @@ export async function submitCombatSaveRoll(
     pending,
     options.tokenId,
     options.saveRoll,
-    options.saveTotal
+    options.saveTotal,
+    options.saveRoll2
   );
   const next = updatePendingAttack(state, options.pendingAttackId, updated);
 
@@ -306,7 +308,7 @@ export async function submitCombatDmSaveRolls(
   campaignId: string,
   state: CombatState,
   pendingAttackId: string,
-  saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number }>,
+  saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number; saveRoll2?: number | null }>,
   charactersById: Record<string, ParsedCharacter>,
   isDm: boolean
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {

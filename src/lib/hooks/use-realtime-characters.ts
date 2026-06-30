@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { parseCharacterRow, type ParsedCharacter } from "@/lib/character/utils";
 import type { Character } from "@/lib/types/database";
@@ -8,9 +8,12 @@ import type { Character } from "@/lib/types/database";
 export function useRealtimeCharacters(
   campaignId: string,
   initialCharacters: ParsedCharacter[],
-  isDm: boolean
+  isDm: boolean,
+  options?: { enabled?: boolean }
 ) {
   const [characters, setCharacters] = useState(initialCharacters);
+  const subscriptionId = useId().replace(/:/g, "");
+  const enabled = options?.enabled ?? true;
 
   useEffect(() => {
     setCharacters(initialCharacters);
@@ -18,10 +21,12 @@ export function useRealtimeCharacters(
   }, [campaignId]);
 
   useEffect(() => {
+    if (!enabled) return;
+
     const supabase = createClient();
 
     const channel = supabase
-      .channel(`characters:${campaignId}`)
+      .channel(`characters:${campaignId}:${subscriptionId}`)
       .on(
         "postgres_changes",
         {
@@ -76,7 +81,7 @@ export function useRealtimeCharacters(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [campaignId, isDm]);
+  }, [campaignId, enabled, isDm, subscriptionId]);
 
   return characters;
 }

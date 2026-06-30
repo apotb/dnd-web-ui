@@ -160,24 +160,27 @@ function slugify(value: string): string {
 export function inferActionCost(description: string): ActionCost | null {
   const text = description.toLowerCase();
 
-  if (/\bas a bonus action\b/.test(text) || /\bbonus action to\b/.test(text)) {
-    return "bonus-action";
-  }
-  if (
-    /\buse your reaction\b/.test(text) ||
-    /\bas a reaction\b/.test(text) ||
-    /\busing your reaction\b/.test(text)
-  ) {
-    return "reaction";
-  }
-  if (/\bas an action\b/.test(text) || /\bas a action\b/.test(text)) {
-    return "action";
-  }
-  if (/\bfree action\b/.test(text)) {
-    return "free";
+  const patterns: Array<{ cost: ActionCost; regex: RegExp }> = [
+    { cost: "bonus-action", regex: /\bas a bonus action\b/ },
+    { cost: "bonus-action", regex: /\bbonus action to\b/ },
+    { cost: "reaction", regex: /\buse your reaction\b/ },
+    { cost: "reaction", regex: /\bas a reaction\b/ },
+    { cost: "reaction", regex: /\busing your reaction\b/ },
+    { cost: "action", regex: /\bas an action\b/ },
+    { cost: "action", regex: /\bas a action\b/ },
+    { cost: "free", regex: /\bfree action\b/ },
+  ];
+
+  let earliest: { cost: ActionCost; index: number } | null = null;
+  for (const { cost, regex } of patterns) {
+    const match = regex.exec(text);
+    if (match == null) continue;
+    if (earliest == null || match.index < earliest.index) {
+      earliest = { cost, index: match.index };
+    }
   }
 
-  return null;
+  return earliest?.cost ?? null;
 }
 
 function featureToAction(
