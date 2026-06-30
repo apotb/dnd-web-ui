@@ -1,4 +1,4 @@
-import { isHostileToken } from "@/lib/combat/engagement";
+import { isHostileToken, isTokenEngaged } from "@/lib/combat/engagement";
 import { isCellBlocked } from "@/lib/combat/collision";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
@@ -184,6 +184,50 @@ export function isAttackAtLongRange(
   return distance > spec.normalRangeFt && distance <= spec.longRangeFt;
 }
 
+export function isRangedAttackRoll(attack: DerivedAttack): boolean {
+  const rollType = attack.rollType ?? "attack";
+  if (rollType !== "attack") return false;
+  const spec = parseAttackRangeSpec(attack);
+  if (spec.isAoe) return false;
+  return spec.normalRangeFt > 5;
+}
+
+export function hasRangedAttackAdjacentDisadvantage(
+  attacker: CombatToken,
+  state: CombatState,
+  attack: DerivedAttack
+): boolean {
+  return isRangedAttackRoll(attack) && isTokenEngaged(attacker, state);
+}
+
+export function getAttackRollDisadvantage(
+  attacker: CombatToken,
+  target: CombatToken,
+  state: CombatState,
+  attack: DerivedAttack
+): boolean {
+  const spec = parseAttackRangeSpec(attack);
+  return (
+    isAttackAtLongRange(attacker, target, state, spec) ||
+    hasRangedAttackAdjacentDisadvantage(attacker, state, attack)
+  );
+}
+
+export function formatAttackDisadvantageLabel(
+  attacker: CombatToken,
+  target: CombatToken,
+  state: CombatState,
+  attack: DerivedAttack
+): string | null {
+  const spec = parseAttackRangeSpec(attack);
+  const longRange = isAttackAtLongRange(attacker, target, state, spec);
+  const adjacent = hasRangedAttackAdjacentDisadvantage(attacker, state, attack);
+  if (!longRange && !adjacent) return null;
+  if (longRange && adjacent) return "Disadvantage (long range, adjacent enemy)";
+  if (longRange) return "Long range (disadvantage)";
+  return "Adjacent enemy (disadvantage)";
+}
+
 export function isTokenInAttackRange(
   attacker: CombatToken,
   target: CombatToken,
@@ -225,9 +269,12 @@ export function getValidHostileTargets(
 export function getValidHostileTargetsForAttack(
   attacker: CombatToken,
   state: CombatState,
-  spec: AttackRangeSpec
+  spec: AttackRangeSpec,
+  attack?: DerivedAttack
 ): CombatToken[] {
-  return getValidHostileTargets(attacker, state, spec.maxFt);
+  const targets = getValidHostileTargets(attacker, state, spec.maxFt);
+  if (!attack || !isRangedAttackRoll(attack)) return targets;
+  return targets.filter((token) => hasLineOfSightToToken(attacker, token, state));
 }
 
 export function findHostileTargetAtCell(
@@ -240,7 +287,7 @@ export function findHostileTargetAtCell(
   if (spec.isAoe) return null;
 
   const validIds = new Set(
-    getValidHostileTargetsForAttack(attacker, state, spec).map((token) => token.id)
+    getValidHostileTargetsForAttack(attacker, state, spec, attack).map((token) => token.id)
   );
 
   for (const token of state.tokens) {
@@ -420,6 +467,7 @@ export function getTargetingHighlights(
   spec: AttackRangeSpec;
   validTargets: CombatToken[];
   validCells: GridPosition[];
+  rangedCellZones?: Map<string, RangedAttackCellZone>;
 } {
   const spec = parseAttackRangeSpec(attack);
 
@@ -431,7 +479,8 @@ export function getTargetingHighlights(
     };
   }
 
-  const validTargets = getValidHostileTargetsForAttack(attacker, state, spec);
+  const ranged = isRangedAttackRoll(attack);
+  const validTargets = getValidHostileTargetsForAttack(attacker, state, spec, attack);
   const validCells: GridPosition[] = [];
   for (const token of validTargets) {
     for (let dy = 0; dy < token.height; dy++) {
@@ -443,10 +492,17 @@ export function getTargetingHighlights(
     }
   }
 
+  const rangedCellZones = spec.isAoe
+    ? undefined
+    : ranged
+      ? buildRangedAttackCellZones(attacker, state, spec)
+      : buildMeleeAttackCellZones(attacker, state, spec);
+
   return {
     spec,
     validTargets,
     validCells,
+    rangedCellZones,
   };
 }
 
@@ -470,6 +526,136 @@ export function getAoePreviewTargets(
 export function getAttackerOriginCell(attacker: CombatToken): GridPosition {
   const center = tokenCenter(attacker);
   return { x: Math.floor(center.x), y: Math.floor(center.y) };
+}
+
+/** Integer Bresenham line between two grid cells (inclusive). */
+function getGridLineCells(from: GridPosition, to: GridPosition): GridPosition[] {
+  const cells: GridPosition[] = [];
+  let x0 = from.x;
+  let y0 = from.y;
+  const x1 = to.x;
+  const y1 = to.y;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+
+  while (true) {
+    cells.push({ x: x0, y: y0 });
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x0 += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+
+  return cells;
+}
+
+function isLineBlockedByWalls(
+  state: CombatState,
+  from: GridPosition,
+  to: GridPosition
+): boolean {
+  const line = getGridLineCells(from, to);
+  for (let i = 1; i < line.length - 1; i++) {
+    const cell = line[i];
+    if (isCellBlocked(state, cell.x, cell.y)) return true;
+  }
+  return false;
+}
+
+export function hasLineOfSightToCell(
+  attacker: CombatToken,
+  cell: GridPosition,
+  state: CombatState
+): boolean {
+  if (!isTokenOnGrid(attacker, state)) return false;
+  const origin = getAttackerOriginCell(attacker);
+  if (origin.x === cell.x && origin.y === cell.y) return true;
+  return !isLineBlockedByWalls(state, origin, cell);
+}
+
+export function hasLineOfSightToToken(
+  attacker: CombatToken,
+  target: CombatToken,
+  state: CombatState
+): boolean {
+  if (!isTokenOnGrid(target, state)) return false;
+  for (let dy = 0; dy < target.height; dy++) {
+    for (let dx = 0; dx < target.width; dx++) {
+      if (hasLineOfSightToCell(attacker, { x: target.x + dx, y: target.y + dy }, state)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export type RangedAttackCellZone = "normal" | "long";
+
+export function buildRangedAttackCellZones(
+  attacker: CombatToken,
+  state: CombatState,
+  spec: AttackRangeSpec
+): Map<string, RangedAttackCellZone> {
+  const zones = new Map<string, RangedAttackCellZone>();
+  if (!isTokenOnGrid(attacker, state)) return zones;
+
+  const tileFeet = state.tileFeet;
+  const hasLongBand =
+    spec.longRangeFt != null && spec.longRangeFt > spec.normalRangeFt;
+
+  for (let y = 0; y < state.gridHeight; y++) {
+    for (let x = 0; x < state.gridWidth; x++) {
+      if (isCellBlocked(state, x, y)) continue;
+
+      const cell = { x, y };
+      if (!hasLineOfSightToCell(attacker, cell, state)) continue;
+
+      const distanceFt = distanceFeetToCell(attacker, cell, tileFeet);
+      if (distanceFt <= spec.normalRangeFt) {
+        zones.set(`${x},${y}`, "normal");
+      } else if (
+        hasLongBand &&
+        distanceFt > spec.normalRangeFt &&
+        distanceFt <= spec.longRangeFt!
+      ) {
+        zones.set(`${x},${y}`, "long");
+      }
+    }
+  }
+
+  return zones;
+}
+
+export function buildMeleeAttackCellZones(
+  attacker: CombatToken,
+  state: CombatState,
+  spec: AttackRangeSpec
+): Map<string, RangedAttackCellZone> {
+  const zones = new Map<string, RangedAttackCellZone>();
+  if (!isTokenOnGrid(attacker, state)) return zones;
+
+  const tileFeet = state.tileFeet;
+  for (let y = 0; y < state.gridHeight; y++) {
+    for (let x = 0; x < state.gridWidth; x++) {
+      if (isCellBlocked(state, x, y)) continue;
+
+      const distanceFt = distanceFeetToCell(attacker, { x, y }, tileFeet);
+      if (distanceFt <= spec.maxFt) {
+        zones.set(`${x},${y}`, "normal");
+      }
+    }
+  }
+
+  return zones;
 }
 
 export function isCellInRangeForAoe(

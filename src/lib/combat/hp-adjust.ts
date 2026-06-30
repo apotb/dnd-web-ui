@@ -64,3 +64,20 @@ export function applyHpDelta(currentHp: number, maxHp: number, delta: number): n
   }
   return Math.max(0, currentHp + delta);
 }
+
+/** Apply HP/damageTaken and auto-hide enemies reduced to 0 HP. */
+export function patchTokenHpFromDamage(
+  token: CombatToken,
+  nextHp: number,
+  damageTaken: number
+): CombatToken {
+  const updated: CombatToken = {
+    ...token,
+    currentHp: nextHp,
+    damageTaken,
+  };
+  if (token.kind === "enemy" && nextHp <= 0) {
+    return { ...updated, hidden: true };
+  }
+  return updated;
+}

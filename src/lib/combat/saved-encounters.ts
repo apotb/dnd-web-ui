@@ -74,6 +74,10 @@ export function combatStateToEncounterPayload(
       width: token.width,
       height: token.height,
       hasCollision: token.hasCollision ?? false,
+      isObject: token.isObject ?? false,
+      itemPickup: token.itemPickup ?? false,
+      ...(token.pickupItemId ? { pickupItemId: token.pickupItemId } : {}),
+      pickupQuantity: token.pickupQuantity ?? 1,
     }));
 
   const characterSlots = state.tokens
@@ -135,6 +139,10 @@ function createMarkerTokenFromSave(saved: SavedEncounterMarker): CombatToken {
     height: saved.height,
     placed: true,
     hasCollision: saved.hasCollision ?? false,
+    isObject: saved.isObject ?? false,
+    itemPickup: saved.itemPickup ?? false,
+    pickupItemId: saved.pickupItemId,
+    pickupQuantity: saved.pickupQuantity ?? 1,
   });
 }
 
@@ -148,6 +156,7 @@ const EMPTY_TURN: CombatState["turn"] = {
   actionUsed: false,
   bonusActionUsed: false,
   disengageUsed: false,
+  freeObjectInteractionUsed: false,
 };
 
 export function savedEncounterToCombatState(

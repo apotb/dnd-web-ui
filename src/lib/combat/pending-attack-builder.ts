@@ -8,8 +8,8 @@ import {
 import {
   findHostileTargetAtCell,
   getAoePreviewTargets,
+  getAttackRollDisadvantage,
   getValidHostileTargetsForAttack,
-  isAttackAtLongRange,
   isTokenOnGrid,
   parseAttackRangeSpec,
 } from "@/lib/combat/targeting";
@@ -111,7 +111,7 @@ function resolvePendingThrownWeapon(
   charactersById: Record<string, ParsedCharacter>
 ): Pick<
   PendingAttack,
-  "thrownInventoryItemId" | "thrownItemName" | "thrownItemId"
+  "thrownInventoryItemId" | "thrownItemName" | "thrownItemId" | "thrownRemaining"
 > {
   if (!attack.throwsWeapon || !attack.inventoryStackId || !attacker.characterId) return {};
 
@@ -128,6 +128,7 @@ function resolvePendingThrownWeapon(
     thrownInventoryItemId: stack.id,
     thrownItemName: attack.thrownItemName ?? attack.name,
     thrownItemId: attack.itemId,
+    thrownRemaining: stack.quantity,
   };
 }
 
@@ -187,7 +188,7 @@ export function createPendingAttack(
       enemyData: ctx.enemyData,
       requiresSave,
     });
-    const attackDisadvantage = isAttackAtLongRange(attacker, token, state, spec);
+    const attackDisadvantage = getAttackRollDisadvantage(attacker, token, state, attack);
 
     const perTarget = submission.perTarget?.find((entry) => entry.tokenId === token.id);
     const attackRoll = perTarget?.attackRoll ?? submission.attackRoll ?? null;
@@ -367,5 +368,5 @@ export function isTokenValidSingleTarget(
   if (!isHostileToken(attacker, target) && attack.rollType !== "save") return false;
   const spec = parseAttackRangeSpec(attack);
   if (spec.isAoe) return false;
-  return getValidHostileTargetsForAttack(attacker, state, spec).some((t) => t.id === target.id);
+  return getValidHostileTargetsForAttack(attacker, state, spec, attack).some((t) => t.id === target.id);
 }

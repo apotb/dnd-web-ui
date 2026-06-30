@@ -14,6 +14,7 @@ import {
 import type { EnemyRecord } from "@/lib/combat/state-utils";
 import type { Encounter } from "@/lib/types/database";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -26,7 +27,7 @@ interface EncounterLoadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   enemiesBySlug: Record<string, EnemyRecord>;
-  onLoad: (encounter: Encounter) => void;
+  onLoad: (encounter: Encounter, options: { autoPopulateCharacters: boolean }) => void;
 }
 
 const SORT_OPTIONS: Array<{ value: EncounterSort; label: string }> = [
@@ -46,7 +47,8 @@ export function EncounterLoadDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<EncounterSort>("name");
+  const [sort, setSort] = useState<EncounterSort>("totalCr");
+  const [autoPopulateCharacters, setAutoPopulateCharacters] = useState(false);
 
   async function fetchEncounters() {
     setLoading(true);
@@ -68,7 +70,8 @@ export function EncounterLoadDialog({
   useEffect(() => {
     if (!open) return;
     setSearch("");
-    setSort("name");
+    setSort("totalCr");
+    setAutoPopulateCharacters(false);
     void fetchEncounters();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when dialog opens
   }, [open]);
@@ -82,8 +85,15 @@ export function EncounterLoadDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl combat-encounter-load-dialog">
-        <DialogHeader>
+        <DialogHeader className="combat-encounter-load-dialog-header">
           <DialogTitle>Load encounter</DialogTitle>
+          <label className="combat-encounter-load-auto-populate">
+            <Checkbox
+              checked={autoPopulateCharacters}
+              onCheckedChange={(checked) => setAutoPopulateCharacters(checked === true)}
+            />
+            <span>Auto-populate</span>
+          </label>
         </DialogHeader>
 
         <div className="combat-encounter-load-controls">
@@ -130,7 +140,7 @@ export function EncounterLoadDialog({
                   : null
               }
               onLoad={() => {
-                onLoad(encounter);
+                onLoad(encounter, { autoPopulateCharacters });
                 onOpenChange(false);
               }}
             />

@@ -268,6 +268,31 @@ export function formatAttackRollLine(attack: DerivedAttack): string {
   return `${formatModifier(attack.attackBonus)} to hit`;
 }
 
+function parseNormalRangeFt(range: string): number {
+  const trimmed = range.trim();
+  const bandMatch = trimmed.match(/^(\d+)\s*\/\s*\d+\s*ft$/i);
+  if (bandMatch) return parseInt(bandMatch[1], 10);
+  const singleMatch = trimmed.match(/^(\d+)\s*ft$/i);
+  if (singleMatch) return parseInt(singleMatch[1], 10);
+  return 5;
+}
+
+/** Combat tooltip category: Melee, Ranged, Thrown, Spell, Cantrip, etc. */
+export function getAttackCategoryLabel(attack: DerivedAttack): string {
+  if (attack.source === "cantrip") return "Cantrip";
+  if (attack.source === "spell") return "Spell";
+  if (attack.throwsWeapon || attack.id.endsWith("-thrown")) return "Thrown";
+
+  const rollType = attack.rollType ?? "attack";
+  if (rollType === "attack") {
+    if (parseNormalRangeFt(attack.range) > 5) return "Ranged";
+    return "Melee";
+  }
+
+  if (attack.source === "manual") return "Melee";
+  return "Special";
+}
+
 /** Single-line attack summary for combat submit/review UI. */
 export function formatAttackDescriptionBlurb(attack: DerivedAttack): string {
   const notes = attack.notes.trim();
@@ -372,20 +397,14 @@ export function deriveWeaponAttacks(
       catalogClasses
     );
     const attackBonus = abilityMod + (proficient ? prof : 0);
-
-    let range = "";
-    if (isRanged && wp.rangeNormal) {
-      range = `${wp.rangeNormal}/${wp.rangeLong ?? wp.rangeNormal * 4} ft`;
-    } else if (isThrown && wp.throwRangeNormal) {
-      range = `${wp.throwRangeNormal}/${wp.throwRangeLong ?? wp.throwRangeNormal * 3} ft`;
-    } else if (!isRanged) {
-      range = "5 ft";
-    }
-
     const baseName = invItem.name || catalogItem.name;
 
     const usesAmmunition = isRanged && weaponUsesAmmunition(catalogItem);
     const throwsWeapon = weaponConsumesSelfWhenThrown(catalogItem);
+    const isMeleeThrowable = !isRanged && isThrown && wp.throwRangeNormal != null;
+    const throwRange = isThrown && wp.throwRangeNormal
+      ? `${wp.throwRangeNormal}/${wp.throwRangeLong ?? wp.throwRangeNormal * 3} ft`
+      : "";
     const ammunitionItemId = usesAmmunition
       ? getAmmunitionSlugForWeapon(catalogItem.slug)
       : null;
@@ -398,28 +417,59 @@ export function deriveWeaponAttacks(
         ? countAmmunitionInInventory(character.inventory.items, ammunitionItemId)
         : undefined;
 
-    const addAttack = (isOffHand: boolean) => {
+    let singleRange = "";
+    if (isRanged && wp.rangeNormal) {
+      singleRange = `${wp.rangeNormal}/${wp.rangeLong ?? wp.rangeNormal * 4} ft`;
+    } else if (isThrown && wp.throwRangeNormal) {
+      singleRange = throwRange;
+    } else if (!isRanged) {
+      singleRange = "5 ft";
+    }
+
+    const addAttack = (isOffHand: boolean, mode: "single" | "melee" | "thrown") => {
       const includeMod = !isOffHand || twf;
       const damageDiceStr = wp.damage
         ? formatDamageDice(wp.damage, abilityMod, includeMod)
         : "—";
 
+      const offHandSuffix = isOffHand ? " (off-hand)" : "";
+      const name =
+        mode === "thrown"
+          ? `${baseName}${offHandSuffix} (thrown)`
+          : isOffHand
+            ? `${baseName} (off-hand)`
+            : baseName;
+
+      const idSuffix = isOffHand ? "-off" : "";
+      const modeSuffix = mode === "single" ? "" : `-${mode}`;
+
       const notes: string[] = [];
       if (isOffHand) notes.push("Bonus action");
-      if (wp.weaponProperties.includes("versatile") && wp.versatileDamage && !isOffHand) {
+      if (
+        mode !== "thrown" &&
+        wp.weaponProperties.includes("versatile") &&
+        wp.versatileDamage &&
+        !isOffHand
+      ) {
         const versMod = abilityMod >= 0 ? `+${abilityMod}` : `${abilityMod}`;
         notes.push(`Two-handed: ${wp.versatileDamage}${versMod}`);
       }
       if (wp.weaponProperties.includes("finesse")) notes.push("Finesse");
-      if (wp.weaponProperties.includes("reach")) notes.push("Reach (10 ft)");
+      if (mode !== "thrown" && wp.weaponProperties.includes("reach")) {
+        notes.push("Reach (10 ft)");
+      }
+
+      const attackRange =
+        mode === "melee" ? "5 ft" : mode === "thrown" ? throwRange : singleRange;
+      const isThrownAttack = mode === "thrown" && throwsWeapon;
 
       attacks.push({
-        id: `weapon-${invItem.id}${isOffHand ? "-off" : ""}`,
-        name: isOffHand ? `${baseName} (off-hand)` : baseName,
+        id: `weapon-${invItem.id}${idSuffix}${modeSuffix}`,
+        name,
         attackBonus,
         damageDice: damageDiceStr,
         damageType: wp.damageType,
-        range,
+        range: attackRange,
         notes: notes.join(", "),
         source: "weapon",
         itemId: invItem.itemId,
@@ -428,14 +478,23 @@ export function deriveWeaponAttacks(
         ammunitionItemId: ammunitionItemId ?? undefined,
         ammunitionName,
         ammunitionRemaining,
-        throwsWeapon: throwsWeapon || undefined,
-        thrownItemName: throwsWeapon ? baseName : undefined,
-        thrownRemaining: throwsWeapon ? invItem.quantity : undefined,
+        throwsWeapon: isThrownAttack || undefined,
+        thrownItemName: isThrownAttack ? baseName : undefined,
+        thrownRemaining: isThrownAttack ? invItem.quantity : undefined,
       });
     };
 
-    if (mainHand) addAttack(false);
-    if (offHand) addAttack(true);
+    const addAttacksForWield = (isOffHand: boolean) => {
+      if (isMeleeThrowable) {
+        addAttack(isOffHand, "melee");
+        addAttack(isOffHand, "thrown");
+      } else {
+        addAttack(isOffHand, "single");
+      }
+    };
+
+    if (mainHand) addAttacksForWield(false);
+    if (offHand) addAttacksForWield(true);
   }
 
   return attacks;

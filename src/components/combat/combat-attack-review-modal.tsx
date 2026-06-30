@@ -17,11 +17,12 @@ import {
   formatDamageAppliedBreakdown,
   resolveFinalDamageApplied,
 } from "@/lib/combat/attack-resolution";
-import { formatAmmunitionConsumptionLine, formatThrownWeaponConsumptionLine } from "@/lib/dnd/ammunition";
+import { formatAmmunitionConsumptionLine, formatThrownWeaponLine } from "@/lib/dnd/ammunition";
 import type { PendingAttack, PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatAttackReviewModalProps {
   pending: PendingAttack;
+  resolveDisadvantageLabel?: (targetTokenId: string) => string | null;
   onCancel: () => void;
   onConfirm: (pending: PendingAttack) => void;
   submitting?: boolean;
@@ -65,6 +66,7 @@ function projectedHp(
 
 export function CombatAttackReviewModal({
   pending,
+  resolveDisadvantageLabel,
   onCancel,
   onConfirm,
   submitting = false,
@@ -221,7 +223,9 @@ export function CombatAttackReviewModal({
             <strong>{target.label}</strong>
             <span className="retro-muted">
               AC {target.ac ?? "?"} · {formatHpLine(target)}
-              {target.attackDisadvantage ? " · Long range (disadvantage)" : ""}
+              {target.attackDisadvantage
+                ? ` · ${resolveDisadvantageLabel?.(target.tokenId) ?? "Disadvantage on attack roll"}`
+                : ""}
               {afterHp != null ? ` · After damage: ${afterHp} HP` : ""}
             </span>
 
@@ -368,7 +372,10 @@ export function CombatAttackReviewModal({
         ) : null}
         {pending.thrownItemName ? (
           <p className="retro-muted combat-attack-submit-ammo">
-            {formatThrownWeaponConsumptionLine(pending.thrownItemName)}
+            {formatThrownWeaponLine(
+              pending.thrownItemName,
+              pending.thrownRemaining ?? 1
+            )}
           </p>
         ) : null}
 

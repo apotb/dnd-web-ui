@@ -5,9 +5,9 @@ import {
   getAoeCells,
   parseAttackRangeSpec,
   type AttackRangeSpec,
+  type RangedAttackCellZone,
 } from "@/lib/combat/targeting";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
-import { formatAmmunitionLine, formatThrownWeaponLine } from "@/lib/dnd/ammunition";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 
 interface CombatTargetingOverlayProps {
@@ -16,16 +16,13 @@ interface CombatTargetingOverlayProps {
   attacker: CombatToken;
   attack: DerivedAttack;
   state: CombatState;
-  validTargets: CombatToken[];
   validCells: Array<{ x: number; y: number }>;
+  rangedCellZones?: Map<string, RangedAttackCellZone>;
   hoveredCell: { x: number; y: number } | null;
   previewCenter: { x: number; y: number } | null;
-  hoveredTokenLabel?: string | null;
-  hoveredTokenDetail?: string | null;
   onPointerMove: (clientX: number, clientY: number) => void;
   onPointerLeave: () => void;
   onCellHover: (cell: { x: number; y: number } | null) => void;
-  onCancel: () => void;
 }
 
 export function CombatTargetingOverlay({
@@ -34,28 +31,15 @@ export function CombatTargetingOverlay({
   attacker,
   attack,
   state,
-  validTargets,
   validCells,
+  rangedCellZones,
   hoveredCell,
   previewCenter,
-  hoveredTokenLabel = null,
-  hoveredTokenDetail = null,
   onPointerMove,
   onPointerLeave,
   onCellHover,
-  onCancel,
 }: CombatTargetingOverlayProps) {
   const spec: AttackRangeSpec = useMemo(() => parseAttackRangeSpec(attack), [attack]);
-  const ammunitionLine =
-    attack.ammunitionName != null && attack.ammunitionRemaining != null
-      ? formatAmmunitionLine(attack.ammunitionName, attack.ammunitionRemaining)
-      : null;
-  const thrownWeaponLine =
-    attack.throwsWeapon &&
-    attack.thrownItemName != null &&
-    attack.thrownRemaining != null
-      ? formatThrownWeaponLine(attack.thrownItemName, attack.thrownRemaining)
-      : null;
   const validCellSet = useMemo(
     () => new Set(validCells.map((cell) => `${cell.x},${cell.y}`)),
     [validCells]
@@ -74,15 +58,22 @@ export function CombatTargetingOverlay({
   }, [attacker, hoveredCell, spec, state]);
 
   const highlightCells = spec.isAoe ? aoeHoverCells : aoePreviewCells;
+  const showRangedGrid = rangedCellZones != null;
+
+  const rangedGridCells = useMemo(() => {
+    if (!showRangedGrid || !rangedCellZones) return [];
+    const list: Array<{ x: number; y: number; zone: RangedAttackCellZone }> = [];
+    for (let y = 0; y < gridHeight; y++) {
+      for (let x = 0; x < gridWidth; x++) {
+        const zone = rangedCellZones.get(`${x},${y}`);
+        if (zone) list.push({ x, y, zone });
+      }
+    }
+    return list;
+  }, [gridHeight, gridWidth, rangedCellZones, showRangedGrid]);
 
   function handleOverlayPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     onPointerMove(event.clientX, event.clientY);
-
-    const target = event.target as HTMLElement;
-    if (target.closest(".combat-targeting-banner")) {
-      onCellHover(null);
-      return;
-    }
 
     const overlay = event.currentTarget;
     const rect = overlay.getBoundingClientRect();
@@ -116,62 +107,44 @@ export function CombatTargetingOverlay({
       onPointerMove={handleOverlayPointerMove}
       onPointerLeave={handleOverlayPointerLeave}
     >
-      {Array.from({ length: gridHeight }).flatMap((_, y) =>
-        Array.from({ length: gridWidth }).map((_, x) => {
-          const key = `${x},${y}`;
-          const isValidCell = validCellSet.has(key);
-          const isAoeHighlight = highlightCells.has(key);
-          if (!isValidCell && !isAoeHighlight) return null;
+      {showRangedGrid
+        ? rangedGridCells.map((cell) => {
+            const key = `${cell.x},${cell.y}`;
+            const isTarget = validCellSet.has(key);
+            const hovered =
+              hoveredCell?.x === cell.x && hoveredCell?.y === cell.y;
+            return (
+              <div
+                key={key}
+                className={`combat-targeting-cell${
+                  isTarget
+                    ? " combat-targeting-cell-target"
+                    : ` combat-targeting-cell-${cell.zone}`
+                }${hovered ? " combat-targeting-cell-hovered" : ""}`}
+                style={{ gridColumn: cell.x + 1, gridRow: cell.y + 1 }}
+                aria-hidden
+              />
+            );
+          })
+        : Array.from({ length: gridHeight }).flatMap((_, y) =>
+            Array.from({ length: gridWidth }).map((_, x) => {
+              const key = `${x},${y}`;
+              const isValidCell = validCellSet.has(key);
+              const isAoeHighlight = highlightCells.has(key);
+              if (!isValidCell && !isAoeHighlight) return null;
 
-          return (
-            <div
-              key={key}
-              className={`combat-targeting-cell${
-                isAoeHighlight ? " combat-targeting-cell-aoe-preview" : ""
-              }`}
-              style={{ gridColumn: x + 1, gridRow: y + 1 }}
-              aria-hidden
-            />
-          );
-        })
-      )}
-
-      {validTargets.map((token) => (
-        <div
-          key={token.id}
-          className="combat-targeting-token-highlight"
-          style={{
-            gridColumn: `${token.x + 1} / span ${token.width}`,
-            gridRow: `${token.y + 1} / span ${token.height}`,
-          }}
-          aria-hidden
-        />
-      ))}
-
-      <div className="combat-targeting-banner">
-        <div className="combat-targeting-banner-text">
-          <span>
-            {validTargets.length === 0 && validCells.length === 0
-              ? `No targets in range for ${attack.name}`
-              : `Select a target for ${attack.name}`}
-          </span>
-          {ammunitionLine ? (
-            <span className="combat-targeting-banner-hover">{ammunitionLine}</span>
-          ) : null}
-          {thrownWeaponLine ? (
-            <span className="combat-targeting-banner-hover">{thrownWeaponLine}</span>
-          ) : null}
-          {hoveredTokenLabel ? (
-            <span className="combat-targeting-banner-hover">
-              {hoveredTokenLabel}
-              {hoveredTokenDetail ? ` · ${hoveredTokenDetail}` : ""}
-            </span>
-          ) : null}
-        </div>
-        <button type="button" className="candy-btn" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+              return (
+                <div
+                  key={key}
+                  className={`combat-targeting-cell${
+                    isAoeHighlight ? " combat-targeting-cell-aoe-preview" : ""
+                  }${isValidCell ? " combat-targeting-cell-target" : ""}`}
+                  style={{ gridColumn: x + 1, gridRow: y + 1 }}
+                  aria-hidden
+                />
+              );
+            })
+          )}
     </div>
   );
 }

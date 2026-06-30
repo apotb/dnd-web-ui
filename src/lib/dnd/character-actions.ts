@@ -51,6 +51,15 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
     sourceLabel: "Standard",
   },
   {
+    id: "core:use-object",
+    name: "Use an Object",
+    cost: "action",
+    description:
+      "Interact with an object on the battlefield. Your first object interaction each turn is free; use this action to interact with an additional object (or one that requires an action).",
+    source: "core",
+    sourceLabel: "Standard",
+  },
+  {
     id: "core:disengage",
     name: "Disengage",
     cost: "action",
@@ -101,15 +110,6 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
     cost: "action",
     description:
       "Devote attention to finding something, such as a hidden door or trap.",
-    source: "core",
-    sourceLabel: "Standard",
-  },
-  {
-    id: "core:use-object",
-    name: "Use an Object",
-    cost: "action",
-    description:
-      "Interact with a second object on your turn, or use an object that requires an action.",
     source: "core",
     sourceLabel: "Standard",
   },

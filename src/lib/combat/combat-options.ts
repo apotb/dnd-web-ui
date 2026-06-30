@@ -1,5 +1,6 @@
 import type { FeatureCatalogs } from "@/lib/character/feature-choices";
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { getEffectiveWieldMain } from "@/lib/character/equip-rules";
 import {
   ACTION_COST_LABELS,
   actionSourceBadgeLabel,
@@ -11,6 +12,7 @@ import {
   deriveUnarmedStrike,
   formatAttackRollLine,
   getAllAttacks,
+  getAttackCategoryLabel,
   type DerivedAttack,
 } from "@/lib/dnd/attacks";
 import {
@@ -81,15 +83,8 @@ function enemyActionSubtitle(description: string): string {
   return inferEnemyActionTypeLabel(description);
 }
 
-function attackSourceLabel(source: DerivedAttack["source"]): string {
-  if (source === "weapon") return "Weapon";
-  if (source === "cantrip") return "Cantrip";
-  if (source === "spell") return "Spell";
-  return "Special";
-}
-
 function formatAttackTooltip(attack: DerivedAttack, data: CharacterData): string {
-  const lines: string[] = [attackSourceLabel(attack.source)];
+  const lines: string[] = [getAttackCategoryLabel(attack)];
 
   const rollAppliesExhaustion =
     attack.rollType === "attack" || attack.rollType == null;
@@ -128,7 +123,11 @@ function formatAttackTooltip(attack: DerivedAttack, data: CharacterData): string
 
 function formatActionTooltip(action: CharacterActionEntry): string {
   const lines = [`${ACTION_COST_LABELS[action.cost]} · ${actionSourceBadgeLabel(action)}`];
-  if (action.description.trim()) lines.push(action.description.trim());
+  const description =
+    action.id === COMBAT_USE_OBJECT_ACTION_ID
+      ? "Interact with an object on the battlefield. Your first object interaction each turn is free; use this action to interact with an additional object (or one that requires an action)."
+      : action.description.trim();
+  if (description) lines.push(description);
   if (action.uses) {
     const rest =
       action.restReset && action.restReset !== "none"
@@ -222,12 +221,19 @@ export function isHelpActionOption(option: CombatOption): boolean {
   return option.action?.id === COMBAT_HELP_ACTION_ID;
 }
 
+export const COMBAT_USE_OBJECT_ACTION_ID = "core:use-object";
+
+export const COMBAT_USE_OBJECT_OPTION_ID = `action:${COMBAT_USE_OBJECT_ACTION_ID}`;
+
+export function isUseObjectActionOption(option: CombatOption): boolean {
+  return option.action?.id === COMBAT_USE_OBJECT_ACTION_ID;
+}
+
 const COMBAT_CONFIRM_ACTION_IDS = new Set([
   "core:dodge",
   "core:hide",
   "core:ready",
   "core:search",
-  "core:use-object",
 ]);
 
 export function isConfirmActionOption(option: CombatOption): boolean {
@@ -238,16 +244,18 @@ function buildStandardActionOptions(
   turn: {
     actionUsed: boolean;
     dashUsed: boolean;
+    freeObjectInteractionUsed: boolean;
   },
   isEngaged: boolean,
-  canUseHelp: boolean
+  canUseHelp: boolean,
+  canUseObject: boolean
 ): CombatOption[] {
-  if (turn.actionUsed) return [];
-
   return getStandardCombatActions()
     .filter(
       (action) =>
         action.cost === "action" &&
+        (action.id !== COMBAT_USE_OBJECT_ACTION_ID || canUseObject) &&
+        (action.id === COMBAT_USE_OBJECT_ACTION_ID || !turn.actionUsed) &&
         (action.id !== COMBAT_DASH_ACTION_ID || !turn.dashUsed) &&
         (action.id !== COMBAT_DISENGAGE_ACTION_ID || isEngaged) &&
         (action.id !== COMBAT_HELP_ACTION_ID || canUseHelp)
@@ -276,6 +284,7 @@ export function isMeleeOpportunityAttack(
   if (attack.isOffHand) return false;
 
   if (attack.source === "weapon" && attack.itemId) {
+    if (attack.throwsWeapon) return false;
     const catalogItem = catalogItems[attack.itemId];
     const weaponProps = catalogItem ? getWeaponProperties(catalogItem) : null;
     if (weaponProps) {
@@ -352,9 +361,11 @@ function buildPartyOptionGroups(
     actionUsed: boolean;
     bonusActionUsed: boolean;
     dashUsed: boolean;
+    freeObjectInteractionUsed: boolean;
   },
   isEngaged: boolean,
-  canUseHelp: boolean
+  canUseHelp: boolean,
+  canUseObject: boolean
 ): { actions: CombatOption[]; bonusActions: CombatOption[] } {
   const attacks = getAllAttacks(character.data, catalogItems, classCatalog);
   const characterActions = getAllCharacterActions(character.data, featureCatalogs).filter(
@@ -364,14 +375,28 @@ function buildPartyOptionGroups(
   const mainHandAttacks = attacks.filter((attack) => !attack.isOffHand);
   const offHandAttacks = attacks.filter((attack) => attack.isOffHand);
 
+  const hasMainHandWielded = character.data.inventory.items.some((invItem) => {
+    if (!invItem.itemId) return false;
+    const catalogItem = catalogItems[invItem.itemId];
+    if (!catalogItem) return false;
+    return getEffectiveWieldMain(invItem, catalogItem);
+  });
+
+  const actionPanelAttacks = hasMainHandWielded
+    ? mainHandAttacks
+    : offHandAttacks.length > 0
+      ? offHandAttacks
+      : mainHandAttacks;
+
   const attackOptions: CombatOption[] = turn.actionUsed
     ? []
-    : mainHandAttacks.map((attack) => attackToCombatOption(attack, character.data, "attack"));
+    : actionPanelAttacks.map((attack) => attackToCombatOption(attack, character.data, "attack"));
 
   const actionOptions: CombatOption[] = buildStandardActionOptions(
     turn,
     isEngaged,
-    canUseHelp
+    canUseHelp,
+    canUseObject
   );
 
   const bonusActionOptions: CombatOption[] = turn.bonusActionUsed
@@ -420,14 +445,16 @@ function buildNpcOptionGroups(
   turn: {
     actionUsed: boolean;
     dashUsed: boolean;
+    freeObjectInteractionUsed: boolean;
   },
   isEngaged: boolean,
-  canUseHelp: boolean
+  canUseHelp: boolean,
+  canUseObject: boolean
 ): CombatOptionGroups {
   const statBlockActions = enemyData
     ? buildEnemyStatBlockOptions(enemyData, turn.actionUsed)
     : [];
-  const standardActions = buildStandardActionOptions(turn, isEngaged, canUseHelp);
+  const standardActions = buildStandardActionOptions(turn, isEngaged, canUseHelp, canUseObject);
 
   return {
     actions: [...statBlockActions, ...standardActions],
@@ -455,6 +482,7 @@ export function isImplementedCombatOption(option: CombatOption): boolean {
     isHelpActionOption(option) ||
     isDisengageActionOption(option) ||
     isDashActionOption(option) ||
+    isUseObjectActionOption(option) ||
     isConfirmActionOption(option)
   );
 }
@@ -471,8 +499,10 @@ export function getCombatOptionGroupsForToken(
     actionUsed: boolean;
     bonusActionUsed: boolean;
     dashUsed: boolean;
+    freeObjectInteractionUsed: boolean;
     combatState: CombatState;
     token: CombatToken;
+    canUseObject: boolean;
   }
 ): CombatOptionGroups {
   if (token.kind === "party" && context.character) {
@@ -486,9 +516,11 @@ export function getCombatOptionGroupsForToken(
         actionUsed: context.actionUsed,
         bonusActionUsed: context.bonusActionUsed,
         dashUsed: context.dashUsed,
+        freeObjectInteractionUsed: context.freeObjectInteractionUsed,
       },
       isTokenEngaged(context.token, context.combatState),
-      canUseHelpAction(context.token, context.combatState)
+      canUseHelpAction(context.token, context.combatState),
+      context.canUseObject
     );
   }
 
@@ -498,9 +530,11 @@ export function getCombatOptionGroupsForToken(
       {
         actionUsed: context.actionUsed,
         dashUsed: context.dashUsed,
+        freeObjectInteractionUsed: context.freeObjectInteractionUsed,
       },
       isTokenEngaged(context.token, context.combatState),
-      canUseHelpAction(context.token, context.combatState)
+      canUseHelpAction(context.token, context.combatState),
+      false
     );
   }
 
@@ -510,11 +544,33 @@ export function getCombatOptionGroupsForToken(
       {
         actionUsed: context.actionUsed,
         dashUsed: context.dashUsed,
+        freeObjectInteractionUsed: context.freeObjectInteractionUsed,
       },
       isTokenEngaged(context.token, context.combatState),
-      canUseHelpAction(context.token, context.combatState)
+      canUseHelpAction(context.token, context.combatState),
+      false
     );
   }
 
   return { actions: [], bonusActions: [] };
+}
+
+/** Resolve a derived attack from a stored combat option id (e.g. for pending-attack review UI). */
+export function findDerivedAttackByOptionId(
+  optionId: string,
+  token: CombatToken,
+  character: ParsedCharacter | null,
+  catalogItems: Record<string, Item>,
+  classCatalog: PhbClass[]
+): DerivedAttack | null {
+  if (!optionId.startsWith("attack:")) return null;
+  const attackId = optionId.slice("attack:".length);
+  if (token.kind === "party" && character) {
+    const attacks = [
+      ...getAllAttacks(character.data, catalogItems, classCatalog),
+      deriveUnarmedStrike(character.data),
+    ];
+    return attacks.find((attack) => attack.id === attackId) ?? null;
+  }
+  return null;
 }

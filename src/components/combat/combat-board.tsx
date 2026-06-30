@@ -12,6 +12,7 @@ import {
   syncPartyTokens,
   updateGridInState,
   updateTokenInState,
+  tokenFootprintsOverlap,
   type EnemyRecord,
 } from "@/lib/combat/state-utils";
 import { clearCampaignInitiativeRolls } from "@/lib/combat/initiative-actions";
@@ -31,6 +32,7 @@ import {
   getTokenHpDisplay,
   mergeLiveStatePreservingTokenHp,
   parsePositiveHpAmount,
+  patchTokenHpFromDamage,
 } from "@/lib/combat/hp-adjust";
 import {
   removeCombatImage,
@@ -48,7 +50,7 @@ import {
   useRealtimeCombatState,
 } from "@/lib/hooks/use-realtime-combat-state";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
-import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import type { CombatState, CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 import { DEFAULT_BOARD_TITLE, isCombatantToken, isHiddenEnemy, isTokenInTurnOrder } from "@/lib/schemas/combat-state";
 import {
   MAX_GRID_SIZE,
@@ -89,10 +91,12 @@ import type { AttackSubmitValues } from "@/components/combat/combat-attack-submi
 import { CombatDmApprovalTray } from "@/components/combat/combat-dm-approval-tray";
 import { CombatSaveRollModal } from "@/components/combat/combat-save-roll-modal";
 import { CombatTargetingOverlay } from "@/components/combat/combat-targeting-overlay";
+import { CombatObjectInteractionOverlay } from "@/components/combat/combat-object-interaction-overlay";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { AlertModal } from "@/components/ui/alert-modal";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
+  findDerivedAttackByOptionId,
   getCombatOptionGroupsForToken,
   getOpportunityAttackOptionsForToken,
   isAttackTargetingOption,
@@ -101,13 +105,21 @@ import {
   isDisengageActionOption,
   isHelpActionOption,
   isImplementedCombatOption,
+  isUseObjectActionOption,
+  COMBAT_USE_OBJECT_OPTION_ID,
   type CombatOption,
 } from "@/lib/combat/combat-options";
 import {
   recordCombatActionUsed,
   recordCombatDash,
   recordCombatDisengage,
+  recordCombatObjectPickup,
 } from "@/lib/combat/combat-action-actions";
+import {
+  canStartObjectInteraction,
+  getAdjacentPickupMarkers,
+  isPickupMarker,
+} from "@/lib/combat/object-pickup";
 import {
   cancelCombatAttack,
   resolveCombatAttack,
@@ -127,7 +139,14 @@ import {
   hasPendingAttackForAttacker,
   canAdvanceTurnWithPendingAttacks,
 } from "@/lib/combat/pending-attacks";
-import { getTargetingHighlights, isAttackAtLongRange, parseAttackRangeSpec, distanceFeetBetweenCells } from "@/lib/combat/targeting";
+import {
+  getTargetingHighlights,
+  getAttackRollDisadvantage,
+  formatAttackDisadvantageLabel,
+  hasRangedAttackAdjacentDisadvantage,
+  parseAttackRangeSpec,
+  distanceFeetBetweenCells,
+} from "@/lib/combat/targeting";
 import {
   applyRectangleToBlockedSet,
   areBlockedCellsEqual,
@@ -181,6 +200,7 @@ import {
   canPlayerClaimPlaceholder,
   hasUnclaimedCharacterPlaceholders,
   isCharacterPlaceholder,
+  populateCharacterPlaceholders,
 } from "@/lib/combat/character-placeholder";
 import { claimCombatCharacterSlot } from "@/lib/combat/character-slot-actions";
 import {
@@ -391,6 +411,7 @@ function findTokenAtPointer(
 
   let best = matches[0];
   let bestDistance = Infinity;
+  let bestStack = -Infinity;
 
   for (const token of matches) {
     const centerX =
@@ -398,13 +419,34 @@ function findTokenAtPointer(
     const centerY =
       content.top + ((token.y + token.height / 2) / state.gridHeight) * content.height;
     const distance = (clientX - centerX) ** 2 + (clientY - centerY) ** 2;
-    if (distance < bestDistance) {
+    const stack = tokenStackOrder(token.kind);
+    if (
+      distance < bestDistance ||
+      (distance === bestDistance && stack > bestStack)
+    ) {
       bestDistance = distance;
+      bestStack = stack;
       best = token;
     }
   }
 
   return best;
+}
+
+function findOverlappingMarkerTokens(
+  token: CombatToken,
+  tokens: CombatToken[]
+): CombatToken[] {
+  if (token.kind === "marker") return [];
+
+  return tokens.filter(
+    (other) =>
+      other.kind === "marker" &&
+      other.placed &&
+      other.tooltip.trim() !== "" &&
+      other.id !== token.id &&
+      tokenFootprintsOverlap(token, other)
+  );
 }
 
 const DRAG_THRESHOLD_PX = 4;
@@ -488,6 +530,7 @@ export function CombatBoard({
   const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
   const [hoveredTokenId, setHoveredTokenId] = useState<string | null>(null);
   const [movementMode, setMovementMode] = useState(false);
+  const [objectInteractionMode, setObjectInteractionMode] = useState(false);
   const [hoveredMovementCell, setHoveredMovementCell] = useState<{
     x: number;
     y: number;
@@ -959,6 +1002,7 @@ export function CombatBoard({
   const actionUsed = combatState.turn.actionUsed;
   const bonusActionUsed = combatState.turn.bonusActionUsed;
   const disengageUsed = combatState.turn.disengageUsed;
+  const freeObjectInteractionUsed = combatState.turn.freeObjectInteractionUsed;
   const pendingAttacks = combatState.pendingAttacks;
   const dmApprovalTrayAttacks = useMemo(
     () => getDmApprovalTrayAttacks(pendingAttacks),
@@ -983,6 +1027,30 @@ export function CombatBoard({
     actionUsed
   );
 
+  const userControlsTurn = canUserControlTurn(
+    userId,
+    isDm,
+    combatState,
+    currentTurnToken,
+    currentTurnCharacter
+  );
+
+  const canUseObjectAction = useMemo(() => {
+    if (!currentTurnToken || !currentTurnCharacter) return false;
+    return canStartObjectInteraction({
+      state: combatState,
+      actorToken: currentTurnToken,
+      character: currentTurnCharacter,
+      userId,
+      isDm,
+    });
+  }, [combatState, currentTurnCharacter, currentTurnToken, isDm, userId]);
+
+  const adjacentPickupMarkers = useMemo(() => {
+    if (!currentTurnToken) return [];
+    return getAdjacentPickupMarkers(currentTurnToken, combatState);
+  }, [combatState, currentTurnToken]);
+
   const currentTurnOptionGroups = useMemo(() => {
     if (!currentTurnToken) {
       return { actions: [], bonusActions: [] };
@@ -997,13 +1065,16 @@ export function CombatBoard({
       actionUsed,
       bonusActionUsed,
       dashUsed,
+      freeObjectInteractionUsed,
       combatState,
       token: currentTurnToken,
+      canUseObject: canUseObjectAction,
     });
   }, [
     actionUsed,
     actionUsedForTwoWeapon,
     bonusActionUsed,
+    canUseObjectAction,
     catalogItems,
     classCatalog,
     combatState,
@@ -1012,15 +1083,9 @@ export function CombatBoard({
     currentTurnToken,
     dashUsed,
     featureCatalogs,
+    freeObjectInteractionUsed,
   ]);
 
-  const userControlsTurn = canUserControlTurn(
-    userId,
-    isDm,
-    combatState,
-    currentTurnToken,
-    currentTurnCharacter
-  );
   const userCanEndTurn = canUserEndTurn(
     userId,
     isDm,
@@ -1194,9 +1259,38 @@ export function CombatBoard({
     setHoveredTargetingCell(null);
   }
 
+  function clearObjectInteractionMode() {
+    setObjectInteractionMode(false);
+  }
+
   async function handleSelectCombatOption(option: CombatOption) {
     if (!isImplementedCombatOption(option)) return;
-    if (attackTargeting || movementMode || measureMode || turnTokenHasPendingAction) return;
+    if (attackTargeting) {
+      if (option.id === attackTargeting.option.id) {
+        clearAttackFlow();
+      }
+      return;
+    }
+    if (objectInteractionMode) {
+      if (isUseObjectActionOption(option)) {
+        clearObjectInteractionMode();
+      }
+      return;
+    }
+    if (movementMode || measureMode || turnTokenHasPendingAction) return;
+
+    if (isUseObjectActionOption(option)) {
+      if (!userControlsTurn || !currentTurnToken || !currentTurnCharacter) return;
+      if (!canUseObjectAction) {
+        showAlert("No adjacent objects are available to pick up.");
+        return;
+      }
+      setMovementMode(false);
+      clearMeasureMode();
+      clearAttackFlow();
+      setObjectInteractionMode(true);
+      return;
+    }
 
     if (isHelpActionOption(option)) {
       if (!currentTurnToken) return;
@@ -1245,6 +1339,7 @@ export function CombatBoard({
       }
       setMovementMode(false);
       clearMeasureMode();
+      clearObjectInteractionMode();
       clearAttackFlow();
       setAttackTargeting({ option, attack });
       return;
@@ -1282,9 +1377,11 @@ export function CombatBoard({
     clearMeasureMode();
   }
 
-  const mapSelectionActive = Boolean(attackTargeting || movementMode);
+  const mapSelectionActive = Boolean(attackTargeting || movementMode || objectInteractionMode);
   const selectedActionOptionId =
-    pendingOptionId ?? attackTargeting?.option.id ?? null;
+    pendingOptionId ??
+    attackTargeting?.option.id ??
+    (objectInteractionMode ? COMBAT_USE_OBJECT_OPTION_ID : null);
   const turnActionsLocked = mapSelectionActive || turnTokenHasPendingAction;
 
   const targetingHighlights = useMemo(() => {
@@ -1295,49 +1392,6 @@ export function CombatBoard({
       attackTargeting.attack
     );
   }, [attackTargeting, combatState, currentTurnToken]);
-
-  const hoveredTargetToken = useMemo(() => {
-    if (!hoveredTokenId) return null;
-    return combatState.tokens.find((token) => token.id === hoveredTokenId) ?? null;
-  }, [combatState.tokens, hoveredTokenId]);
-
-  const hoveredTargetDetail = useMemo(() => {
-    if (!attackTargeting || !hoveredTargetToken) return null;
-
-    if (!isDm && hoveredTargetToken.kind === "enemy") {
-      const damageTaken = hoveredTargetToken.damageTaken ?? 0;
-      return damageTaken > 0 ? `Damage taken: ${damageTaken}` : null;
-    }
-
-    if (hoveredTargetToken.kind === "party") {
-      const character = hoveredTargetToken.characterId
-        ? charactersById[hoveredTargetToken.characterId]
-        : null;
-      if (!character) return null;
-      const currentHp =
-        hoveredTargetToken.currentHp ?? character.data.combat.currentHp;
-      const maxHp = hoveredTargetToken.maxHp ?? character.data.combat.maxHp;
-      return `HP ${currentHp}/${maxHp} · AC ${character.data.combat.ac}`;
-    }
-
-    const enemy = hoveredTargetToken.enemySlug
-      ? enemiesBySlug[hoveredTargetToken.enemySlug]?.data
-      : null;
-    if (isDm && enemy) {
-      const currentHp =
-        hoveredTargetToken.currentHp ?? enemy.hitPoints.average;
-      const maxHp = hoveredTargetToken.maxHp ?? enemy.hitPoints.average;
-      return `HP ${currentHp}/${maxHp} · AC ${enemy.armorClass.value}`;
-    }
-
-    return null;
-  }, [
-    attackTargeting,
-    charactersById,
-    enemiesBySlug,
-    hoveredTargetToken,
-    isDm,
-  ]);
 
   const damageTakenByTokenId = useMemo(() => {
     const map: Record<string, number> = {};
@@ -1353,12 +1407,40 @@ export function CombatBoard({
     targets: CombatToken[]
   ): Record<string, boolean> {
     if (!attacker) return {};
-    const spec = parseAttackRangeSpec(attack);
     return Object.fromEntries(
       targets.map((target) => [
         target.id,
-        isAttackAtLongRange(attacker, target, combatState, spec),
+        getAttackRollDisadvantage(attacker, target, combatState, attack),
       ])
+    );
+  }
+
+  function resolvePendingDisadvantageLabel(
+    pending: PendingAttack,
+    targetTokenId: string
+  ): string | null {
+    const target = pending.targets.find((entry) => entry.tokenId === targetTokenId);
+    if (!target?.attackDisadvantage) return null;
+
+    const attacker = combatState.tokens.find((token) => token.id === pending.attackerTokenId);
+    const targetToken = combatState.tokens.find((token) => token.id === targetTokenId);
+    if (!attacker || !targetToken) return "Disadvantage on attack roll";
+
+    const character = attacker.characterId
+      ? charactersById[attacker.characterId] ?? null
+      : null;
+    const attack = findDerivedAttackByOptionId(
+      pending.optionId,
+      attacker,
+      character,
+      catalogItems,
+      classCatalog
+    );
+    if (!attack) return "Disadvantage on attack roll";
+
+    return (
+      formatAttackDisadvantageLabel(attacker, targetToken, combatState, attack) ??
+      "Disadvantage on attack roll"
     );
   }
 
@@ -1419,9 +1501,6 @@ export function CombatBoard({
 
     const grid = gridRef.current;
     if (!grid?.contains(event.target as Node)) return;
-
-    const target = event.target as HTMLElement;
-    if (target.closest(".combat-targeting-banner")) return;
 
     const cell = gridCellFromPointer(
       event.clientX,
@@ -1679,6 +1758,7 @@ export function CombatBoard({
   function handleToggleMovementMode() {
     if (
       attackTargeting ||
+      objectInteractionMode ||
       measureMode ||
       turnTokenHasPendingAction ||
       provokingMovePending ||
@@ -1719,7 +1799,14 @@ export function CombatBoard({
     if (!turnTokenHasPendingAction) return;
     setMovementMode(false);
     clearAttackFlow();
+    clearObjectInteractionMode();
   }, [turnTokenHasPendingAction]);
+
+  useEffect(() => {
+    if (!userControlsTurn || !canUseObjectAction) {
+      setObjectInteractionMode(false);
+    }
+  }, [userControlsTurn, canUseObjectAction]);
 
   useEffect(() => {
     if (!provokingMovePending && !pendingOpportunityAttackMove) return;
@@ -1858,6 +1945,7 @@ export function CombatBoard({
     }
     setMovementMode(true);
     clearAttackFlow();
+    clearObjectInteractionMode();
   }
 
   async function handleUseStandardAction() {
@@ -1899,12 +1987,22 @@ export function CombatBoard({
     const { currentHp, maxHp } = getTokenHpDisplay(token, character, enemyData);
     const nextHp = applyHpDelta(currentHp, maxHp, delta);
     const damageDelta = delta < 0 ? -delta : 0;
+    const patched = patchTokenHpFromDamage(
+      token,
+      nextHp,
+      (token.damageTaken ?? 0) + damageDelta
+    );
 
-    const next = updateTokenInState(combatState, token.id, {
-      currentHp: nextHp,
+    let next = updateTokenInState(combatState, token.id, {
+      currentHp: patched.currentHp,
       maxHp,
-      damageTaken: (token.damageTaken ?? 0) + damageDelta,
+      damageTaken: patched.damageTaken,
+      ...(patched.hidden != null ? { hidden: patched.hidden } : {}),
     });
+
+    if (token.kind === "enemy" && !(token.hidden ?? false) && (patched.hidden ?? false)) {
+      next = updateInitiativeAfterVisibilityChange(next, token.id, false, true);
+    }
 
     setApplyingHp(true);
 
@@ -1961,12 +2059,63 @@ export function CombatBoard({
     }
   }
 
+  async function handlePickupObject(markerId: string) {
+    if (!objectInteractionMode || !userControlsTurn || !currentTurnToken || !currentTurnCharacter) {
+      return;
+    }
+
+    const marker = combatState.tokens.find((token) => token.id === markerId);
+    if (!marker || !isPickupMarker(marker)) {
+      showAlert("That marker cannot be picked up.");
+      return;
+    }
+
+    const { next, error, characterId, inventoryItems } = await recordCombatObjectPickup(
+      campaignId,
+      combatState,
+      {
+        isDm,
+        actorTokenId: currentTurnToken.id,
+        markerId,
+        character: currentTurnCharacter,
+        catalogItems,
+      }
+    );
+
+    if (error) {
+      showAlert(error);
+      return;
+    }
+
+    clearObjectInteractionMode();
+    if (isDm) {
+      setDraft(next);
+    }
+    if (characterId && inventoryItems) {
+      applyCharacterHpUpdates(next, [
+        {
+          characterId,
+          currentHp: currentTurnCharacter.data.combat.currentHp,
+          tempHp: currentTurnCharacter.data.combat.tempHp,
+          inventoryItems,
+        },
+      ]);
+    }
+  }
+
   function handleTokenClick(tokenId: string, event: React.MouseEvent) {
-    if (attackTargeting || movementMode || measureMode || draggingTokenId || collisionEditMode) return;
+    if (attackTargeting || movementMode || measureMode || draggingTokenId || collisionEditMode) {
+      return;
+    }
     event.stopPropagation();
 
     const token = combatState.tokens.find((entry) => entry.id === tokenId);
     if (!token) return;
+
+    if (objectInteractionMode && userControlsTurn && isPickupMarker(token)) {
+      void handlePickupObject(tokenId);
+      return;
+    }
 
     if (isCharacterPlaceholder(token)) {
       if (isDm) {
@@ -2135,6 +2284,10 @@ export function CombatBoard({
       id: markerId,
       portraitPath,
       hasCollision: values.hasCollision,
+      isObject: values.isObject,
+      itemPickup: values.itemPickup,
+      pickupItemId: values.pickupItemId,
+      pickupQuantity: values.pickupQuantity,
     });
     await persist(next);
     setAddMarkerOpen(false);
@@ -2168,6 +2321,10 @@ export function CombatBoard({
       tooltip: values.tooltip,
       portraitPath,
       hasCollision: values.hasCollision,
+      isObject: values.isObject,
+      itemPickup: values.itemPickup,
+      pickupItemId: values.pickupItemId,
+      pickupQuantity: values.pickupQuantity,
     });
     const persistError = await persist(next);
     if (persistError) {
@@ -2235,8 +2392,7 @@ export function CombatBoard({
   function handleResetBoard() {
     requestConfirm({
       title: "Reset combat board?",
-      description:
-        "All enemies will be removed, initiative will clear, and every party member will return to default starting positions.",
+      description: "All tokens will be removed from the board.",
       confirmLabel: "Reset",
       destructive: true,
       onConfirm: async () => {
@@ -2270,16 +2426,22 @@ export function CombatBoard({
     }
   }
 
-  async function handleLoadEncounter(encounter: Encounter) {
+  async function handleLoadEncounter(
+    encounter: Encounter,
+    options: { autoPopulateCharacters: boolean }
+  ) {
     await clearCampaignInitiativeRolls(
       campaignId,
       characters.map((character) => character.id)
     );
-    const next = savedEncounterToCombatState(
+    let next = savedEncounterToCombatState(
       encounter,
       enemiesBySlug,
       characters.map((character) => character.id)
     );
+    if (options.autoPopulateCharacters) {
+      next = populateCharacterPlaceholders(next, characters);
+    }
     await persist(next);
     setSelectedTokenId(null);
     if (collisionEditMode) {
@@ -2603,14 +2765,20 @@ export function CombatBoard({
       gridRow: `${token.y + 1} / span ${token.height}`,
     };
 
-    const isAttackTarget =
-      attackTargeting &&
-      targetingHighlights?.validTargets.some((target) => target.id === token.id);
+    const isPickupTarget =
+      objectInteractionMode &&
+      isPickupMarker(token) &&
+      adjacentPickupMarkers.some((marker) => marker.id === token.id);
+
+    const overlappingMarkerTooltips =
+      isExpanded && token.kind !== "marker"
+        ? findOverlappingMarkerTokens(token, combatState.tokens)
+        : [];
 
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isHiddenForDm && isHovered ? " combat-token-hidden-enemy-hovered" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isHiddenForDm && isHovered ? " combat-token-hidden-enemy-hovered" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isPickupTarget ? " combat-token-pickup-highlight" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -2626,6 +2794,8 @@ export function CombatBoard({
               {displayLabel.slice(0, 1)}
             </div>
           )}
+        </div>
+        <div className="combat-token-tooltip-stack">
           <div
             className={`combat-token-label${isExpanded ? " combat-token-label-expanded" : ""}`}
           >
@@ -2688,6 +2858,18 @@ export function CombatBoard({
               </span>
             ) : null}
           </div>
+          {overlappingMarkerTooltips.map((marker) => (
+            <div key={marker.id} className="combat-token-marker combat-token-marker-underfoot-wrap">
+              <div className="combat-token-label">
+                <span className="combat-token-label-name">
+                  {getCombatTokenDisplayLabel(marker)}
+                </span>
+                <span className="combat-token-label-detail combat-token-marker-tooltip">
+                  {marker.tooltip}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -2728,7 +2910,7 @@ export function CombatBoard({
     return (
       <div
         ref={gridRef}
-        className={`combat-grid${fullscreen ? " combat-grid-fullscreen" : ""}${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}${measureMode ? " combat-grid-measure-mode" : ""}`}
+        className={`combat-grid${fullscreen ? " combat-grid-fullscreen" : ""}${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${objectInteractionMode ? " combat-grid-object-interaction-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}${measureMode ? " combat-grid-measure-mode" : ""}`}
         style={{
           ["--grid-width" as string]: combatState.gridWidth,
           ["--grid-height" as string]: combatState.gridHeight,
@@ -2790,19 +2972,21 @@ export function CombatBoard({
             attacker={currentTurnToken}
             attack={attackTargeting.attack}
             state={combatState}
-            validTargets={targetingHighlights.validTargets}
             validCells={targetingHighlights.validCells}
+            rangedCellZones={targetingHighlights.rangedCellZones}
             hoveredCell={hoveredTargetingCell}
             previewCenter={null}
-            hoveredTokenLabel={
-              hoveredTargetToken ? getCombatTokenDisplayLabel(hoveredTargetToken) : null
-            }
-            hoveredTokenDetail={hoveredTargetDetail}
             onPointerMove={updateHoverFromPointer}
             onPointerLeave={handleTargetingPointerLeave}
             onCellHover={setHoveredTargetingCell}
-            onCancel={clearAttackFlow}
           />
+        ) : null}
+        {objectInteractionMode &&
+        !collisionEditMode &&
+        currentTurnToken &&
+        userControlsTurn &&
+        adjacentPickupMarkers.length > 0 ? (
+          <CombatObjectInteractionOverlay pickupMarkers={adjacentPickupMarkers} />
         ) : null}
         {movementMode && !collisionEditMode && currentTurnToken && userControlsTurn ? (
           <CombatMovementOverlay
@@ -2903,23 +3087,24 @@ export function CombatBoard({
         <div className="combat-main">
           <div className="combat-board-area">
             <div className="combat-toolbar combat-toolbar-header">
-              <div className="combat-toolbar-meta">
-                {isDm ? (
-                  <input
-                    type="text"
-                    className="combat-title combat-title-input"
-                    key={boardTitle}
-                    defaultValue={boardTitle}
-                    aria-label="Combat board title"
-                    onBlur={(event) => void handleBoardTitleCommit(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") event.currentTarget.blur();
-                    }}
-                  />
-                ) : (
-                  <h2 className="combat-title">{boardTitle}</h2>
-                )}
-                <p className="combat-meta">
+              <div className="combat-toolbar-top">
+                <div className="combat-toolbar-meta">
+                  {isDm ? (
+                    <input
+                      type="text"
+                      className="combat-title combat-title-input"
+                      key={boardTitle}
+                      defaultValue={boardTitle}
+                      aria-label="Combat board title"
+                      onBlur={(event) => void handleBoardTitleCommit(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                      }}
+                    />
+                  ) : (
+                    <h2 className="combat-title">{boardTitle}</h2>
+                  )}
+                  <p className="combat-meta">
                   {isDm ? (
                     <>
                       <input
@@ -2977,7 +3162,25 @@ export function CombatBoard({
                       {combatState.tileFeet} ft each
                     </>
                   )}
-                </p>
+                  </p>
+                </div>
+                <div className="combat-board-view-actions">
+                  <button
+                    type="button"
+                    className="candy-btn combat-expand-btn"
+                    onClick={() => setBoardExpanded(true)}
+                  >
+                    Expand
+                  </button>
+                  <button
+                    type="button"
+                    className={`candy-btn combat-measure-btn${measureMode ? " candy-btn-active" : ""}`}
+                    disabled={!measureMode && !canUseMeasure}
+                    onClick={handleToggleMeasureMode}
+                  >
+                    Measure
+                  </button>
+                </div>
               </div>
               {battleActive ? (
                 <div className="combat-toolbar-panels">
@@ -3028,6 +3231,7 @@ export function CombatBoard({
                             movementMode={movementMode}
                             disabled={
                               !!attackTargeting ||
+                              objectInteractionMode ||
                               turnTokenHasPendingAction ||
                               enemyTurnBlockedByOpportunityAttacks ||
                               provokingMovePending ||
@@ -3045,6 +3249,11 @@ export function CombatBoard({
                             pendingOptionId={pendingOptionId}
                             selectionLocked={turnActionsLocked}
                           />
+                        ) : null}
+                        {objectInteractionMode && freeObjectInteractionUsed && !actionUsed ? (
+                          <p className="combat-object-interaction-hint">
+                            This pickup will use your action.
+                          </p>
                         ) : null}
                         {currentTurnOptionGroups.bonusActions.length > 0 ? (
                           <CombatBonusActionPanel
@@ -3089,23 +3298,6 @@ export function CombatBoard({
                   )}
                 </div>
               ) : null}
-              <div className="combat-board-view-actions">
-                <button
-                  type="button"
-                  className="candy-btn combat-expand-btn"
-                  onClick={() => setBoardExpanded(true)}
-                >
-                  Expand
-                </button>
-                <button
-                  type="button"
-                  className={`candy-btn combat-measure-btn${measureMode ? " candy-btn-active" : ""}`}
-                  disabled={!measureMode && !canUseMeasure}
-                  onClick={handleToggleMeasureMode}
-                >
-                  Measure
-                </button>
-              </div>
             </div>
 
             {isDm ? (
@@ -3293,6 +3485,7 @@ export function CombatBoard({
               <CombatDmApprovalTray
                 pendingAttacks={dmApprovalTrayAttacks}
                 tokens={combatState.tokens}
+                resolveDisadvantageLabel={resolvePendingDisadvantageLabel}
                 resolvingAttackId={resolvingAttackId}
                 submittingSaveId={submittingSaveId}
                 onReject={(pendingAttackId) => void handleRejectAttack(pendingAttackId)}
@@ -3323,15 +3516,21 @@ export function CombatBoard({
         open={addMarkerOpen}
         onOpenChange={setAddMarkerOpen}
         mode="add"
+        catalogItems={catalogItems}
         onSubmit={(values) => void handleAddMarker(values)}
       />
       <MarkerDialog
         open={editMarkerOpen}
         onOpenChange={setEditMarkerOpen}
         mode="edit"
+        catalogItems={catalogItems}
         initialName={selectedMarker?.name ?? ""}
         initialTooltip={selectedMarker?.tooltip ?? ""}
         initialHasCollision={selectedMarker?.hasCollision ?? false}
+        initialIsObject={selectedMarker?.isObject ?? false}
+        initialItemPickup={selectedMarker?.itemPickup ?? false}
+        initialPickupItemId={selectedMarker?.pickupItemId}
+        initialPickupQuantity={selectedMarker?.pickupQuantity ?? 1}
         initialPortraitPath={selectedMarker?.portraitPath ?? null}
         onSubmit={(values) => void handleEditMarker(values)}
       />
@@ -3353,6 +3552,8 @@ export function CombatBoard({
           attack={attackSubmitDraft.attack}
           optionName={attackSubmitDraft.option.name}
           targets={attackSubmitDraft.targets}
+          attackerToken={attackSubmitDraft.attackerToken}
+          combatState={combatState}
           attackDisadvantageByTokenId={attackSubmitDraft.attackDisadvantageByTokenId ?? {}}
           damageTakenByTokenId={damageTakenByTokenId}
           submitting={submittingAttack}
@@ -3475,7 +3676,7 @@ export function CombatBoard({
         open={encounterLoadOpen}
         onOpenChange={setEncounterLoadOpen}
         enemiesBySlug={enemiesBySlug}
-        onLoad={(encounter) => void handleLoadEncounter(encounter)}
+        onLoad={(encounter, options) => void handleLoadEncounter(encounter, options)}
       />
       {characterSlotToken && isCharacterPlaceholder(characterSlotToken) && isDm ? (
         <CharacterSlotAssignModal

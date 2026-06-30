@@ -84,8 +84,8 @@ export function CombatOptionPanel({
                 const isActive = selectedOptionId === option.id || isPending;
                 const disabled =
                   isPending ||
-                  pendingOptionId != null ||
-                  selectionLocked ||
+                  (pendingOptionId != null && option.id !== pendingOptionId) ||
+                  (selectionLocked && selectedOptionId !== option.id) ||
                   !isImplementedCombatOption(option);
 
                 return (

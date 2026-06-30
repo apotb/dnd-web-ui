@@ -1,5 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { isCharacterPlaceholder } from "@/lib/combat/character-placeholder";
+import { isFootprintOnBlocked } from "@/lib/combat/collision";
 import { buildTurnOrder, syncInitiativeOrder } from "@/lib/combat/initiative";
 import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
 import { getPartyTokenLabel } from "@/lib/combat/party-token-label";
@@ -89,7 +90,7 @@ export function createDefaultCombatState(
     tokens: [],
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     pendingAttacks: [],
     pendingOpportunityAttacks: null,
     boardTitle: DEFAULT_BOARD_TITLE,
@@ -308,6 +309,141 @@ export function findMarkerSpawnSlot(
   return findBottomLeftSpawnSlot(state, width, height);
 }
 
+function tokenFootprintCenter(token: TokenFootprint): { x: number; y: number } {
+  return {
+    x: token.x + token.width / 2,
+    y: token.y + token.height / 2,
+  };
+}
+
+function adjacentCellsAroundFootprint(
+  footprint: TokenFootprint,
+  state: CombatState
+): Array<{ x: number; y: number }> {
+  const minX = footprint.x - 1;
+  const maxX = footprint.x + footprint.width;
+  const minY = footprint.y - 1;
+  const maxY = footprint.y + footprint.height;
+  const cells: Array<{ x: number; y: number }> = [];
+  const seen = new Set<string>();
+
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (x < 0 || y < 0 || x >= state.gridWidth || y >= state.gridHeight) continue;
+      const insideFootprint =
+        x >= footprint.x &&
+        x < footprint.x + footprint.width &&
+        y >= footprint.y &&
+        y < footprint.y + footprint.height;
+      if (insideFootprint) continue;
+
+      const key = `${x},${y}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cells.push({ x, y });
+    }
+  }
+
+  return cells;
+}
+
+function isMarkerSpawnValid(
+  state: CombatState,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): boolean {
+  if (x < 0 || y < 0 || x + width > state.gridWidth || y + height > state.gridHeight) {
+    return false;
+  }
+  if (isFootprintOnBlocked(state, x, y, width, height)) {
+    return false;
+  }
+  return footprintIsFree(state, x, y, width, height);
+}
+
+function scoreThrownWeaponLandingCell(
+  cell: { x: number; y: number },
+  attackerCenter: { x: number; y: number },
+  targetCenter: { x: number; y: number }
+): number {
+  const approachX = attackerCenter.x - targetCenter.x;
+  const approachY = attackerCenter.y - targetCenter.y;
+  const length = Math.hypot(approachX, approachY);
+  if (length === 0) return 0;
+
+  const nx = approachX / length;
+  const ny = approachY / length;
+  const vx = cell.x + 0.5 - targetCenter.x;
+  const vy = cell.y + 0.5 - targetCenter.y;
+  return vx * nx + vy * ny;
+}
+
+function rankThrownWeaponLandingCells(
+  cells: Array<{ x: number; y: number }>,
+  attackerCenter: { x: number; y: number },
+  targetCenter: { x: number; y: number }
+): Array<{ x: number; y: number }> {
+  return [...cells].sort((a, b) => {
+    const scoreA = scoreThrownWeaponLandingCell(a, attackerCenter, targetCenter);
+    const scoreB = scoreThrownWeaponLandingCell(b, attackerCenter, targetCenter);
+    if (scoreB !== scoreA) return scoreB - scoreA;
+
+    const distA = Math.hypot(a.x + 0.5 - attackerCenter.x, a.y + 0.5 - attackerCenter.y);
+    const distB = Math.hypot(b.x + 0.5 - attackerCenter.x, b.y + 0.5 - attackerCenter.y);
+    return distA - distB;
+  });
+}
+
+export function findThrownWeaponMarkerSlot(
+  state: CombatState,
+  attacker: CombatToken,
+  target: CombatToken,
+  width: number,
+  height: number
+): { x: number; y: number } {
+  const attackerCenter = tokenFootprintCenter(attacker);
+  const targetCenter = tokenFootprintCenter(target);
+
+  const adjacentCandidates = adjacentCellsAroundFootprint(target, state).filter((cell) =>
+    isMarkerSpawnValid(state, cell.x, cell.y, width, height)
+  );
+  const rankedAdjacent = rankThrownWeaponLandingCells(
+    adjacentCandidates,
+    attackerCenter,
+    targetCenter
+  );
+  if (rankedAdjacent.length > 0) {
+    return rankedAdjacent[0];
+  }
+
+  const fallbackCandidates: Array<{ x: number; y: number }> = [];
+  for (let y = 0; y <= state.gridHeight - height; y++) {
+    for (let x = 0; x <= state.gridWidth - width; x++) {
+      const overlapsTarget =
+        x < target.x + target.width &&
+        x + width > target.x &&
+        y < target.y + target.height &&
+        y + height > target.y;
+      if (overlapsTarget) continue;
+      if (!isMarkerSpawnValid(state, x, y, width, height)) continue;
+      fallbackCandidates.push({ x, y });
+    }
+  }
+
+  const rankedFallback = rankThrownWeaponLandingCells(
+    fallbackCandidates,
+    attackerCenter,
+    targetCenter
+  );
+  if (rankedFallback.length > 0) {
+    return rankedFallback[0];
+  }
+
+  return findMarkerSpawnSlot(state, width, height);
+}
+
 export function createMarkerToken(
   name: string,
   tooltip: string,
@@ -319,6 +455,10 @@ export function createMarkerToken(
     droppedByCharacterId?: string;
     droppedItemId?: string;
     droppedInventoryItemId?: string;
+    isObject?: boolean;
+    itemPickup?: boolean;
+    pickupItemId?: string;
+    pickupQuantity?: number;
   }
 ): CombatToken {
   const width = 1;
@@ -336,6 +476,10 @@ export function createMarkerToken(
     droppedByCharacterId: options?.droppedByCharacterId,
     droppedItemId: options?.droppedItemId,
     droppedInventoryItemId: options?.droppedInventoryItemId,
+    isObject: options?.isObject ?? false,
+    itemPickup: options?.itemPickup ?? false,
+    pickupItemId: options?.pickupItemId,
+    pickupQuantity: options?.pickupQuantity ?? 1,
     x,
     y,
     width,
@@ -353,9 +497,41 @@ export function createThrownWeaponMarker(
     droppedByCharacterId: string;
     droppedItemId: string;
     droppedInventoryItemId: string;
+    attacker: CombatToken;
+    target: CombatToken;
   }
 ): CombatToken {
-  return createMarkerToken(itemName, `Thrown by ${thrownByLabel}`, state, options);
+  const width = 1;
+  const height = 1;
+  const { x, y } = findThrownWeaponMarkerSlot(
+    state,
+    options.attacker,
+    options.target,
+    width,
+    height
+  );
+  const trimmedName = itemName.trim();
+
+  return combatTokenSchema.parse({
+    id: crypto.randomUUID(),
+    kind: "marker",
+    name: trimmedName,
+    label: trimmedName,
+    tooltip: `Thrown by ${thrownByLabel}`.trim(),
+    droppedByCharacterId: options.droppedByCharacterId,
+    droppedItemId: options.droppedItemId,
+    droppedInventoryItemId: options.droppedInventoryItemId,
+    isObject: true,
+    itemPickup: true,
+    pickupItemId: options.droppedItemId,
+    pickupQuantity: 1,
+    x,
+    y,
+    width,
+    height,
+    placed: true,
+    hasCollision: false,
+  });
 }
 
 export function createEnemyToken(enemy: EnemyRecord, state: CombatState): CombatToken {
@@ -415,7 +591,15 @@ export function addMarkerToState(
   state: CombatState,
   name: string,
   tooltip: string,
-  options?: { id?: string; portraitPath?: string | null; hasCollision?: boolean }
+  options?: {
+    id?: string;
+    portraitPath?: string | null;
+    hasCollision?: boolean;
+    isObject?: boolean;
+    itemPickup?: boolean;
+    pickupItemId?: string;
+    pickupQuantity?: number;
+  }
 ): CombatState {
   return {
     ...state,
@@ -464,7 +648,7 @@ function clearTokenFromInitiative(
   if (initiative.status === "none") {
     return {
       initiative,
-      turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+      turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     };
   }
 
@@ -474,7 +658,7 @@ function clearTokenFromInitiative(
   if (order.length === 0) {
     return {
       initiative: { status: "none", results: {}, order: [] },
-      turn: { active: false, index: 0, round: turn.round, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+      turn: { active: false, index: 0, round: turn.round, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     };
   }
 
@@ -500,7 +684,7 @@ function clearTokenFromInitiative(
         results,
         order: buildTurnOrder(tokens, results),
       },
-      turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+      turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     };
   }
 
@@ -510,7 +694,7 @@ function clearTokenFromInitiative(
       results,
       order: [],
     },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
   };
 }
 
@@ -571,25 +755,20 @@ export function resetCombatBoard(
   state: CombatState,
   characters: ParsedCharacter[]
 ): CombatState {
-  const base: CombatState = {
+  return {
     gridWidth: state.gridWidth,
     gridHeight: state.gridHeight,
     tileFeet: state.tileFeet,
     backgroundPath: state.backgroundPath ?? null,
     blockedCells: state.blockedCells ?? [],
     tokens: [],
-    excludedPartyCharacterIds: [],
+    excludedPartyCharacterIds: characters.map((character) => character.id),
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     pendingAttacks: [],
     pendingOpportunityAttacks: null,
     boardTitle: DEFAULT_BOARD_TITLE,
     savedEncounterId: null,
-  };
-
-  return {
-    ...base,
-    tokens: buildPartyTokens(characters, base),
   };
 }
 

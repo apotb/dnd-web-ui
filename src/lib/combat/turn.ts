@@ -97,6 +97,7 @@ export const TURN_RESET_FIELDS = {
   actionUsed: false,
   bonusActionUsed: false,
   disengageUsed: false,
+  freeObjectInteractionUsed: false,
 } as const;
 
 export function advanceTurn(state: CombatState): CombatState {
@@ -174,6 +175,19 @@ export function applyDisengageUsed(state: CombatState): CombatState {
       ...state.turn,
       disengageUsed: true,
       actionUsed: true,
+    },
+  };
+}
+
+export function applyFreeObjectInteractionUsed(state: CombatState): CombatState {
+  if (!isBattleActive(state)) return state;
+  if (state.turn.freeObjectInteractionUsed) return state;
+
+  return {
+    ...state,
+    turn: {
+      ...state.turn,
+      freeObjectInteractionUsed: true,
     },
   };
 }

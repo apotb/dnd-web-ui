@@ -153,7 +153,7 @@ export function finalizeInitiativeIfReady(state: CombatState): CombatState {
       status: "ready",
       order: buildTurnOrder(state.tokens, state.initiative.results),
     },
-    turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
   };
 }
 
@@ -161,7 +161,7 @@ export function clearInitiativeState(state: CombatState): CombatState {
   return {
     ...state,
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
   };
 }
 
@@ -227,7 +227,7 @@ export function startInitiativeCollection(
       results,
       order: [],
     },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
   };
 }
 
@@ -285,6 +285,25 @@ export function updateInitiativeAfterVisibilityChange(
     },
     turn,
   };
+}
+
+/** Reconcile initiative when tokens become hidden (e.g. defeated enemies). */
+export function syncInitiativeAfterTokenHidden(
+  previous: CombatState,
+  next: CombatState
+): CombatState {
+  let result = next;
+  for (const token of next.tokens) {
+    if (token.kind !== "enemy") continue;
+    const prev = previous.tokens.find((entry) => entry.id === token.id);
+    if (!prev) continue;
+    const wasHidden = prev.hidden ?? false;
+    const isHidden = token.hidden ?? false;
+    if (!wasHidden && isHidden) {
+      result = updateInitiativeAfterVisibilityChange(result, token.id, false, true);
+    }
+  }
+  return result;
 }
 
 export function getPartyInitiativeModifierForCharacter(

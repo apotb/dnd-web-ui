@@ -183,6 +183,38 @@ function hasShieldEquipped(
   });
 }
 
+function hasTwoHandedMainHandWeapon(
+  items: InventoryItem[],
+  catalogItems: Record<string, Item>
+): boolean {
+  return items.some((item) => {
+    const catalog = resolveCatalog(item, catalogItems);
+    return getEffectiveWieldMain(item, catalog) && isTwoHandedWeapon(catalog);
+  });
+}
+
+/** Decrement quantity and clear the thrown hand's wield flag when the row remains. */
+export function consumeThrownWeaponInventoryItem(
+  items: InventoryItem[],
+  inventoryItemId: string,
+  fromOffHand: boolean
+): InventoryItem[] {
+  return items.flatMap((item) => {
+    if (item.id !== inventoryItemId) return [item];
+
+    const quantity = item.quantity - 1;
+    if (quantity <= 0) return [];
+
+    const unequipped = {
+      ...item,
+      quantity,
+      wieldMain: fromOffHand ? item.wieldMain : false,
+      wieldOff: fromOffHand ? false : item.wieldOff,
+    };
+    return [syncWeaponEquipped(unequipped)];
+  });
+}
+
 /** Whether off-hand can be toggled for this weapon row. */
 export function canWieldOffHand(
   items: InventoryItem[],
@@ -196,28 +228,26 @@ export function canWieldOffHand(
   if (getItemEquipSlot(catalog, item) !== "weapon") return false;
   if (!isLightWeapon(catalog)) return false;
   if (hasShieldEquipped(items, catalogItems)) return false;
+  if (hasTwoHandedMainHandWeapon(items, catalogItems)) return false;
+  if (stackQuantity(item) < 2 && getEffectiveWieldMain(item, catalog)) return false;
 
-  for (let i = 0; i < items.length; i++) {
-    const otherCatalog = resolveCatalog(items[i], catalogItems);
-    if (getEffectiveWieldMain(items[i], otherCatalog) && isTwoHandedWeapon(otherCatalog)) {
-      return false;
-    }
-  }
+  return true;
+}
 
-  // Two light weapons in one stack — off-hand needs main on this row first.
-  if (stackQuantity(item) >= 2) {
-    return getEffectiveWieldMain(item, catalog) || item.wieldOff;
-  }
+/** Whether main-hand can be toggled on for this weapon row. */
+export function canWieldMainHand(
+  items: InventoryItem[],
+  index: number,
+  catalogItems: Record<string, Item>
+): boolean {
+  const item = items[index];
+  if (!item) return false;
 
-  return items.some((other, i) => {
-    if (i === index) return false;
-    const otherCatalog = resolveCatalog(other, catalogItems);
-    return (
-      getEffectiveWieldMain(other, otherCatalog) &&
-      isLightWeapon(otherCatalog) &&
-      getItemEquipSlot(otherCatalog, other) === "weapon"
-    );
-  });
+  const catalog = resolveCatalog(item, catalogItems);
+  if (getItemEquipSlot(catalog, item) !== "weapon") return false;
+  if (stackQuantity(item) < 2 && item.wieldOff) return false;
+
+  return true;
 }
 
 /**
@@ -240,16 +270,10 @@ export function setWeaponWield(
   let next = items.map((item) => ({ ...item }));
 
   if (!wield) {
-    const hadMain = next[index].wieldMain;
     next[index] = syncWeaponEquipped({
       ...next[index],
       wieldMain: hand === "main" ? false : next[index].wieldMain,
-      wieldOff:
-        hand === "off"
-          ? false
-          : hand === "main" && hadMain && next[index].wieldOff
-            ? false
-            : next[index].wieldOff,
+      wieldOff: hand === "off" ? false : next[index].wieldOff,
     });
     return next;
   }
@@ -258,6 +282,10 @@ export function setWeaponWield(
     if (!isLightWeapon(targetCatalog) || !canWieldOffHand(next, index, catalogItems)) {
       return items;
     }
+  }
+
+  if (hand === "main" && !canWieldMainHand(next, index, catalogItems)) {
+    return items;
   }
 
   const targetIsTwoHanded = isTwoHandedWeapon(targetCatalog);
@@ -303,9 +331,6 @@ export function setWeaponWield(
   }
 
   if (hand === "off") {
-    if (stackQuantity(next[index]) >= 2 && !next[index].wieldMain) {
-      next[index] = { ...next[index], wieldMain: true };
-    }
     for (let i = 0; i < next.length; i++) {
       if (i === index) continue;
       const otherCatalog = resolveCatalog(next[i], catalogItems);
@@ -430,7 +455,7 @@ export function sanitizeEquippedItems(
   const migrated = migrateInventoryWieldSlots(items, catalogItems);
   const blockArmor = hasNaturalArmorSpecies(speciesDisplayName);
 
-  return migrated.map((item) => {
+  const sanitized = migrated.map((item, index) => {
     const catalog = item.itemId ? catalogItems[item.itemId] ?? null : null;
     const slot = getItemEquipSlot(catalog, item);
 
@@ -438,6 +463,9 @@ export function sanitizeEquippedItems(
       if (item.itemId && !catalog) return syncWeaponEquipped(item);
       if (!isEquippableItem(catalog, item)) return clearWeaponWield(item);
       if (item.wieldOff && !isLightWeapon(catalog)) {
+        return syncWeaponEquipped({ ...item, wieldOff: false });
+      }
+      if (stackQuantity(item) < 2 && item.wieldMain && item.wieldOff) {
         return syncWeaponEquipped({ ...item, wieldOff: false });
       }
       return syncWeaponEquipped(item);
@@ -450,5 +478,14 @@ export function sanitizeEquippedItems(
     if (item.itemId && !catalog) return item;
     if (isEquippableItem(catalog, item)) return { ...item, wieldMain: false, wieldOff: false };
     return { ...item, equipped: false, wieldMain: false, wieldOff: false };
+  });
+
+  return sanitized.map((item, index) => {
+    const catalog = item.itemId ? catalogItems[item.itemId] ?? null : null;
+    if (getItemEquipSlot(catalog, item) !== "weapon") return item;
+    if (item.wieldOff && !canWieldOffHand(sanitized, index, catalogItems)) {
+      return syncWeaponEquipped({ ...item, wieldOff: false });
+    }
+    return item;
   });
 }

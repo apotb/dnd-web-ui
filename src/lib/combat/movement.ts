@@ -1,7 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { getCharacterEffectiveSpeedFt } from "@/lib/character/combat-derivation";
 import { isFootprintOnBlocked, tokensCollideForMovement } from "@/lib/combat/collision";
-import { tokenFootprintsOverlap } from "@/lib/combat/state-utils";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import type { Item } from "@/lib/schemas/item";
@@ -161,7 +160,7 @@ export function canStepFootprint(
   return true;
 }
 
-/** Destination must not overlap tokens that collide with the mover. */
+/** Destination must respect movement collision rules (markers without collision may be occupied). */
 export function canEndFootprintAt(
   x: number,
   y: number,
@@ -171,20 +170,11 @@ export function canEndFootprintAt(
   if (!footprintInBounds(x, y, movingToken, state)) return false;
   if (isFootprintOnBlocked(state, x, y, movingToken.width, movingToken.height)) return false;
 
-  const probe = {
-    ...movingToken,
-    x,
-    y,
-    placed: true,
-  };
-
-  for (const other of state.tokens) {
-    if (other.id === movingToken.id || !other.placed) continue;
-    if (
-      tokenFootprintsOverlap(probe, other) &&
-      tokensCollideForMovement(movingToken, other)
-    ) {
-      return false;
+  for (let dy = 0; dy < movingToken.height; dy++) {
+    for (let dx = 0; dx < movingToken.width; dx++) {
+      const occupant = tokenAtCell(state, x + dx, y + dy, movingToken.id);
+      if (!occupant) continue;
+      if (tokensCollideForMovement(movingToken, occupant)) return false;
     }
   }
 

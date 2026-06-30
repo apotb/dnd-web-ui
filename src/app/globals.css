@@ -3062,6 +3062,108 @@ html.campaign-bg-active .retro-back-link {
   scroll-snap-align: start;
 }
 
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card {
+  color: #1e293b;
+  background: #f8fafc;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card,
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card * {
+  text-shadow: none;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card .retro-box-title {
+  color: #0f172a;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card .retro-muted {
+  color: #475569;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-status-awaiting-saves {
+  color: #92400e;
+  background: rgba(254, 240, 138, 0.45);
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-status-awaiting-dm-review {
+  color: #166534;
+  background: rgba(187, 247, 208, 0.45);
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target {
+  background: #1e293b;
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #e2e8f0;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target strong {
+  color: #f8fafc;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target .retro-muted {
+  color: #cbd5e1;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target .combat-attack-submit-field {
+  color: #e2e8f0;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target .combat-roll-mod {
+  color: #f1f5f9;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target .combat-damage-applied-value {
+  color: #4ade80;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target .combat-damage-applied-struck {
+  color: #94a3b8;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-submit-target-block {
+  color: #1e293b;
+  border-color: rgba(71, 85, 105, 0.45);
+  background: rgba(241, 245, 249, 0.9);
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-submit-target-block strong {
+  color: #0f172a;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-submit-target-block .retro-muted {
+  color: #475569;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-submit-target-block .combat-attack-submit-field {
+  color: #334155;
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card .candy-input,
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card .combat-roll-input {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: rgba(71, 85, 105, 0.55);
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target .candy-input,
+.combat-stage .combat-dm-approval-tray .combat-attack-review-target .combat-roll-input {
+  color: #0f172a;
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.65);
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-submit-target-block .candy-input,
+.combat-stage .combat-dm-approval-tray .combat-attack-submit-target-block .combat-roll-input {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: rgba(71, 85, 105, 0.55);
+}
+
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card .combat-roll-input::placeholder,
+.combat-stage .combat-dm-approval-tray .combat-attack-review-card .candy-input::placeholder {
+  color: #64748b;
+}
+
 .combat-board-area {
   flex: 1;
   min-height: 0;
@@ -3084,17 +3186,25 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .combat-toolbar-header {
+  flex-direction: column;
   align-items: stretch;
 }
 
+.combat-toolbar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
 .combat-toolbar-meta {
-  flex: 0 1 33%;
-  min-width: 160px;
-  max-width: 33%;
+  flex: 1;
+  min-width: 0;
 }
 
 .combat-toolbar-panels {
-  flex: 1 1 66%;
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -3104,8 +3214,6 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-board-view-actions {
   flex-shrink: 0;
-  align-self: flex-start;
-  margin-left: auto;
   display: flex;
   gap: 6px;
 }
@@ -3398,8 +3506,26 @@ html.campaign-bg-active .retro-back-link {
   padding: 0;
   margin: 0;
   border-radius: 2px;
-  background: rgba(239, 68, 68, 0.22);
-  box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.75);
+}
+
+.combat-targeting-cell-normal {
+  background: rgba(34, 211, 238, 0.28);
+  box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.95);
+}
+
+.combat-targeting-cell-long {
+  background: rgba(250, 204, 21, 0.28);
+  box-shadow: inset 0 0 0 2px rgba(250, 204, 21, 0.95);
+}
+
+.combat-targeting-cell-target {
+  background: rgba(239, 68, 68, 0.28);
+  box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.95);
+}
+
+.combat-targeting-cell-hovered {
+  opacity: 1;
+  filter: brightness(1.15);
 }
 
 .combat-targeting-cell-aoe-preview {
@@ -3407,53 +3533,63 @@ html.campaign-bg-active .retro-back-link {
   box-shadow: inset 0 0 0 2px rgba(251, 146, 60, 0.9);
 }
 
-.combat-targeting-token-highlight {
+.combat-grid-targeting-mode .combat-token,
+.combat-grid-targeting-mode .combat-token * {
+  pointer-events: none !important;
+}
+
+.combat-object-interaction-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-width), 1fr);
+  grid-template-rows: repeat(var(--grid-height), 1fr);
+  pointer-events: none;
+}
+
+.combat-object-interaction-cell {
   pointer-events: none;
   border: none;
   padding: 0;
   margin: 0;
-  background: rgba(239, 68, 68, 0.15);
-  box-shadow: inset 0 0 0 3px rgba(239, 68, 68, 0.95);
-  border-radius: 8px;
+  border-radius: 2px;
+  background: rgba(45, 212, 191, 0.28);
+  box-shadow: inset 0 0 0 2px rgba(45, 212, 191, 0.95);
 }
 
-.combat-targeting-banner {
-  position: absolute;
-  left: 50%;
-  top: 8px;
-  transform: translateX(-50%);
-  z-index: 7;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.94);
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  color: #f8fafc;
-  pointer-events: auto;
+.combat-token-pickup-highlight .combat-token-badge {
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.9);
 }
 
-.combat-targeting-banner-text {
+.combat-marker-dialog-object-settings {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  gap: 0.75rem;
+  padding-left: 0.25rem;
 }
 
-.combat-targeting-banner-hover {
-  font-size: 0.82rem;
-  color: #cbd5e1;
-  white-space: nowrap;
+.combat-marker-dialog-pickup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-left: 1.75rem;
 }
 
-.combat-token-attack-target .combat-token-badge {
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.85);
+.combat-marker-dialog-pickup-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.combat-grid-targeting-mode .combat-token,
-.combat-grid-targeting-mode .combat-token * {
-  pointer-events: none !important;
+.combat-object-interaction-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--retro-muted, #9ca3af);
 }
 
 .combat-attack-submit-modal,
@@ -3994,7 +4130,7 @@ html.campaign-bg-active .retro-back-link {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1px;
+  padding: 0;
   box-sizing: border-box;
   overflow: visible;
   min-width: 0;
@@ -4075,15 +4211,58 @@ html.campaign-bg-active .retro-back-link {
   container-type: size;
 }
 
-.combat-token-badge-expanded::after {
+.combat-token-expanded::after {
   content: "";
   position: absolute;
   left: 50%;
-  top: calc(100% - 1px - 2px - 1.05em);
+  top: calc(100% - 1lh - 2px);
   transform: translateX(-50%);
   width: max(130px, 140%);
   height: 130px;
   pointer-events: none;
+  font-size: clamp(10px, 28%, 13px);
+  line-height: 1.05;
+}
+
+.combat-token-tooltip-stack {
+  position: absolute;
+  left: 50%;
+  bottom: auto;
+  top: calc(100% - 1lh - 2px);
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  width: max-content;
+  max-width: none;
+  font-size: clamp(10px, 28%, 13px);
+  line-height: 1.05;
+}
+
+.combat-token-marker-underfoot-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #f97316;
+}
+
+.combat-token-marker-underfoot-wrap .combat-token-label {
+  position: relative;
+  left: auto;
+  transform: none;
+  bottom: auto;
+  top: auto;
+  min-width: 0;
+  padding: 2px 6px 2px;
+  gap: 1px;
+}
+
+.combat-token-marker-underfoot-wrap .combat-token-label-detail {
+  white-space: pre-line;
+  text-align: center;
 }
 
 .combat-token:active,
@@ -4100,7 +4279,8 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .combat-token-expanded {
-  z-index: 8;
+  /* Above targeting overlay (15) so hover labels stay visible during attack targeting */
+  z-index: 20;
 }
 
 .combat-token-selected .combat-token-badge {
@@ -4162,12 +4342,27 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .combat-token-label-expanded {
-  bottom: auto;
-  top: calc(100% - 1px - 2px - 1.05em);
   justify-content: flex-start;
   gap: 1px;
-  padding: 2px 6px 5px;
+  padding: 2px 6px 2px;
   min-width: 72px;
+}
+
+.combat-token-tooltip-stack .combat-token-label:not(.combat-token-label-expanded) {
+  padding: 2px 6px 0;
+  gap: 0;
+}
+
+.combat-token-tooltip-stack .combat-token-label,
+.combat-token-tooltip-stack .combat-token-label:not(.combat-token-label-expanded),
+.combat-token-tooltip-stack .combat-token-label.combat-token-label-expanded {
+  position: relative;
+  left: auto;
+  transform: none;
+  bottom: auto;
+  top: auto;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .combat-token-label-portrait {
@@ -4350,6 +4545,14 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .combat-token-marker .combat-token-label {
+  background: rgba(67, 20, 7, 0.95);
+  border: 1px solid rgba(249, 115, 22, 0.55);
+  color: #ffedd5;
+}
+
+.combat-token-party .combat-token-marker-underfoot-wrap .combat-token-label,
+.combat-token-enemy .combat-token-marker-underfoot-wrap .combat-token-label,
+.combat-token-ally .combat-token-marker-underfoot-wrap .combat-token-label {
   background: rgba(67, 20, 7, 0.95);
   border: 1px solid rgba(249, 115, 22, 0.55);
   color: #ffedd5;
@@ -4571,6 +4774,31 @@ html.campaign-bg-active .retro-back-link {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.combat-encounter-load-dialog-header {
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-right: 2.75rem;
+  margin: 0;
+}
+
+.combat-encounter-load-dialog-header [data-slot="dialog-title"] {
+  margin: 0;
+  line-height: 1;
+}
+
+.combat-encounter-load-auto-populate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-right: 0.25rem;
 }
 
 .combat-encounter-load-controls {

@@ -87,10 +87,9 @@ export function formatAmmunitionConsumptionLine(name: string, quantity = 1): str
 
 export function formatThrownWeaponLine(name: string, count: number): string {
   const label = count === 1 ? name : `${name}s`;
-  return `Thrown: ${count} ${label}`;
+  return `Inventory: ${count} ${label}`;
 }
 
-export function formatThrownWeaponConsumptionLine(name: string, quantity = 1): string {
-  const label = quantity === 1 ? name : `${name}s`;
-  return `Throws ${quantity} ${label} onto the map`;
+export function formatThrownWeaponConsumptionLine(name: string, count = 1): string {
+  return formatThrownWeaponLine(name, count);
 }

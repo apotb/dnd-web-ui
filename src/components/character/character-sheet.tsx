@@ -172,7 +172,7 @@ import {
   isInventoryWithinMaxCapacity,
   resolveItemWeightLb,
 } from "@/lib/character/encumbrance";
-import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, isLightWeapon, sortInventoryForDisplay } from "@/lib/character/equip-rules";
+import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, canWieldMainHand, isLightWeapon, sortInventoryForDisplay } from "@/lib/character/equip-rules";
 import { mergeIntoInventory } from "@/lib/character/inventory-stack";
 import {
   fillEmptyWaterskin,
@@ -2469,6 +2469,7 @@ export function CharacterSheet({
                     const wieldOff = getEffectiveWieldOff(item);
                     const showOffHand = isWeapon && isLightWeapon(catalogItem);
                     const offHandEnabled = canWieldOffHand(data.inventory.items, i, catalogItems);
+                    const mainHandEnabled = canWieldMainHand(data.inventory.items, i, catalogItems);
                     const wp = catalogItem ? getWeaponProperties(catalogItem) : null;
                     const detail = wp
                       ? `${wp.damage} ${wp.damageType} · ${wp.weaponCategory} ${wp.weaponRange}`
@@ -2564,9 +2565,16 @@ export function CharacterSheet({
                             )}
                             {isWeapon && (editable || canToggleEquipment) && (
                               <>
-                                <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none shrink-0">
+                                <label
+                                  className={`flex items-center gap-1.5 text-xs select-none shrink-0 ${
+                                    mainHandEnabled || wieldMain
+                                      ? "cursor-pointer"
+                                      : "cursor-not-allowed opacity-50"
+                                  }`}
+                                >
                                   <Checkbox
                                     checked={wieldMain}
+                                    disabled={!mainHandEnabled && !wieldMain}
                                     onCheckedChange={(checked) => {
                                       const items = setWeaponWield(
                                         data.inventory.items,
@@ -2638,6 +2646,12 @@ export function CharacterSheet({
                                 let items = [...data.inventory.items];
                                 items[i] = { ...item, quantity: qty };
                                 if (
+                                  qty < 2 &&
+                                  items[i].wieldMain &&
+                                  items[i].wieldOff
+                                ) {
+                                  items = setWeaponWield(items, i, "off", false, catalogItems);
+                                } else if (
                                   qty < 2 &&
                                   items[i].wieldOff &&
                                   !canWieldOffHand(items, i, catalogItems)

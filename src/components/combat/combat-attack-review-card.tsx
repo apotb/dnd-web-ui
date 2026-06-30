@@ -18,12 +18,13 @@ import {
   resolveFinalDamageApplied,
 } from "@/lib/combat/attack-resolution";
 import { getDmSaveTargets } from "@/lib/combat/pending-attack-builder";
-import { formatAmmunitionConsumptionLine, formatThrownWeaponConsumptionLine } from "@/lib/dnd/ammunition";
+import { formatAmmunitionConsumptionLine, formatThrownWeaponLine } from "@/lib/dnd/ammunition";
 import type { PendingAttack, PendingAttackTarget } from "@/lib/schemas/combat-state";
 
 interface CombatAttackReviewCardProps {
   pending: PendingAttack;
   attackerLabel: string;
+  resolveDisadvantageLabel?: (targetTokenId: string) => string | null;
   onReject: () => void;
   onConfirm: (pending: PendingAttack) => void;
   onSubmitDmSaves?: (
@@ -77,6 +78,7 @@ function projectedHp(
 export function CombatAttackReviewCard({
   pending,
   attackerLabel,
+  resolveDisadvantageLabel,
   onReject,
   onConfirm,
   onSubmitDmSaves,
@@ -259,7 +261,9 @@ export function CombatAttackReviewCard({
             <strong>{target.label}</strong>
             <span className="retro-muted">
               AC {target.ac ?? "?"} · {formatHpLine(target)}
-              {target.attackDisadvantage ? " · Long range (disadvantage)" : ""}
+              {target.attackDisadvantage
+                ? ` · ${resolveDisadvantageLabel?.(target.tokenId) ?? "Disadvantage on attack roll"}`
+                : ""}
               {afterHp != null ? ` · After damage: ${afterHp} HP` : ""}
             </span>
 
@@ -418,7 +422,10 @@ export function CombatAttackReviewCard({
         ) : null}
         {pending.thrownItemName ? (
           <span className="retro-muted">
-            {formatThrownWeaponConsumptionLine(pending.thrownItemName)}
+            {formatThrownWeaponLine(
+              pending.thrownItemName,
+              pending.thrownRemaining ?? 1
+            )}
           </span>
         ) : null}
       </div>

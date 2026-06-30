@@ -38,6 +38,8 @@ export const combatTurnSchema = z.object({
   bonusActionUsed: z.boolean().default(false),
   /** Disengage action used this turn; movement does not provoke opportunity attacks. */
   disengageUsed: z.boolean().default(false),
+  /** Free object interaction consumed this turn (first pickup is free). */
+  freeObjectInteractionUsed: z.boolean().default(false),
 });
 
 export const pendingAttackTargetSchema = z.object({
@@ -87,6 +89,7 @@ export const pendingAttackSchema = z.object({
   thrownInventoryItemId: z.string().optional(),
   thrownItemName: z.string().optional(),
   thrownItemId: z.string().optional(),
+  thrownRemaining: z.number().int().min(1).optional(),
   aoeCenter: z.object({ x: z.number().int(), y: z.number().int() }).optional(),
   aoeShape: z.enum(["radius", "cone", "cube"]).optional(),
   status: z.enum(["awaiting-saves", "awaiting-dm-review"]),
@@ -118,6 +121,14 @@ export const combatTokenSchema = z.object({
   damageTaken: z.number().int().min(0).default(0),
   /** When true, marker tokens block movement pathfinding (ignored for other kinds). */
   hasCollision: z.boolean().default(false),
+  /** When true, marker acts as an interactable object. */
+  isObject: z.boolean().default(false),
+  /** When true, adjacent characters can pick up pickupItemId from this marker. */
+  itemPickup: z.boolean().default(false),
+  /** Catalog item slug granted on pickup. */
+  pickupItemId: z.string().optional(),
+  /** Quantity added to inventory on pickup. */
+  pickupQuantity: z.number().int().min(1).default(1),
   /** When true, enemy tokens are invisible to players until revealed. */
   hidden: z.boolean().default(false),
 });
@@ -162,6 +173,7 @@ export const combatStateSchema = z.object({
     actionUsed: false,
     bonusActionUsed: false,
     disengageUsed: false,
+    freeObjectInteractionUsed: false,
   }),
   pendingAttacks: z.array(pendingAttackSchema).default([]),
   pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
@@ -202,6 +214,7 @@ const DEFAULT_TURN: CombatTurn = {
   actionUsed: false,
   bonusActionUsed: false,
   disengageUsed: false,
+  freeObjectInteractionUsed: false,
 };
 
 export function normalizeCombatTurn(state: CombatState): CombatState {
@@ -223,6 +236,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
         actionUsed: false,
         bonusActionUsed: false,
         disengageUsed: false,
+        freeObjectInteractionUsed: false,
       },
     };
   }
@@ -240,6 +254,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
       actionUsed: state.turn.actionUsed ?? false,
       bonusActionUsed: state.turn.bonusActionUsed ?? false,
       disengageUsed: state.turn.disengageUsed ?? false,
+      freeObjectInteractionUsed: state.turn.freeObjectInteractionUsed ?? false,
     },
     pendingAttacks: state.pendingAttacks ?? [],
     pendingOpportunityAttacks: state.pendingOpportunityAttacks ?? null,

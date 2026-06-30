@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatAttackDescriptionBlurb, type DerivedAttack } from "@/lib/dnd/attacks";
-import type { CombatToken } from "@/lib/schemas/combat-state";
+import type { DerivedAttack } from "@/lib/dnd/attacks";
+import { formatAttackDescriptionBlurb } from "@/lib/dnd/attacks";
+import { formatAttackDisadvantageLabel } from "@/lib/combat/targeting";
+import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import {
   areDamageRollsComplete,
   DamageRollField,
@@ -36,6 +38,8 @@ interface CombatAttackSubmitModalProps {
   attack: DerivedAttack;
   optionName: string;
   targets: CombatToken[];
+  attackerToken?: CombatToken;
+  combatState?: CombatState;
   attackDisadvantageByTokenId?: Record<string, boolean>;
   damageTakenByTokenId: Record<string, number>;
   onCancel: () => void;
@@ -54,6 +58,8 @@ export function CombatAttackSubmitModal({
   attack,
   optionName,
   targets,
+  attackerToken,
+  combatState,
   attackDisadvantageByTokenId = {},
   damageTakenByTokenId,
   onCancel,
@@ -67,6 +73,17 @@ export function CombatAttackSubmitModal({
   const attackDescriptionBlurb = formatAttackDescriptionBlurb(attack);
   const singleTargetDisadvantage =
     targets.length === 1 ? attackDisadvantageByTokenId[targets[0].id] === true : false;
+
+  function disadvantageLabelForTarget(target: CombatToken): string | null {
+    if (!attackDisadvantageByTokenId[target.id]) return null;
+    if (attackerToken && combatState) {
+      return (
+        formatAttackDisadvantageLabel(attackerToken, target, combatState, attack) ??
+        "Disadvantage on attack roll"
+      );
+    }
+    return "Disadvantage on attack roll";
+  }
 
   const [attackRoll, setAttackRoll] = useState("");
   const [attackRoll2, setAttackRoll2] = useState("");
@@ -181,7 +198,7 @@ export function CombatAttackSubmitModal({
             <div key={target.id} className="combat-attack-submit-target">
               <strong>{target.label}</strong>
               {attackDisadvantageByTokenId[target.id] ? (
-                <span className="retro-muted">Long range (disadvantage)</span>
+                <span className="retro-muted">{disadvantageLabelForTarget(target)}</span>
               ) : null}
               <span className="retro-muted">
                 Battle damage taken: {damageTakenByTokenId[target.id] ?? 0}

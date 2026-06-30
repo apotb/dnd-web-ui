@@ -2,8 +2,11 @@ import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyHpDamage } from "@/lib/character/combat-derivation";
 import { parseDamageNotation } from "@/lib/dnd/dice";
 import { consumeInventoryItem } from "@/lib/dnd/supplies";
+import { consumeThrownWeaponInventoryItem } from "@/lib/character/equip-rules";
 import { createThrownWeaponMarker } from "@/lib/combat/state-utils";
 import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
+import { patchTokenHpFromDamage } from "@/lib/combat/hp-adjust";
+import { syncInitiativeAfterTokenHidden } from "@/lib/combat/initiative";
 import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
 import {
   hasPendingAttackForAttacker,
@@ -157,11 +160,7 @@ export function applyResolvedAttack(
 
     const currentHp = token.currentHp ?? token.maxHp ?? 0;
     const nextHp = Math.max(0, currentHp - damage);
-    return {
-      ...token,
-      currentHp: nextHp,
-      damageTaken,
-    };
+    return patchTokenHpFromDamage(token, nextHp, damageTaken);
   });
 
   const attacker = state.tokens.find((token) => token.id === pending.attackerTokenId);
@@ -187,9 +186,10 @@ export function applyResolvedAttack(
         inventoryChanged = true;
       }
       if (pending.thrownInventoryItemId) {
-        inventoryItems = consumeInventoryItem(
+        inventoryItems = consumeThrownWeaponInventoryItem(
           inventoryItems,
-          pending.thrownInventoryItemId
+          pending.thrownInventoryItemId,
+          !pending.isMainHandWeapon
         );
         inventoryChanged = true;
       }
@@ -205,16 +205,24 @@ export function applyResolvedAttack(
       }
 
       if (pending.thrownInventoryItemId && pending.thrownItemName) {
-        markerToken = createThrownWeaponMarker(
-          pending.thrownItemName,
-          character.name,
-          { ...state, tokens },
-          {
-            droppedByCharacterId: attacker.characterId,
-            droppedItemId: pending.thrownItemId ?? "",
-            droppedInventoryItemId: pending.thrownInventoryItemId,
-          }
-        );
+        const targetToken =
+          pending.targets.length > 0
+            ? tokens.find((token) => token.id === pending.targets[0].tokenId)
+            : null;
+        if (targetToken) {
+          markerToken = createThrownWeaponMarker(
+            pending.thrownItemName,
+            character.name,
+            { ...state, tokens },
+            {
+              droppedByCharacterId: attacker.characterId,
+              droppedItemId: pending.thrownItemId ?? "",
+              droppedInventoryItemId: pending.thrownInventoryItemId,
+              attacker,
+              target: targetToken,
+            }
+          );
+        }
       }
     }
   }
@@ -245,6 +253,8 @@ export function applyResolvedAttack(
   if (pending.isOpportunityAttack) {
     nextState = completeOpportunityAttackForAttacker(nextState, pending.attackerTokenId);
   }
+
+  nextState = syncInitiativeAfterTokenHidden(state, nextState);
 
   return {
     next: nextState,

@@ -71,3 +71,38 @@ export function canPlayerClaimPlaceholder(
   if (presentCharacterIds.has(ownedCharacter.id)) return false;
   return true;
 }
+
+function sortPlaceholdersLeftToRightTopToBottom(a: CombatToken, b: CombatToken): number {
+  if (a.y !== b.y) return a.y - b.y;
+  return a.x - b.x;
+}
+
+/** Assign campaign characters to placeholder slots alphabetically, left to right, top to bottom. */
+export function populateCharacterPlaceholders(
+  state: CombatState,
+  characters: ParsedCharacter[]
+): CombatState {
+  const placeholders = state.tokens
+    .filter(isCharacterPlaceholder)
+    .sort(sortPlaceholdersLeftToRightTopToBottom);
+  if (placeholders.length === 0 || characters.length === 0) return state;
+
+  const presentIds = new Set(
+    state.tokens
+      .filter((token) => token.kind === "party" && token.characterId)
+      .map((token) => token.characterId!)
+  );
+
+  const available = characters
+    .filter((character) => !presentIds.has(character.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (available.length === 0) return state;
+
+  const pairCount = Math.min(placeholders.length, available.length);
+
+  let next = state;
+  for (let i = 0; i < pairCount; i++) {
+    next = assignCharacterToPlaceholder(next, placeholders[i].id, available[i]);
+  }
+  return next;
+}

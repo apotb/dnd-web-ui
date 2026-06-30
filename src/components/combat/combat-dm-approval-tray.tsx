@@ -6,6 +6,10 @@ import type { CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 interface CombatDmApprovalTrayProps {
   pendingAttacks: PendingAttack[];
   tokens: CombatToken[];
+  resolveDisadvantageLabel?: (
+    pending: PendingAttack,
+    targetTokenId: string
+  ) => string | null;
   resolvingAttackId: string | null;
   submittingSaveId: string | null;
   onReject: (pendingAttackId: string) => void;
@@ -24,6 +28,7 @@ function getAttackerLabel(pending: PendingAttack, tokens: CombatToken[]): string
 export function CombatDmApprovalTray({
   pendingAttacks,
   tokens,
+  resolveDisadvantageLabel,
   resolvingAttackId,
   submittingSaveId,
   onReject,
@@ -46,6 +51,11 @@ export function CombatDmApprovalTray({
             key={`${pending.id}-${pending.status}`}
             pending={pending}
             attackerLabel={getAttackerLabel(pending, tokens)}
+            resolveDisadvantageLabel={
+              resolveDisadvantageLabel
+                ? (targetTokenId) => resolveDisadvantageLabel(pending, targetTokenId)
+                : undefined
+            }
             submitting={resolvingAttackId === pending.id}
             submittingSaves={submittingSaveId === pending.id}
             onReject={() => onReject(pending.id)}
