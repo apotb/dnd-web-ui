@@ -118,6 +118,8 @@ export const combatTokenSchema = z.object({
   damageTaken: z.number().int().min(0).default(0),
   /** When true, marker tokens block movement pathfinding (ignored for other kinds). */
   hasCollision: z.boolean().default(false),
+  /** When true, enemy tokens are invisible to players until revealed. */
+  hidden: z.boolean().default(false),
 });
 
 export const pendingOpportunityAttacksSchema = z.object({
@@ -179,6 +181,15 @@ export type CombatState = z.infer<typeof combatStateSchema>;
 
 export function isCombatantToken(token: CombatToken): boolean {
   return token.kind !== "marker";
+}
+
+export function isHiddenEnemy(token: CombatToken): boolean {
+  return token.kind === "enemy" && token.hidden === true;
+}
+
+/** Combatants that participate in the visible turn order. */
+export function isTokenInTurnOrder(token: CombatToken): boolean {
+  return isCombatantToken(token) && !isHiddenEnemy(token);
 }
 
 const DEFAULT_TURN: CombatTurn = {

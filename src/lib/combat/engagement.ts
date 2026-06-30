@@ -1,4 +1,5 @@
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import { isHiddenEnemy } from "@/lib/schemas/combat-state";
 import type { GridPosition } from "@/lib/combat/movement";
 
 function footprintCells(token: CombatToken): GridPosition[] {
@@ -84,6 +85,7 @@ export function getEngagedHostileTokens(
     (other) =>
       other.placed &&
       other.id !== token.id &&
+      !isHiddenEnemy(other) &&
       isHostileToken(token, other) &&
       areTokensEngaged(token, other)
   );

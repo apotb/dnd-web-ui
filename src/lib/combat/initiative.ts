@@ -7,7 +7,8 @@ import type {
   CombatToken,
   InitiativeTokenResult,
 } from "@/lib/schemas/combat-state";
-import { isCombatantToken } from "@/lib/schemas/combat-state";
+import { isCombatantToken, isTokenInTurnOrder } from "@/lib/schemas/combat-state";
+import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { abilityModifier as enemyAbilityModifier } from "@/lib/schemas/enemy";
 
@@ -102,6 +103,16 @@ export function sortInitiativeTokenIds(
   return ordered.map((token) => token.id);
 }
 
+export function buildTurnOrder(
+  tokens: CombatToken[],
+  results: Record<string, InitiativeTokenResult>
+): string[] {
+  return sortInitiativeTokenIds(
+    tokens.filter(isTokenInTurnOrder),
+    results
+  );
+}
+
 export function allInitiativeResultsCollected(state: CombatState): boolean {
   if (state.initiative.status !== "collecting") return false;
   const combatants = state.tokens.filter(isCombatantToken);
@@ -117,7 +128,7 @@ export function finalizeInitiativeIfReady(state: CombatState): CombatState {
     initiative: {
       ...state.initiative,
       status: "ready",
-      order: sortInitiativeTokenIds(state.tokens, state.initiative.results),
+      order: buildTurnOrder(state.tokens, state.initiative.results),
     },
     turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
   };
@@ -216,6 +227,41 @@ export function applyPlayerInitiativeRoll(
   };
 
   return finalizeInitiativeIfReady(next);
+}
+
+export function updateInitiativeAfterVisibilityChange(
+  state: CombatState,
+  tokenId: string,
+  wasHidden: boolean,
+  isHidden: boolean
+): CombatState {
+  if (state.initiative.status !== "ready" || wasHidden === isHidden) return state;
+
+  const oldOrder = state.initiative.order;
+  const newOrder = buildTurnOrder(state.tokens, state.initiative.results);
+
+  const turn = wasHidden
+    ? (() => {
+        const currentTokenId = oldOrder[state.turn.index];
+        const newIndex =
+          currentTokenId != null
+            ? Math.max(0, newOrder.indexOf(currentTokenId))
+            : state.turn.index;
+        return {
+          ...state.turn,
+          index: newOrder.length > 0 ? Math.min(newIndex, newOrder.length - 1) : 0,
+        };
+      })()
+    : adjustTurnAfterTokenRemoved(state.turn, tokenId, newOrder);
+
+  return {
+    ...state,
+    initiative: {
+      ...state.initiative,
+      order: newOrder,
+    },
+    turn,
+  };
 }
 
 export function getPartyInitiativeModifierForCharacter(

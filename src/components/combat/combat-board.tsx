@@ -21,6 +21,7 @@ import {
   getPartyInitiativeModifierForCharacter,
   getTokensNeedingPlayerRolls,
   startInitiativeCollection,
+  updateInitiativeAfterVisibilityChange,
 } from "@/lib/combat/initiative";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import {
@@ -47,7 +48,7 @@ import {
 } from "@/lib/hooks/use-realtime-combat-state";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
-import { DEFAULT_BOARD_TITLE, isCombatantToken } from "@/lib/schemas/combat-state";
+import { DEFAULT_BOARD_TITLE, isCombatantToken, isHiddenEnemy } from "@/lib/schemas/combat-state";
 import {
   MAX_GRID_SIZE,
   MAX_TILE_FEET,
@@ -2103,9 +2104,23 @@ export function CombatBoard({
   async function handleEditEnemy(values: EnemyTokenDialogValues) {
     if (!selectedEnemy) return;
 
-    const next = updateTokenInState(combatState, selectedEnemy.id, {
+    const wasHidden = selectedEnemy.hidden ?? false;
+    const isHidden = values.hidden;
+
+    let next = updateTokenInState(combatState, selectedEnemy.id, {
       displayName: values.displayName || undefined,
+      hidden: isHidden,
     });
+
+    if (wasHidden !== isHidden) {
+      next = updateInitiativeAfterVisibilityChange(
+        next,
+        selectedEnemy.id,
+        wasHidden,
+        isHidden
+      );
+    }
+
     const persistError = await persist(next);
     if (persistError) {
       showAlert(persistError);
@@ -2418,12 +2433,8 @@ export function CombatBoard({
     if (error || !path) return;
 
     const previousPath = combatState.backgroundPath;
-    const next = { ...combatState, backgroundPath: path, blockedCells: [] };
+    const next = { ...combatState, backgroundPath: path };
     await persist(next);
-
-    if (collisionEditMode) {
-      setCollisionDraft(new Set());
-    }
 
     if (previousPath && previousPath !== path) {
       await removeCombatImage(supabase, previousPath);
@@ -2439,13 +2450,9 @@ export function CombatBoard({
       destructive: true,
       onConfirm: async () => {
         const previousPath = combatStateRef.current.backgroundPath;
-        const next = { ...combatStateRef.current, backgroundPath: null, blockedCells: [] };
+        const next = { ...combatStateRef.current, backgroundPath: null };
         await persist(next);
         await removeCombatImage(supabase, previousPath);
-
-        if (collisionEditMode) {
-          setCollisionDraft(new Set());
-        }
       },
     });
   }
@@ -2478,11 +2485,14 @@ export function CombatBoard({
   }
 
   function renderToken(token: CombatToken) {
+    if (isHiddenEnemy(token) && !isDm) return null;
+
     const portraitUrl = resolveTokenPortraitUrl(supabase, token);
     const displayLabel = getCombatTokenDisplayLabel(token);
     const isSelected = selectedTokenId === token.id;
     const enemy = token.enemySlug ? enemiesBySlug[token.enemySlug] : null;
     const character = token.characterId ? charactersById[token.characterId] : null;
+    const isHiddenForDm = isHiddenEnemy(token) && isDm;
     const isHovered = hoveredTokenId === token.id && !draggingTokenId;
     const speciesClassLine = character
       ? [
@@ -2520,7 +2530,7 @@ export function CombatBoard({
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -2588,6 +2598,9 @@ export function CombatBoard({
                   {token.maxHp ?? enemy.data.hitPoints.average}
                 </span>
               </>
+            ) : null}
+            {isExpanded && isHiddenForDm ? (
+              <span className="combat-token-label-detail combat-token-hidden-label">Hidden</span>
             ) : null}
             {isExpanded && token.kind === "marker" && token.tooltip ? (
               <span className="combat-token-label-detail combat-token-marker-tooltip">
@@ -3211,6 +3224,7 @@ export function CombatBoard({
             : selectedEnemy?.name ?? ""
         }
         initialDisplayName={selectedEnemy?.displayName ?? ""}
+        initialHidden={selectedEnemy?.hidden ?? false}
         onSubmit={(values) => void handleEditEnemy(values)}
       />
       {attackSubmitDraft ? (

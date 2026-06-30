@@ -1,6 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { isCharacterPlaceholder } from "@/lib/combat/character-placeholder";
-import { sortInitiativeTokenIds } from "@/lib/combat/initiative";
+import { buildTurnOrder } from "@/lib/combat/initiative";
 import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
 import { getPartyTokenLabel } from "@/lib/combat/party-token-label";
 import type { EnemyData } from "@/lib/schemas/enemy";
@@ -494,7 +494,7 @@ function clearTokenFromInitiative(
       initiative: {
         status: "ready",
         results,
-        order: sortInitiativeTokenIds(tokens, results),
+        order: buildTurnOrder(tokens, results),
       },
       turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
     };

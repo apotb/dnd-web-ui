@@ -4,6 +4,7 @@ import { blockedCellSchema } from "@/lib/schemas/combat-state";
 export const savedEncounterEnemySchema = z.object({
   enemySlug: z.string(),
   displayName: z.string().optional(),
+  hidden: z.boolean().default(false),
   x: z.number().int().min(0),
   y: z.number().int().min(0),
   width: z.number().int().min(1).default(1),

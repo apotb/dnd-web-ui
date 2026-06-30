@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -12,6 +13,7 @@ import {
 
 export interface EnemyTokenDialogValues {
   displayName: string;
+  hidden: boolean;
 }
 
 interface EnemyTokenDialogProps {
@@ -20,6 +22,7 @@ interface EnemyTokenDialogProps {
   defaultLabel: string;
   catalogName: string;
   initialDisplayName?: string;
+  initialHidden?: boolean;
   onSubmit: (values: EnemyTokenDialogValues) => void;
 }
 
@@ -29,17 +32,20 @@ export function EnemyTokenDialog({
   defaultLabel,
   catalogName,
   initialDisplayName = "",
+  initialHidden = false,
   onSubmit,
 }: EnemyTokenDialogProps) {
   const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [hidden, setHidden] = useState(initialHidden);
 
   useEffect(() => {
     if (!open) return;
     setDisplayName(initialDisplayName);
-  }, [open, initialDisplayName]);
+    setHidden(initialHidden);
+  }, [open, initialDisplayName, initialHidden]);
 
   function handleSubmit() {
-    onSubmit({ displayName: displayName.trim() });
+    onSubmit({ displayName: displayName.trim(), hidden });
     onOpenChange(false);
   }
 
@@ -72,6 +78,17 @@ export function EnemyTokenDialog({
           Leave blank to use the default label. A custom name always takes priority on the board
           and in combat.
         </p>
+
+        <label className="combat-marker-dialog-field combat-marker-dialog-checkbox">
+          <Checkbox checked={hidden} onCheckedChange={(checked) => setHidden(checked === true)} />
+          <span>
+            <span className="retro-muted">Hidden</span>
+            <span className="combat-marker-dialog-checkbox-hint">
+              Invisible to players until revealed; initiative is rolled at battle start but turn
+              order waits until visible
+            </span>
+          </span>
+        </label>
 
         <div className="combat-marker-dialog-actions">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

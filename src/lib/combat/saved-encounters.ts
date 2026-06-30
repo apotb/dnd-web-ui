@@ -56,6 +56,7 @@ export function combatStateToEncounterPayload(
     .map((token) => ({
       enemySlug: token.enemySlug!,
       ...(token.displayName?.trim() ? { displayName: token.displayName.trim() } : {}),
+      hidden: token.hidden ?? false,
       x: token.x,
       y: token.y,
       width: token.width,
@@ -107,6 +108,7 @@ function createEnemyTokenFromSave(
     name: enemy.name,
     label: enemy.name,
     displayName: saved.displayName?.trim() || undefined,
+    hidden: saved.hidden ?? false,
     enemySlug: enemy.slug,
     portraitPath: enemy.data.portraitPath || null,
     x: saved.x,

@@ -1,4 +1,5 @@
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import { isHiddenEnemy } from "@/lib/schemas/combat-state";
 
 function isFriendlyToken(token: CombatToken): boolean {
   return token.kind === "party" || token.kind === "ally";
@@ -11,6 +12,8 @@ function isHostileToken(token: CombatToken): boolean {
 /** Whether two tokens block each other during movement pathfinding. */
 export function tokensCollideForMovement(a: CombatToken, b: CombatToken): boolean {
   if (a.id === b.id) return false;
+
+  if (isHiddenEnemy(a) || isHiddenEnemy(b)) return false;
 
   if (a.kind === "marker") {
     if (!a.hasCollision) return false;

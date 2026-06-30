@@ -4131,6 +4131,24 @@ html.campaign-bg-active .retro-back-link {
   color: #fecaca;
 }
 
+.combat-token-hidden-enemy {
+  opacity: 0.42;
+}
+
+.combat-token-hidden-enemy .combat-token-portrait,
+.combat-token-hidden-enemy .combat-token-portrait-fallback,
+.combat-token-hidden-enemy .combat-token-label {
+  border-style: dashed;
+}
+
+.combat-token-hidden-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fca5a5;
+}
+
 .combat-token-ally {
   color: #22c55e;
 }

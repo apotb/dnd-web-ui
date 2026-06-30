@@ -2,6 +2,7 @@ import { isHostileToken } from "@/lib/combat/engagement";
 import { isCellBlocked } from "@/lib/combat/collision";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import { isHiddenEnemy } from "@/lib/schemas/combat-state";
 import type { GridPosition } from "@/lib/combat/movement";
 
 export type AoeShape = "radius" | "cone" | "cube";
@@ -206,6 +207,7 @@ export function getValidHostileTargets(
     (token) =>
       isTokenOnGrid(token, state) &&
       token.id !== attacker.id &&
+      !isHiddenEnemy(token) &&
       isHostileToken(attacker, token) &&
       distanceFeetBetweenTokens(attacker, token, state.tileFeet) <= maxRangeFt
   );
@@ -450,6 +452,7 @@ export function getAoePreviewTargets(
   const cells = getAoeCells(attacker, center, spec, state);
   return getTokensInCells(cells, state, (token) => {
     if (token.id === attacker.id) return false;
+    if (isHiddenEnemy(token)) return false;
     if (includeAllies) return true;
     return isHostileToken(attacker, token);
   });
