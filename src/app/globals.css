@@ -2368,6 +2368,21 @@ html.campaign-bg-active .retro-back-link {
   width: 100%;
 }
 
+.supply-picker-modal.retro-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.supply-picker-modal.retro-box > .retro-box-title {
+  margin-bottom: 0;
+}
+
+.supply-picker-modal.retro-box > *:not(.retro-box-title) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 .supply-picker-modal.initiative-roll-modal {
   width: max-content;
   max-width: min(240px, calc(100vw - 40px));
@@ -4349,28 +4364,9 @@ html.campaign-bg-active .retro-back-link {
   max-width: 28rem;
 }
 
-.combat-character-slot-claim-modal .supply-picker-actions {
-  margin-top: 14px;
-}
-
-.combat-encounter-name-modal .combat-marker-dialog-field {
-  margin-top: 14px;
-}
-
-.combat-encounter-name-modal .supply-picker-actions {
-  margin-top: 18px;
-}
 
 .combat-encounter-overwrite-modal {
   max-width: 28rem;
-}
-
-.combat-encounter-overwrite-modal .combat-encounter-overwrite-preview {
-  margin-top: 14px;
-}
-
-.combat-encounter-overwrite-modal .supply-picker-actions {
-  margin-top: 14px;
 }
 
 .combat-character-slot-assign-list {
