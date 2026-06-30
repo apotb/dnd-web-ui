@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { normalizeCombatTokens } from "@/lib/combat/state-utils";
+import { normalizeCombatState } from "@/lib/combat/state-utils";
 import { parseCombatState, type CombatState } from "@/lib/schemas/combat-state";
 import type { Campaign, Json } from "@/lib/types/database";
 
@@ -11,12 +11,12 @@ export function useRealtimeCombatState(
   initialCombatState: CombatState
 ) {
   const [combatState, setCombatState] = useState(() =>
-    normalizeCombatTokens(initialCombatState)
+    normalizeCombatState(initialCombatState)
   );
 
   // Reset only when switching campaigns — not when server props refresh.
   useEffect(() => {
-    setCombatState(normalizeCombatTokens(initialCombatState));
+    setCombatState(normalizeCombatState(initialCombatState));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialCombatState read at campaign switch
   }, [campaignId]);
 
@@ -36,7 +36,7 @@ export function useRealtimeCombatState(
         (payload) => {
           const row = payload.new as Campaign;
           setCombatState(
-            normalizeCombatTokens(parseCombatState(row.combat_state ?? {}))
+            normalizeCombatState(parseCombatState(row.combat_state ?? {}))
           );
         }
       )
@@ -55,7 +55,7 @@ export async function persistCombatState(
   combatState: CombatState
 ): Promise<string | null> {
   const supabase = createClient();
-  const normalized = normalizeCombatTokens(parseCombatState(combatState));
+  const normalized = normalizeCombatState(parseCombatState(combatState));
   const { error } = await supabase
     .from("campaigns")
     .update({ combat_state: normalized as unknown as Json })

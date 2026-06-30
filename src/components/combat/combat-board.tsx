@@ -20,6 +20,7 @@ import {
   formatInitiativeResultTooltip,
   getPartyInitiativeModifierForCharacter,
   getTokensNeedingPlayerRolls,
+  sortInitiativeTokenIds,
   startInitiativeCollection,
   updateInitiativeAfterVisibilityChange,
 } from "@/lib/combat/initiative";
@@ -48,7 +49,7 @@ import {
 } from "@/lib/hooks/use-realtime-combat-state";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
-import { DEFAULT_BOARD_TITLE, isCombatantToken, isHiddenEnemy } from "@/lib/schemas/combat-state";
+import { DEFAULT_BOARD_TITLE, isCombatantToken, isHiddenEnemy, isTokenInTurnOrder } from "@/lib/schemas/combat-state";
 import {
   MAX_GRID_SIZE,
   MAX_TILE_FEET,
@@ -170,7 +171,7 @@ import {
   type ReachableDestination,
 } from "@/lib/combat/movement";
 import { commitCombatMove } from "@/lib/combat/movement-actions";
-import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
+import { getCombatTokenDisplayLabel, getEnemyTokenLabelLetter } from "@/lib/combat/party-token-label";
 import {
   assignCharacterToPlaceholder,
   canPlayerClaimPlaceholder,
@@ -846,10 +847,29 @@ export function CombatBoard({
   const initiativeTokens = useMemo(() => {
     if (combatState.initiative.status !== "ready") return [];
     const tokensById = new Map(combatState.tokens.map((token) => [token.id, token]));
-    return combatState.initiative.order
+    const { order, results } = combatState.initiative;
+
+    if (isDm) {
+      const combatantsWithResults = combatState.tokens.filter(
+        (token) => isCombatantToken(token) && results[token.id] != null
+      );
+      return sortInitiativeTokenIds(combatantsWithResults, results)
+        .map((tokenId) => tokensById.get(tokenId))
+        .filter((token): token is CombatToken => token != null);
+    }
+
+    return order
       .map((tokenId) => tokensById.get(tokenId))
-      .filter((token): token is CombatToken => token != null);
-  }, [combatState.initiative.order, combatState.initiative.status, combatState.tokens]);
+      .filter(
+        (token): token is CombatToken => token != null && isTokenInTurnOrder(token)
+      );
+  }, [
+    combatState.initiative.order,
+    combatState.initiative.results,
+    combatState.initiative.status,
+    combatState.tokens,
+    isDm,
+  ]);
 
   const gridRenderTokens = useMemo(
     () =>
@@ -2530,7 +2550,7 @@ export function CombatBoard({
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isHiddenForDm && isHovered ? " combat-token-hidden-enemy-hovered" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -2665,32 +2685,44 @@ export function CombatBoard({
             const portraitUrl = resolveTokenPortraitUrl(supabase, token);
             const displayLabel = getCombatTokenDisplayLabel(token);
             const initiativeResult = combatState.initiative.results[token.id];
+            const isHiddenForDm = isHiddenEnemy(token) && isDm;
+            const labelLetter =
+              token.kind === "enemy" ? getEnemyTokenLabelLetter(token) : null;
             const turnTooltip =
               isDm && initiativeResult
                 ? formatInitiativeResultTooltip(displayLabel, initiativeResult)
                 : displayLabel;
 
-            const portrait = portraitUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={portraitUrl}
-                alt={displayLabel}
-                className="combat-turn-portrait"
-                draggable={false}
-              />
-            ) : (
-              <div
-                className="combat-turn-portrait combat-turn-portrait-fallback"
-                aria-label={displayLabel}
-              >
-                {displayLabel.slice(0, 1)}
+            const portrait = (
+              <div className="combat-turn-portrait-frame">
+                {portraitUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={portraitUrl}
+                    alt={displayLabel}
+                    className="combat-turn-portrait"
+                    draggable={false}
+                  />
+                ) : (
+                  <div
+                    className="combat-turn-portrait combat-turn-portrait-fallback"
+                    aria-label={displayLabel}
+                  >
+                    {labelLetter ?? displayLabel.slice(0, 1)}
+                  </div>
+                )}
+                {labelLetter && portraitUrl ? (
+                  <span className="combat-turn-portrait-letter" aria-hidden>
+                    {labelLetter}
+                  </span>
+                ) : null}
               </div>
             );
 
             return (
               <div
                 key={token.id}
-                className={`combat-turn-portrait-wrap combat-turn-portrait-wrap-tooltip combat-turn-${token.kind}${token.id === currentTurnTokenId ? " combat-turn-portrait-active" : ""}`}
+                className={`combat-turn-portrait-wrap combat-turn-portrait-wrap-tooltip combat-turn-${token.kind}${isHiddenForDm ? " combat-turn-hidden-enemy" : ""}${token.id === currentTurnTokenId ? " combat-turn-portrait-active" : ""}`}
               >
                 <Tooltip content={turnTooltip}>{portrait}</Tooltip>
               </div>

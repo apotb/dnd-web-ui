@@ -7,7 +7,11 @@ import type {
   CombatToken,
   InitiativeTokenResult,
 } from "@/lib/schemas/combat-state";
-import { isCombatantToken, isTokenInTurnOrder } from "@/lib/schemas/combat-state";
+import {
+  isCombatantToken,
+  isTokenInTurnOrder,
+  normalizeCombatTurn,
+} from "@/lib/schemas/combat-state";
 import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { abilityModifier as enemyAbilityModifier } from "@/lib/schemas/enemy";
@@ -111,6 +115,51 @@ export function buildTurnOrder(
     tokens.filter(isTokenInTurnOrder),
     results
   );
+}
+
+/** Rebuild initiative order from tokens and fix the active turn index. */
+export function syncInitiativeOrder(state: CombatState): CombatState {
+  if (state.initiative.status !== "ready") return state;
+
+  const newOrder = buildTurnOrder(state.tokens, state.initiative.results);
+  const oldOrder = state.initiative.order;
+
+  if (
+    newOrder.length === oldOrder.length &&
+    newOrder.every((id, index) => id === oldOrder[index])
+  ) {
+    return state;
+  }
+
+  const currentTokenId = oldOrder[state.turn.index] ?? null;
+  let newIndex = state.turn.index;
+
+  if (currentTokenId) {
+    const located = newOrder.indexOf(currentTokenId);
+    if (located >= 0) {
+      newIndex = located;
+    } else {
+      newIndex = adjustTurnAfterTokenRemoved(state.turn, currentTokenId, oldOrder).index;
+    }
+  }
+
+  if (newOrder.length === 0) {
+    newIndex = 0;
+  } else {
+    newIndex = Math.min(Math.max(0, newIndex), newOrder.length - 1);
+  }
+
+  return normalizeCombatTurn({
+    ...state,
+    initiative: {
+      ...state.initiative,
+      order: newOrder,
+    },
+    turn: {
+      ...state.turn,
+      index: newIndex,
+    },
+  });
 }
 
 export function allInitiativeResultsCollected(state: CombatState): boolean {
@@ -240,8 +289,9 @@ export function updateInitiativeAfterVisibilityChange(
   const oldOrder = state.initiative.order;
   const newOrder = buildTurnOrder(state.tokens, state.initiative.results);
 
-  const turn = wasHidden
-    ? (() => {
+  const turn = isHidden
+    ? adjustTurnAfterTokenRemoved(state.turn, tokenId, oldOrder)
+    : (() => {
         const currentTokenId = oldOrder[state.turn.index];
         const newIndex =
           currentTokenId != null
@@ -251,8 +301,7 @@ export function updateInitiativeAfterVisibilityChange(
           ...state.turn,
           index: newOrder.length > 0 ? Math.min(newIndex, newOrder.length - 1) : 0,
         };
-      })()
-    : adjustTurnAfterTokenRemoved(state.turn, tokenId, newOrder);
+      })();
 
   return {
     ...state,

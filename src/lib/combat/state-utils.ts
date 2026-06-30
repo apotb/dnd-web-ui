@@ -1,6 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { isCharacterPlaceholder } from "@/lib/combat/character-placeholder";
-import { buildTurnOrder } from "@/lib/combat/initiative";
+import { buildTurnOrder, syncInitiativeOrder } from "@/lib/combat/initiative";
 import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
 import { getPartyTokenLabel } from "@/lib/combat/party-token-label";
 import type { EnemyData } from "@/lib/schemas/enemy";
@@ -400,6 +400,10 @@ export function normalizeCombatTokens(state: CombatState): CombatState {
   return next;
 }
 
+export function normalizeCombatState(state: CombatState): CombatState {
+  return syncInitiativeOrder(normalizeCombatTokens(state));
+}
+
 export function addEnemyToState(state: CombatState, enemy: EnemyRecord): CombatState {
   return {
     ...state,
@@ -481,7 +485,7 @@ function clearTokenFromInitiative(
         results,
         order,
       },
-      turn: adjustTurnAfterTokenRemoved(turn, tokenId, order),
+      turn: adjustTurnAfterTokenRemoved(turn, tokenId, initiative.order),
     };
   }
 

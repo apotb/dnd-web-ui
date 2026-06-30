@@ -15,3 +15,18 @@ export function getCombatTokenDisplayLabel(token: CombatToken): string {
   if (forcedName) return forcedName;
   return token.label;
 }
+
+/** Disambiguation letter for grouped enemy tokens (e.g. "Thug A" → "A"). */
+export function getEnemyTokenLabelLetter(token: CombatToken): string | null {
+  if (token.kind !== "enemy") return null;
+
+  const name = token.name.trim();
+  const label = token.label.trim();
+  if (!name || label === name) return null;
+
+  const prefix = `${name} `;
+  if (!label.startsWith(prefix)) return null;
+
+  const suffix = label.slice(prefix.length);
+  return /^[A-Z]$/.test(suffix) ? suffix : null;
+}

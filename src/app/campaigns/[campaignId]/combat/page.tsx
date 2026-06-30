@@ -2,7 +2,7 @@ import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow, type ParsedCharacter } from "@/lib/character/utils";
 import {
   createDefaultCombatState,
-  normalizeCombatTokens,
+  normalizeCombatState,
   type EnemyRecord,
 } from "@/lib/combat/state-utils";
 import { CombatBoard } from "@/components/combat/combat-board";
@@ -31,7 +31,7 @@ export default async function CombatPage({
     parseCharacterRow(row as Character, access.isDm)
   );
 
-  let combatState = normalizeCombatTokens(parseCombatState(campaign?.combat_state ?? {}));
+  let combatState = normalizeCombatState(parseCombatState(campaign?.combat_state ?? {}));
   if (combatState.tokens.filter((token) => token.kind === "party").length === 0) {
     combatState = createDefaultCombatState(characters);
   }
