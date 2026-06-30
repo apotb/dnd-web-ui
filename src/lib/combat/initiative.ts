@@ -63,13 +63,6 @@ export function autoRollInitiative(
   return buildInitiativeResult(rollD20(), modifier, dexMod);
 }
 
-function shuffleInPlace<T>(items: T[]): void {
-  for (let i = items.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [items[i], items[j]] = [items[j], items[i]];
-  }
-}
-
 export function sortInitiativeTokenIds(
   tokens: CombatToken[],
   results: Record<string, InitiativeTokenResult>
@@ -81,30 +74,11 @@ export function sortInitiativeTokenIds(
     const right = results[b.id];
     if (right.total !== left.total) return right.total - left.total;
     if (right.dexMod !== left.dexMod) return right.dexMod - left.dexMod;
-    return 0;
+    // Stable tiebreaker so SSR and client hydration render the same order.
+    return a.id.localeCompare(b.id);
   });
 
-  const ordered: CombatToken[] = [];
-  for (let i = 0; i < withResults.length; ) {
-    let j = i + 1;
-    const tiedResult = results[withResults[i].id];
-    while (
-      j < withResults.length &&
-      results[withResults[j].id].total === tiedResult.total &&
-      results[withResults[j].id].dexMod === tiedResult.dexMod
-    ) {
-      j++;
-    }
-
-    const group = withResults.slice(i, j);
-    if (group.length > 1) {
-      shuffleInPlace(group);
-    }
-    ordered.push(...group);
-    i = j;
-  }
-
-  return ordered.map((token) => token.id);
+  return withResults.map((token) => token.id);
 }
 
 export function buildTurnOrder(
