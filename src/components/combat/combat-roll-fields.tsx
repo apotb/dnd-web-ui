@@ -1,5 +1,14 @@
 "use client";
 
+import type { DerivedAttack, WeaponGrip } from "@/lib/dnd/attacks";
+import {
+  isVersatileWeaponAttack,
+  resolveWeaponGripDamageDice,
+} from "@/lib/dnd/attacks";
+import {
+  applyCriticalToDamage,
+  isCriticalAttackRoll,
+} from "@/lib/combat/attack-resolution";
 import {
   areDamageRollsComplete,
   isD20RollComplete,
@@ -135,6 +144,71 @@ export function DisadvantageHitRollField({
   );
 }
 
+interface WeaponGripFieldProps {
+  attack: DerivedAttack;
+  value: WeaponGrip;
+  onChange: (grip: WeaponGrip) => void;
+  disabled?: boolean;
+}
+
+export function WeaponGripField({
+  attack,
+  value,
+  onChange,
+  disabled = false,
+}: WeaponGripFieldProps) {
+  if (!isVersatileWeaponAttack(attack)) return null;
+
+  const oneHandedDice = attack.damageDice;
+  const twoHandedDice = attack.versatileDamageDice ?? attack.damageDice;
+  const groupName = `weapon-grip-${attack.id}`;
+
+  return (
+    <div className="combat-attack-submit-field">
+      <span>Grip</span>
+      <div className="combat-weapon-grip-options" role="radiogroup" aria-label="Weapon grip">
+        <label className="combat-weapon-grip-option">
+          <input
+            type="radio"
+            name={groupName}
+            value="one-handed"
+            checked={value === "one-handed"}
+            disabled={disabled}
+            onChange={() => onChange("one-handed")}
+          />
+          <span>One-handed ({oneHandedDice})</span>
+        </label>
+        <label className="combat-weapon-grip-option">
+          <input
+            type="radio"
+            name={groupName}
+            value="two-handed"
+            checked={value === "two-handed"}
+            disabled={disabled}
+            onChange={() => onChange("two-handed")}
+          />
+          <span>Two-handed ({twoHandedDice})</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+export { isVersatileWeaponAttack, resolveWeaponGripDamageDice };
+export type { WeaponGrip };
+
+export function isCriticalHitRollInput(
+  roll: string,
+  options?: { roll2?: string; disadvantage?: boolean }
+): boolean {
+  const attackRoll = parseD20Roll(roll);
+  if (attackRoll == null) return false;
+  const disadvantage = options?.disadvantage ?? false;
+  const attackRoll2 = disadvantage ? parseD20Roll(options?.roll2 ?? "") : null;
+  if (disadvantage && attackRoll2 == null) return false;
+  return isCriticalAttackRoll(attackRoll, { attackRoll2, disadvantage });
+}
+
 interface DamageRollFieldProps {
   damageDice: string;
   rolls: string[];
@@ -142,6 +216,7 @@ interface DamageRollFieldProps {
   fallbackTotal: string;
   onFallbackTotalChange: (value: string) => void;
   knownTotal?: number | null;
+  critical?: boolean;
   disabled?: boolean;
 }
 
@@ -152,12 +227,15 @@ export function DamageRollField({
   fallbackTotal,
   onFallbackTotalChange,
   knownTotal = null,
+  critical = false,
   disabled = false,
 }: DamageRollFieldProps) {
   const parsed = parseDamageNotation(damageDice);
   const rolledTotal =
     parsed != null ? sumDamageRollValues(rolls, parsed.dice, parsed.modifier) : null;
-  const total = rolledTotal ?? knownTotal ?? parseOptionalInt(fallbackTotal);
+  const baseTotal = rolledTotal ?? knownTotal ?? parseOptionalInt(fallbackTotal);
+  const displayTotal =
+    critical && baseTotal != null ? applyCriticalToDamage(baseTotal, true) : baseTotal;
   const modifier = parsed ? formatRollBonus(parsed.modifier) : null;
 
   if (!parsed) {
@@ -173,13 +251,23 @@ export function DamageRollField({
           onChange={(event) => onFallbackTotalChange(event.target.value)}
           disabled={disabled}
         />
+        {critical && baseTotal != null ? (
+          <div className="combat-roll-row combat-roll-row-wrap">
+            <span className="combat-roll-sep">×</span>
+            <span className="combat-roll-mod">2</span>
+            <span className="combat-roll-sep">=</span>
+            <span className="combat-roll-total combat-roll-total-critical" aria-live="polite">
+              {displayTotal}
+            </span>
+          </div>
+        ) : null}
       </div>
     );
   }
 
   return (
     <div className="combat-attack-submit-field">
-      <span>Roll for damage</span>
+      <span>Roll for damage{critical ? " (critical hit)" : ""}</span>
       <div className="combat-roll-row combat-roll-row-wrap">
         {parsed.dice.map((sides, index) => (
           <span key={index} className="combat-roll-row-item">
@@ -210,10 +298,23 @@ export function DamageRollField({
             <span className="combat-roll-mod">{modifier.amount}</span>
           </>
         ) : null}
-        <span className="combat-roll-sep">=</span>
-        <span className="combat-roll-total" aria-live="polite">
-          {total ?? "—"}
-        </span>
+        {critical ? (
+          <>
+            <span className="combat-roll-sep">×</span>
+            <span className="combat-roll-mod">2</span>
+            <span className="combat-roll-sep">=</span>
+            <span className="combat-roll-total combat-roll-total-critical" aria-live="polite">
+              {displayTotal ?? "—"}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="combat-roll-sep">=</span>
+            <span className="combat-roll-total" aria-live="polite">
+              {baseTotal ?? "—"}
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

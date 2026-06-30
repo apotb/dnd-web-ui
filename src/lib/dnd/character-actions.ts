@@ -51,15 +51,6 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
     sourceLabel: "Standard",
   },
   {
-    id: "core:use-object",
-    name: "Use an Object",
-    cost: "action",
-    description:
-      "Interact with an object on the battlefield or change one piece of equipment (draw, sheath, equip, or unequip). Your first object interaction each turn is free; use this action to interact with an additional object or make another equipment change.",
-    source: "core",
-    sourceLabel: "Standard",
-  },
-  {
     id: "core:disengage",
     name: "Disengage",
     cost: "action",
@@ -69,20 +60,29 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
     sourceLabel: "Standard",
   },
   {
-    id: "core:dodge",
-    name: "Dodge",
-    cost: "action",
-    description:
-      "Until the start of your next turn, attacks against you have disadvantage if you can see the attacker, and you have advantage on Dexterity saving throws.",
-    source: "core",
-    sourceLabel: "Standard",
-  },
-  {
     id: "core:help",
     name: "Help",
     cost: "action",
     description:
       "Grant advantage on the next ability check or attack roll an ally makes against a target within 5 feet of you before your next turn.",
+    source: "core",
+    sourceLabel: "Standard",
+  },
+  {
+    id: "core:use-object",
+    name: "Use an Object",
+    cost: "action",
+    description:
+      "Interact with an object on the battlefield or change one piece of equipment (draw, sheath, equip, or unequip). Your first object interaction each turn is free; use this action to interact with an additional object or make another equipment change.",
+    source: "core",
+    sourceLabel: "Standard",
+  },
+  {
+    id: "core:dodge",
+    name: "Dodge",
+    cost: "action",
+    description:
+      "Until the start of your next turn, attacks against you have disadvantage if you can see the attacker, and you have advantage on Dexterity saving throws.",
     source: "core",
     sourceLabel: "Standard",
   },

@@ -364,6 +364,7 @@ export function CombatAttackReviewCard({
                     });
                   }}
                   knownTotal={target.damageAmount}
+                  critical={pending.rollType === "attack" && (target.critical ?? false)}
                   disabled={busy}
                 />
                 <DamageAppliedField

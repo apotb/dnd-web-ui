@@ -328,6 +328,10 @@ export interface DerivedAttack {
   isOffHand?: boolean;
   /** Weapon damage dice without ability modifier (for bonus-action display). */
   damageDiceWithoutMod?: string;
+  /** Two-handed versatile damage with ability modifier (main-hand melee only). */
+  versatileDamageDice?: string;
+  /** Two-handed versatile damage dice without ability modifier. */
+  versatileDamageDiceWithoutMod?: string;
   /** Catalog slug of ammunition consumed per attack, if any. */
   ammunitionItemId?: string;
   /** Display name of the ammunition type. */
@@ -350,6 +354,27 @@ export interface DerivedAttack {
   attackBonusSources?: AttackBonusSource[];
   /** Breakdown of flat damage modifiers for character sheet tooltips. */
   damageBonusSources?: AttackBonusSource[];
+}
+
+export type WeaponGrip = "one-handed" | "two-handed";
+
+export function isVersatileWeaponAttack(attack: DerivedAttack): boolean {
+  return (
+    attack.source === "weapon" &&
+    !attack.isOffHand &&
+    !attack.throwsWeapon &&
+    Boolean(attack.versatileDamageDice)
+  );
+}
+
+export function resolveWeaponGripDamageDice(
+  attack: DerivedAttack,
+  grip: WeaponGrip
+): string {
+  if (grip === "two-handed" && attack.versatileDamageDice) {
+    return attack.versatileDamageDice;
+  }
+  return attack.damageDice;
 }
 
 export function formatAttackRollLine(attack: DerivedAttack): string {
@@ -574,15 +599,19 @@ export function deriveWeaponAttacks(
       const idSuffix = isOffHand ? "-off" : "";
       const modeSuffix = mode === "single" ? "" : `-${mode}`;
 
-      const notes: string[] = [];
-      if (
+      const versatileDamageDice =
         mode !== "thrown" &&
         wp.weaponProperties.includes("versatile") &&
         wp.versatileDamage &&
         !isOffHand
-      ) {
-        const versMod = abilityMod >= 0 ? `+${abilityMod}` : `${abilityMod}`;
-        notes.push(`Two-handed: ${wp.versatileDamage}${versMod}`);
+          ? formatDamageDice(wp.versatileDamage, abilityMod, true)
+          : undefined;
+      const versatileDamageDiceWithoutMod =
+        versatileDamageDice != null ? wp.versatileDamage : undefined;
+
+      const notes: string[] = [];
+      if (versatileDamageDice) {
+        notes.push(`Versatile (two-handed): ${versatileDamageDice}`);
       }
       if (wp.weaponProperties.includes("finesse")) notes.push("Finesse");
       if (monkWeapon) notes.push("Monk weapon");
@@ -602,6 +631,8 @@ export function deriveWeaponAttacks(
         damageBonusSources,
         damageDice: damageDiceStr,
         damageDiceWithoutMod,
+        versatileDamageDice,
+        versatileDamageDiceWithoutMod,
         damageType: wp.damageType,
         range: attackRange,
         notes: notes.join(", "),

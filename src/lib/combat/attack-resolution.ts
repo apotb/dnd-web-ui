@@ -72,6 +72,19 @@ export function resolveEffectiveAttackRoll(
   return Math.min(roll, roll2);
 }
 
+export function isCriticalAttackRoll(
+  attackRoll: number | null | undefined,
+  options?: { attackRoll2?: number | null; disadvantage?: boolean }
+): boolean {
+  if (attackRoll == null) return false;
+  const usedRoll = resolveEffectiveAttackRoll(
+    attackRoll,
+    options?.attackRoll2,
+    options?.disadvantage ?? false
+  );
+  return usedRoll === 20;
+}
+
 export function computeHitFromRoll(
   attackRoll: number,
   attackBonus: number,

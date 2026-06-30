@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import { formatAttackDescriptionBlurb } from "@/lib/dnd/attacks";
 import { formatAttackDisadvantageLabel } from "@/lib/combat/targeting";
@@ -12,9 +12,13 @@ import {
   emptyDamageRolls,
   getDamageSubmitValues,
   HitRollField,
+  isCriticalHitRollInput,
   isDisadvantageHitRollComplete,
   isD20RollComplete,
   parseD20Roll,
+  resolveWeaponGripDamageDice,
+  WeaponGripField,
+  type WeaponGrip,
 } from "@/components/combat/combat-roll-fields";
 import { parseDamageNotation } from "@/lib/dnd/dice";
 
@@ -24,6 +28,7 @@ export interface AttackSubmitValues {
   damageText?: string;
   damageRolls?: number[];
   damageAmount?: number | null;
+  damageDice?: string;
   perTarget?: Array<{
     tokenId: string;
     attackRoll?: number | null;
@@ -87,6 +92,7 @@ export function CombatAttackSubmitModal({
 
   const [attackRoll, setAttackRoll] = useState("");
   const [attackRoll2, setAttackRoll2] = useState("");
+  const [weaponGrip, setWeaponGrip] = useState<WeaponGrip>("one-handed");
   const [damageRolls, setDamageRolls] = useState<string[]>(() =>
     emptyDamageRolls(attack.damageDice)
   );
@@ -97,15 +103,42 @@ export function CombatAttackSubmitModal({
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setDamageRolls(emptyDamageRolls(attack.damageDice));
-    setDamageFallbackTotal("");
-  }, [attack.damageDice]);
+  const effectiveDamageDice = useMemo(
+    () => resolveWeaponGripDamageDice(attack, weaponGrip),
+    [attack, weaponGrip]
+  );
 
-  const hasParsedDamage = parseDamageNotation(attack.damageDice) != null;
+  const isCriticalHit = useMemo(() => {
+    if (isSave || isAuto || multiTarget) return false;
+    if (singleTargetDisadvantage) {
+      return isCriticalHitRollInput(attackRoll, {
+        roll2: attackRoll2,
+        disadvantage: true,
+      });
+    }
+    return isCriticalHitRollInput(attackRoll);
+  }, [
+    attackRoll,
+    attackRoll2,
+    isAuto,
+    isSave,
+    multiTarget,
+    singleTargetDisadvantage,
+  ]);
+
+  useEffect(() => {
+    setWeaponGrip("one-handed");
+  }, [attack.id]);
+
+  useEffect(() => {
+    setDamageRolls(emptyDamageRolls(effectiveDamageDice));
+    setDamageFallbackTotal("");
+  }, [effectiveDamageDice]);
+
+  const hasParsedDamage = parseDamageNotation(effectiveDamageDice) != null;
   const sharedDamageComplete =
     hasParsedDamage
-      ? areDamageRollsComplete(attack.damageDice, damageRolls)
+      ? areDamageRollsComplete(effectiveDamageDice, damageRolls)
       : parseOptionalInt(damageFallbackTotal) != null;
 
   const singleTargetReady =
@@ -145,13 +178,14 @@ export function CombatAttackSubmitModal({
     }
 
     const sharedDamage = getDamageSubmitValues(
-      attack.damageDice,
+      effectiveDamageDice,
       damageRolls,
       damageFallbackTotal
     );
 
     if (multiTarget) {
       onSubmit({
+        damageDice: effectiveDamageDice,
         perTarget: targets.map((target) => {
           const entry = perTargetRolls[target.id] ?? {
             attackRoll: "",
@@ -176,6 +210,7 @@ export function CombatAttackSubmitModal({
       attackRoll: isSave || isAuto ? null : parseD20Roll(attackRoll),
       attackRoll2:
         isSave || isAuto || !singleTargetDisadvantage ? null : parseD20Roll(attackRoll2),
+      damageDice: effectiveDamageDice,
       ...sharedDamage,
     });
   }
@@ -230,12 +265,19 @@ export function CombatAttackSubmitModal({
             ) : (
               <p className="retro-muted">Auto hit — enter damage below.</p>
             )}
+            <WeaponGripField
+              attack={attack}
+              value={weaponGrip}
+              onChange={setWeaponGrip}
+              disabled={submitting}
+            />
             <DamageRollField
-              damageDice={attack.damageDice}
+              damageDice={effectiveDamageDice}
               rolls={damageRolls}
               onRollsChange={setDamageRolls}
               fallbackTotal={damageFallbackTotal}
               onFallbackTotalChange={setDamageFallbackTotal}
+              critical={isCriticalHit}
               disabled={submitting}
             />
           </div>
@@ -251,12 +293,19 @@ export function CombatAttackSubmitModal({
 
         {isSave || multiTarget ? (
           <div className="combat-attack-submit-fields">
+            <WeaponGripField
+              attack={attack}
+              value={weaponGrip}
+              onChange={setWeaponGrip}
+              disabled={submitting}
+            />
             <DamageRollField
-              damageDice={attack.damageDice}
+              damageDice={effectiveDamageDice}
               rolls={damageRolls}
               onRollsChange={setDamageRolls}
               fallbackTotal={damageFallbackTotal}
               onFallbackTotalChange={setDamageFallbackTotal}
+              critical={isCriticalHit}
               disabled={submitting}
             />
           </div>

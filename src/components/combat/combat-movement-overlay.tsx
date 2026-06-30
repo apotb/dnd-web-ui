@@ -7,6 +7,11 @@ import {
   findDestinationAtCell,
   type ReachableDestination,
 } from "@/lib/combat/movement";
+import {
+  buildGridCellGroupMap,
+  COMBAT_GRID_BORDER_COLORS,
+  gridCellBorderStyle,
+} from "@/lib/combat/grid-cell-edges";
 import type { CombatToken } from "@/lib/schemas/combat-state";
 
 interface CombatMovementOverlayProps {
@@ -123,14 +128,20 @@ export function CombatMovementOverlay({
   }, [hoverDestination, pointer, showTooltip, remainingFeet, speedFeet, usedFeet, dashUsed, actionUsed]);
 
   const cells = useMemo(() => {
-    const list: Array<{ x: number; y: number; zone: "normal" | "dash" | null }> = [];
+    const list: Array<{ x: number; y: number; zone: "normal" | "dash" }> = [];
     for (let y = 0; y < gridHeight; y++) {
       for (let x = 0; x < gridWidth; x++) {
-        list.push({ x, y, zone: cellZones.get(`${x},${y}`) ?? null });
+        const zone = cellZones.get(`${x},${y}`);
+        if (zone) list.push({ x, y, zone });
       }
     }
     return list;
   }, [cellZones, gridHeight, gridWidth]);
+
+  const movementBorderGroups = useMemo(
+    () => buildGridCellGroupMap(cells.map((cell) => ({ ...cell, groupKey: cell.zone }))),
+    [cells]
+  );
 
   function handleOverlayMouseLeave() {
     setPointer(null);
@@ -166,8 +177,7 @@ export function CombatMovementOverlay({
         }}
         onMouseLeave={handleOverlayMouseLeave}
       >
-        {cells.map((cell) =>
-          cell.zone ? (
+        {cells.map((cell) => (
             <button
               key={`${cell.x},${cell.y}`}
               type="button"
@@ -179,6 +189,15 @@ export function CombatMovementOverlay({
               style={{
                 gridColumn: cell.x + 1,
                 gridRow: cell.y + 1,
+                ...gridCellBorderStyle(
+                  cell.x,
+                  cell.y,
+                  cell.zone,
+                  movementBorderGroups,
+                  cell.zone === "dash"
+                    ? COMBAT_GRID_BORDER_COLORS.movementDash
+                    : COMBAT_GRID_BORDER_COLORS.movementNormal
+                ),
               }}
               aria-label={`Move to tile ${cell.x + 1}, ${cell.y + 1}`}
               onMouseEnter={(event) => {
@@ -188,8 +207,7 @@ export function CombatMovementOverlay({
               onMouseMove={handleCellPointerMove}
               onClick={() => onCellClick(cell.x, cell.y)}
             />
-          ) : null
-        )}
+        ))}
       </div>
       {mounted &&
         showTooltip &&

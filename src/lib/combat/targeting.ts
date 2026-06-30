@@ -212,8 +212,20 @@ export function isRangedAttackRoll(attack: DerivedAttack): boolean {
   return spec.normalRangeFt > 5;
 }
 
+/** Auto-hit spells (e.g. Magic Missile) with range beyond touch/melee. */
+export function isAutoHitRangedAttack(attack: DerivedAttack): boolean {
+  if ((attack.rollType ?? "attack") !== "auto") return false;
+  const spec = parseAttackRangeSpec(attack);
+  if (spec.isAoe) return false;
+  return spec.maxFt > 5;
+}
+
+export function usesProjectileLineOfSightTargeting(attack: DerivedAttack): boolean {
+  return isRangedAttackRoll(attack) || isAutoHitRangedAttack(attack);
+}
+
 export function attackRequiresLineOfSight(attack: DerivedAttack): boolean {
-  if (isRangedAttackRoll(attack)) return true;
+  if (usesProjectileLineOfSightTargeting(attack)) return true;
   if (!isMeleeWeaponAttack(attack)) return false;
   return parseAttackRangeSpec(attack).maxFt > 5;
 }
@@ -505,7 +517,7 @@ export function getTargetingHighlights(
     };
   }
 
-  const ranged = isRangedAttackRoll(attack);
+  const projectileLos = usesProjectileLineOfSightTargeting(attack);
   const validTargets = getValidHostileTargetsForAttack(attacker, state, spec, attack);
   const validCells: GridPosition[] = [];
   for (const token of validTargets) {
@@ -520,8 +532,10 @@ export function getTargetingHighlights(
 
   const rangedCellZones = spec.isAoe
     ? undefined
-    : ranged
-      ? buildRangedAttackCellZones(attacker, state, spec)
+    : projectileLos
+      ? isAutoHitRangedAttack(attack)
+        ? buildUnlimitedLineOfSightCellZones(attacker, state)
+        : buildRangedAttackCellZones(attacker, state, spec)
       : buildMeleeAttackCellZones(attacker, state, spec, attack);
 
   return {
@@ -656,6 +670,29 @@ export function buildRangedAttackCellZones(
       ) {
         zones.set(`${x},${y}`, "long");
       }
+    }
+  }
+
+  return zones;
+}
+
+/** Every grid cell with line of sight from the attacker (no range cap). */
+export function buildUnlimitedLineOfSightCellZones(
+  attacker: CombatToken,
+  state: CombatState
+): Map<string, RangedAttackCellZone> {
+  const zones = new Map<string, RangedAttackCellZone>();
+  if (!isTokenOnGrid(attacker, state)) return zones;
+
+  for (let y = 0; y < state.gridHeight; y++) {
+    for (let x = 0; x < state.gridWidth; x++) {
+      if (isCellBlocked(state, x, y)) continue;
+
+      const cell = { x, y };
+      if (tokenOccupiesCell(attacker, cell)) continue;
+      if (!hasLineOfSightToCell(attacker, cell, state)) continue;
+
+      zones.set(`${x},${y}`, "normal");
     }
   }
 

@@ -2,6 +2,11 @@
 
 import { useMemo } from "react";
 import {
+  buildGridCellGroupMap,
+  COMBAT_GRID_BORDER_COLORS,
+  gridCellBorderStyle,
+} from "@/lib/combat/grid-cell-edges";
+import {
   getAoeCells,
   parseAttackRangeSpec,
   type AttackRangeSpec,
@@ -62,15 +67,63 @@ export function CombatTargetingOverlay({
 
   const rangedGridCells = useMemo(() => {
     if (!showRangedGrid || !rangedCellZones) return [];
-    const list: Array<{ x: number; y: number; zone: RangedAttackCellZone }> = [];
+    const list: Array<{
+      x: number;
+      y: number;
+      zone: RangedAttackCellZone;
+      groupKey: string;
+    }> = [];
     for (let y = 0; y < gridHeight; y++) {
       for (let x = 0; x < gridWidth; x++) {
         const zone = rangedCellZones.get(`${x},${y}`);
-        if (zone) list.push({ x, y, zone });
+        if (!zone) continue;
+        const isTarget = validCellSet.has(`${x},${y}`);
+        list.push({
+          x,
+          y,
+          zone,
+          groupKey: isTarget ? "target" : zone,
+        });
       }
     }
     return list;
-  }, [gridHeight, gridWidth, rangedCellZones, showRangedGrid]);
+  }, [gridHeight, gridWidth, rangedCellZones, showRangedGrid, validCellSet]);
+
+  const rangedBorderGroups = useMemo(
+    () => buildGridCellGroupMap(rangedGridCells),
+    [rangedGridCells]
+  );
+
+  const sparseHighlightCells = useMemo(() => {
+    if (showRangedGrid) return [];
+    const list: Array<{ x: number; y: number; groupKey: string }> = [];
+    for (let y = 0; y < gridHeight; y++) {
+      for (let x = 0; x < gridWidth; x++) {
+        const key = `${x},${y}`;
+        const isValidCell = validCellSet.has(key);
+        const isAoeHighlight = highlightCells.has(key);
+        if (!isValidCell && !isAoeHighlight) continue;
+        list.push({
+          x,
+          y,
+          groupKey: isValidCell ? "target" : "aoe",
+        });
+      }
+    }
+    return list;
+  }, [gridHeight, gridWidth, highlightCells, showRangedGrid, validCellSet]);
+
+  const sparseBorderGroups = useMemo(
+    () => buildGridCellGroupMap(sparseHighlightCells),
+    [sparseHighlightCells]
+  );
+
+  function targetingBorderColor(groupKey: string): string {
+    if (groupKey === "target") return COMBAT_GRID_BORDER_COLORS.targetingTarget;
+    if (groupKey === "long") return COMBAT_GRID_BORDER_COLORS.targetingLong;
+    if (groupKey === "aoe") return COMBAT_GRID_BORDER_COLORS.targetingAoe;
+    return COMBAT_GRID_BORDER_COLORS.targetingNormal;
+  }
 
   function handleOverlayPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     onPointerMove(event.clientX, event.clientY);
@@ -110,7 +163,7 @@ export function CombatTargetingOverlay({
       {showRangedGrid
         ? rangedGridCells.map((cell) => {
             const key = `${cell.x},${cell.y}`;
-            const isTarget = validCellSet.has(key);
+            const isTarget = cell.groupKey === "target";
             const hovered =
               hoveredCell?.x === cell.x && hoveredCell?.y === cell.y;
             return (
@@ -121,30 +174,46 @@ export function CombatTargetingOverlay({
                     ? " combat-targeting-cell-target"
                     : ` combat-targeting-cell-${cell.zone}`
                 }${hovered ? " combat-targeting-cell-hovered" : ""}`}
-                style={{ gridColumn: cell.x + 1, gridRow: cell.y + 1 }}
+                style={{
+                  gridColumn: cell.x + 1,
+                  gridRow: cell.y + 1,
+                  ...gridCellBorderStyle(
+                    cell.x,
+                    cell.y,
+                    cell.groupKey,
+                    rangedBorderGroups,
+                    targetingBorderColor(cell.groupKey)
+                  ),
+                }}
                 aria-hidden
               />
             );
           })
-        : Array.from({ length: gridHeight }).flatMap((_, y) =>
-            Array.from({ length: gridWidth }).map((_, x) => {
-              const key = `${x},${y}`;
-              const isValidCell = validCellSet.has(key);
-              const isAoeHighlight = highlightCells.has(key);
-              if (!isValidCell && !isAoeHighlight) return null;
-
-              return (
-                <div
-                  key={key}
-                  className={`combat-targeting-cell${
-                    isAoeHighlight ? " combat-targeting-cell-aoe-preview" : ""
-                  }${isValidCell ? " combat-targeting-cell-target" : ""}`}
-                  style={{ gridColumn: x + 1, gridRow: y + 1 }}
-                  aria-hidden
-                />
-              );
-            })
-          )}
+        : sparseHighlightCells.map((cell) => {
+            const key = `${cell.x},${cell.y}`;
+            const isAoeHighlight = cell.groupKey === "aoe";
+            const isValidCell = cell.groupKey === "target";
+            return (
+              <div
+                key={key}
+                className={`combat-targeting-cell${
+                  isAoeHighlight ? " combat-targeting-cell-aoe-preview" : ""
+                }${isValidCell ? " combat-targeting-cell-target" : ""}`}
+                style={{
+                  gridColumn: cell.x + 1,
+                  gridRow: cell.y + 1,
+                  ...gridCellBorderStyle(
+                    cell.x,
+                    cell.y,
+                    cell.groupKey,
+                    sparseBorderGroups,
+                    targetingBorderColor(cell.groupKey)
+                  ),
+                }}
+                aria-hidden
+              />
+            );
+          })}
     </div>
   );
 }

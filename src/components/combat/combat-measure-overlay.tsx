@@ -3,6 +3,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { GridPosition } from "@/lib/combat/movement";
+import {
+  buildGridCellGroupMap,
+  COMBAT_GRID_BORDER_COLORS,
+  gridCellBorderStyle,
+} from "@/lib/combat/grid-cell-edges";
 import { chebyshevPathCells, distanceFeetBetweenCells } from "@/lib/combat/targeting";
 
 interface CombatMeasureOverlayProps {
@@ -132,6 +137,35 @@ export function CombatMeasureOverlay({
     ? "combat-measure-cell-hover-end"
     : "combat-measure-cell-hover-start";
 
+  const measureCells = useMemo(() => {
+    const list: Array<{ x: number; y: number; groupKey: string }> = [];
+    for (const cell of pathCells) {
+      list.push({ x: cell.x, y: cell.y, groupKey: "path" });
+    }
+    if (startCell) {
+      list.push({ x: startCell.x, y: startCell.y, groupKey: "start" });
+    }
+    if (showEndHover && hoveredCell) {
+      list.push({
+        x: hoveredCell.x,
+        y: hoveredCell.y,
+        groupKey: startCell ? "end" : "start",
+      });
+    }
+    return list;
+  }, [hoveredCell, pathCells, showEndHover, startCell]);
+
+  const measureBorderGroups = useMemo(
+    () => buildGridCellGroupMap(measureCells),
+    [measureCells]
+  );
+
+  function measureBorderColor(groupKey: string): string {
+    if (groupKey === "path") return COMBAT_GRID_BORDER_COLORS.measurePath;
+    if (groupKey === "end") return COMBAT_GRID_BORDER_COLORS.measureEnd;
+    return COMBAT_GRID_BORDER_COLORS.measureStart;
+  }
+
   return (
     <>
       <div
@@ -148,21 +182,51 @@ export function CombatMeasureOverlay({
           <div
             key={`path-${cell.x},${cell.y}`}
             className="combat-measure-cell combat-measure-cell-path"
-            style={{ gridColumn: cell.x + 1, gridRow: cell.y + 1 }}
+            style={{
+              gridColumn: cell.x + 1,
+              gridRow: cell.y + 1,
+              ...gridCellBorderStyle(
+                cell.x,
+                cell.y,
+                "path",
+                measureBorderGroups,
+                measureBorderColor("path")
+              ),
+            }}
             aria-hidden
           />
         ))}
         {startCell ? (
           <div
             className="combat-measure-cell combat-measure-cell-start"
-            style={{ gridColumn: startCell.x + 1, gridRow: startCell.y + 1 }}
+            style={{
+              gridColumn: startCell.x + 1,
+              gridRow: startCell.y + 1,
+              ...gridCellBorderStyle(
+                startCell.x,
+                startCell.y,
+                "start",
+                measureBorderGroups,
+                measureBorderColor("start")
+              ),
+            }}
             aria-hidden
           />
         ) : null}
         {showEndHover ? (
           <div
             className={`combat-measure-cell ${hoverClass}`}
-            style={{ gridColumn: hoveredCell.x + 1, gridRow: hoveredCell.y + 1 }}
+            style={{
+              gridColumn: hoveredCell.x + 1,
+              gridRow: hoveredCell.y + 1,
+              ...gridCellBorderStyle(
+                hoveredCell.x,
+                hoveredCell.y,
+                startCell ? "end" : "start",
+                measureBorderGroups,
+                measureBorderColor(startCell ? "end" : "start")
+              ),
+            }}
             aria-hidden
           />
         ) : null}

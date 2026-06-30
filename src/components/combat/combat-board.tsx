@@ -915,10 +915,9 @@ export function CombatBoard({
       ),
     [combatState.tokens]
   );
-  const playerClaimedCharacterOffBoard =
+  const playerAbsentFromCombatBoard =
     !isDm &&
-    !!ownedCharacterId &&
-    !presentCharacterIds.has(ownedCharacterId);
+    (!ownedCharacterId || !presentCharacterIds.has(ownedCharacterId));
 
   const initiativeTokens = useMemo(() => {
     if (combatState.initiative.status !== "ready") return [];
@@ -3427,7 +3426,7 @@ export function CombatBoard({
                   </button>
                 </div>
               </div>
-              {battleActive && !(battleOver && playerClaimedCharacterOffBoard) ? (
+              {battleActive && !playerAbsentFromCombatBoard ? (
                 <div className="combat-toolbar-panels">
                   {!battleOver && userOaSubmittedPending ? (
                     <div className="combat-turn-waiting combat-attack-waiting">

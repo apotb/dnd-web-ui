@@ -36,6 +36,8 @@ export interface AttackSubmissionInput {
   damageText?: string;
   damageRolls?: number[];
   damageAmount?: number | null;
+  /** Resolved damage dice (e.g. after versatile grip selection). */
+  damageDice?: string;
   perTarget?: Array<{
     tokenId: string;
     attackRoll?: number | null;
@@ -189,6 +191,7 @@ export function createPendingAttack(
   const spec = parseAttackRangeSpec(attack);
   const requiresSave = attack.rollType === "save";
   const rollType = attack.rollType ?? "attack";
+  const resolvedDamageDice = submission.damageDice ?? attack.damageDice;
 
   const pendingTargets: PendingAttackTarget[] = targets.map((token) => {
     const ctx = resolveTokenContext(token, charactersById, enemiesBySlug);
@@ -226,7 +229,7 @@ export function createPendingAttack(
       return {
         ...resolvedTarget,
         finalDamage: hitResult.hit
-          ? computeDamageApplied(resolvedTarget, "attack", { damageDice: attack.damageDice })
+          ? computeDamageApplied(resolvedTarget, "attack", { damageDice: resolvedDamageDice })
           : 0,
       };
     }
@@ -288,7 +291,7 @@ export function createPendingAttack(
     saveDc: attack.saveDc,
     saveAbility: attack.saveAbility,
     damageType: attack.damageType,
-    damageDice: attack.damageDice,
+    damageDice: resolvedDamageDice,
     isMainHandWeapon: option.attack
       ? isWieldedMainHandWeaponAttack(option.attack)
       : false,
