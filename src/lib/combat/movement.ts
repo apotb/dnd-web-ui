@@ -1,6 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { getCharacterEffectiveSpeedFt } from "@/lib/character/combat-derivation";
-import { isFootprintOnBlocked } from "@/lib/combat/collision";
+import { isFootprintOnBlocked, tokensCollideForMovement } from "@/lib/combat/collision";
 import { tokenFootprintsOverlap } from "@/lib/combat/state-utils";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
@@ -117,11 +117,7 @@ function tokenAtCell(
   return null;
 }
 
-function isAllyForMovement(token: CombatToken): boolean {
-  return token.kind === "party" || token.kind === "ally";
-}
-
-/** Cells occupied only by allies (or self) can be crossed; enemies block. */
+/** Footprint may pass through cells occupied by non-colliding tokens. */
 export function canTraverseFootprint(
   x: number,
   y: number,
@@ -133,19 +129,39 @@ export function canTraverseFootprint(
 
   for (let dy = 0; dy < movingToken.height; dy++) {
     for (let dx = 0; dx < movingToken.width; dx++) {
-      const cellX = x + dx;
-      const cellY = y + dy;
-      const occupant = tokenAtCell(state, cellX, cellY, movingToken.id);
+      const occupant = tokenAtCell(state, x + dx, y + dy, movingToken.id);
       if (!occupant) continue;
-      if (occupant.id === movingToken.id) continue;
-      if (!isAllyForMovement(occupant)) return false;
+      if (tokensCollideForMovement(movingToken, occupant)) return false;
     }
   }
 
   return true;
 }
 
-/** Destination must not overlap any other token. */
+/** Whether a footprint can step from one origin to an adjacent one (blocks diagonal corner-cutting). */
+export function canStepFootprint(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  movingToken: CombatToken,
+  state: CombatState
+): boolean {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (dx === 0 && dy === 0)) return false;
+
+  if (!canTraverseFootprint(toX, toY, movingToken, state)) return false;
+
+  if (dx !== 0 && dy !== 0) {
+    if (!canTraverseFootprint(fromX + dx, fromY, movingToken, state)) return false;
+    if (!canTraverseFootprint(fromX, fromY + dy, movingToken, state)) return false;
+  }
+
+  return true;
+}
+
+/** Destination must not overlap tokens that collide with the mover. */
 export function canEndFootprintAt(
   x: number,
   y: number,
@@ -164,7 +180,12 @@ export function canEndFootprintAt(
 
   for (const other of state.tokens) {
     if (other.id === movingToken.id || !other.placed) continue;
-    if (tokenFootprintsOverlap(probe, other)) return false;
+    if (
+      tokenFootprintsOverlap(probe, other) &&
+      tokensCollideForMovement(movingToken, other)
+    ) {
+      return false;
+    }
   }
 
   return true;
@@ -245,7 +266,7 @@ export function computeReachableDestinations(
       const nextCost = current.costFeet + tileFeet;
 
       if (nextCost > maxRemainingFeet) continue;
-      if (!canTraverseFootprint(nx, ny, token, state)) continue;
+      if (!canStepFootprint(current.x, current.y, nx, ny, token, state)) continue;
 
       const prev = costs.get(nextKey);
       if (prev != null && prev <= nextCost) continue;

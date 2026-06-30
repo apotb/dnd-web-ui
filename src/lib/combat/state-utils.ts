@@ -315,6 +315,7 @@ export function createMarkerToken(
   options?: {
     id?: string;
     portraitPath?: string | null;
+    hasCollision?: boolean;
     droppedByCharacterId?: string;
     droppedItemId?: string;
     droppedInventoryItemId?: string;
@@ -340,6 +341,7 @@ export function createMarkerToken(
     width,
     height,
     placed: true,
+    hasCollision: options?.hasCollision ?? false,
   });
 }
 
@@ -409,7 +411,7 @@ export function addMarkerToState(
   state: CombatState,
   name: string,
   tooltip: string,
-  options?: { id?: string; portraitPath?: string | null }
+  options?: { id?: string; portraitPath?: string | null; hasCollision?: boolean }
 ): CombatState {
   return {
     ...state,

@@ -72,6 +72,7 @@ export function combatStateToEncounterPayload(
       y: token.y,
       width: token.width,
       height: token.height,
+      hasCollision: token.hasCollision ?? false,
     }));
 
   const characterSlots = state.tokens
@@ -131,6 +132,7 @@ function createMarkerTokenFromSave(saved: SavedEncounterMarker): CombatToken {
     width: saved.width,
     height: saved.height,
     placed: true,
+    hasCollision: saved.hasCollision ?? false,
   });
 }
 

@@ -116,6 +116,8 @@ export const combatTokenSchema = z.object({
   currentHp: z.number().int().optional(),
   maxHp: z.number().int().optional(),
   damageTaken: z.number().int().min(0).default(0),
+  /** When true, marker tokens block movement pathfinding (ignored for other kinds). */
+  hasCollision: z.boolean().default(false),
 });
 
 export const pendingOpportunityAttacksSchema = z.object({

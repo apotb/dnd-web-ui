@@ -4242,6 +4242,24 @@ html.campaign-bg-active .retro-back-link {
   resize: vertical;
 }
 
+.combat-marker-dialog-checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.combat-marker-dialog-checkbox > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.combat-marker-dialog-checkbox-hint {
+  font-size: 0.75rem;
+  color: var(--muted-foreground, #888);
+}
+
 .combat-marker-dialog-actions {
   display: flex;
   justify-content: flex-end;

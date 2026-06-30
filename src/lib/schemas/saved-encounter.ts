@@ -18,6 +18,7 @@ export const savedEncounterMarkerSchema = z.object({
   y: z.number().int().min(0),
   width: z.number().int().min(1).default(1),
   height: z.number().int().min(1).default(1),
+  hasCollision: z.boolean().default(false),
 });
 
 export const savedEncounterCharacterSlotSchema = z.object({

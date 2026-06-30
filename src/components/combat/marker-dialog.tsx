@@ -5,6 +5,7 @@ import { ImageIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { resolveCombatImageUrl } from "@/lib/combat/storage";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -16,6 +17,7 @@ import {
 export interface MarkerDialogValues {
   name: string;
   tooltip: string;
+  hasCollision: boolean;
   portraitFile: File | null;
   removePortrait: boolean;
 }
@@ -26,6 +28,7 @@ interface MarkerDialogProps {
   mode: "add" | "edit";
   initialName?: string;
   initialTooltip?: string;
+  initialHasCollision?: boolean;
   initialPortraitPath?: string | null;
   onSubmit: (values: MarkerDialogValues) => void;
 }
@@ -36,6 +39,7 @@ export function MarkerDialog({
   mode,
   initialName = "",
   initialTooltip = "",
+  initialHasCollision = false,
   initialPortraitPath = null,
   onSubmit,
 }: MarkerDialogProps) {
@@ -43,6 +47,7 @@ export function MarkerDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(initialName);
   const [tooltip, setTooltip] = useState(initialTooltip);
+  const [hasCollision, setHasCollision] = useState(initialHasCollision);
   const [portraitFile, setPortraitFile] = useState<File | null>(null);
   const [removePortrait, setRemovePortrait] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -56,10 +61,11 @@ export function MarkerDialog({
     if (!open) return;
     setName(initialName);
     setTooltip(initialTooltip);
+    setHasCollision(initialHasCollision);
     setPortraitFile(null);
     setRemovePortrait(false);
     setPreviewUrl(null);
-  }, [open, initialName, initialTooltip, initialPortraitPath]);
+  }, [open, initialName, initialTooltip, initialHasCollision, initialPortraitPath]);
 
   useEffect(() => {
     if (!portraitFile) {
@@ -82,6 +88,7 @@ export function MarkerDialog({
     onSubmit({
       name: trimmedName,
       tooltip: tooltip.trim(),
+      hasCollision,
       portraitFile,
       removePortrait,
     });
@@ -178,6 +185,19 @@ export function MarkerDialog({
             placeholder="Optional details shown on hover"
             rows={4}
           />
+        </label>
+
+        <label className="combat-marker-dialog-field combat-marker-dialog-checkbox">
+          <Checkbox
+            checked={hasCollision}
+            onCheckedChange={(checked) => setHasCollision(checked === true)}
+          />
+          <span>
+            <span className="retro-muted">Collision</span>
+            <span className="combat-marker-dialog-checkbox-hint">
+              Blocks movement pathfinding when enabled
+            </span>
+          </span>
         </label>
 
         <div className="combat-marker-dialog-actions">

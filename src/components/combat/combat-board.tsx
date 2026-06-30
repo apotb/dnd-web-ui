@@ -2052,6 +2052,7 @@ export function CombatBoard({
     const next = addMarkerToState(combatState, values.name, values.tooltip, {
       id: markerId,
       portraitPath,
+      hasCollision: values.hasCollision,
     });
     await persist(next);
     setAddMarkerOpen(false);
@@ -2084,6 +2085,7 @@ export function CombatBoard({
       label: values.name,
       tooltip: values.tooltip,
       portraitPath,
+      hasCollision: values.hasCollision,
     });
     const persistError = await persist(next);
     if (persistError) {
@@ -3195,6 +3197,7 @@ export function CombatBoard({
         mode="edit"
         initialName={selectedMarker?.name ?? ""}
         initialTooltip={selectedMarker?.tooltip ?? ""}
+        initialHasCollision={selectedMarker?.hasCollision ?? false}
         initialPortraitPath={selectedMarker?.portraitPath ?? null}
         onSubmit={(values) => void handleEditMarker(values)}
       />

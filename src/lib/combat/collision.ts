@@ -1,4 +1,30 @@
-import type { CombatState } from "@/lib/schemas/combat-state";
+import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+
+function isFriendlyToken(token: CombatToken): boolean {
+  return token.kind === "party" || token.kind === "ally";
+}
+
+function isHostileToken(token: CombatToken): boolean {
+  return token.kind === "enemy";
+}
+
+/** Whether two tokens block each other during movement pathfinding. */
+export function tokensCollideForMovement(a: CombatToken, b: CombatToken): boolean {
+  if (a.id === b.id) return false;
+
+  if (a.kind === "marker") {
+    if (!a.hasCollision) return false;
+    return true;
+  }
+  if (b.kind === "marker") {
+    if (!b.hasCollision) return false;
+    return true;
+  }
+
+  if (isFriendlyToken(a) && isFriendlyToken(b)) return false;
+  if (isHostileToken(a) && isHostileToken(b)) return false;
+  return true;
+}
 
 export type BlockedCell = { x: number; y: number };
 
