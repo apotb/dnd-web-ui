@@ -74,6 +74,8 @@ import {
 import { CombatEndTurnConfirmModal } from "@/components/combat/combat-end-turn-confirm-modal";
 import { CombatEndTurnPanel } from "@/components/combat/combat-end-turn-panel";
 import { CombatMovePanel } from "@/components/combat/combat-move-panel";
+import { CombatMeasureOverlay } from "@/components/combat/combat-measure-overlay";
+import { CombatMeasureResultModal } from "@/components/combat/combat-measure-result-modal";
 import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
 import { CombatCollisionOverlay } from "@/components/combat/combat-collision-overlay";
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
@@ -124,7 +126,7 @@ import {
   hasPendingAttackForAttacker,
   canAdvanceTurnWithPendingAttacks,
 } from "@/lib/combat/pending-attacks";
-import { getTargetingHighlights, isAttackAtLongRange, parseAttackRangeSpec } from "@/lib/combat/targeting";
+import { getTargetingHighlights, isAttackAtLongRange, parseAttackRangeSpec, distanceFeetBetweenCells } from "@/lib/combat/targeting";
 import {
   applyRectangleToBlockedSet,
   areBlockedCellsEqual,
@@ -169,6 +171,7 @@ import {
   getRemainingMovementFeet,
   getTokenSpeedFt,
   type ReachableDestination,
+  type GridPosition,
 } from "@/lib/combat/movement";
 import { commitCombatMove } from "@/lib/combat/movement-actions";
 import { getCombatTokenDisplayLabel, getEnemyTokenLabelLetter } from "@/lib/combat/party-token-label";
@@ -514,6 +517,14 @@ export function CombatBoard({
   const [collisionDragEnd, setCollisionDragEnd] = useState<BlockedCell | null>(null);
   const [collisionDragRemoving, setCollisionDragRemoving] = useState(false);
   const [savingCollision, setSavingCollision] = useState(false);
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measureStartCell, setMeasureStartCell] = useState<GridPosition | null>(null);
+  const [measureHoverCell, setMeasureHoverCell] = useState<GridPosition | null>(null);
+  const [measureResult, setMeasureResult] = useState<{
+    start: GridPosition;
+    end: GridPosition;
+    distanceFeet: number;
+  } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const draggingTokenIdRef = useRef<string | null>(null);
@@ -553,7 +564,10 @@ export function CombatBoard({
   );
 
   const canUseCollisionEdit =
-    !movementMode && !attackTargeting && !draggingTokenId && !startingInitiative;
+    !movementMode && !attackTargeting && !draggingTokenId && !startingInitiative && !measureMode;
+
+  const canUseMeasure =
+    !movementMode && !attackTargeting && !draggingTokenId && !collisionEditMode;
 
   const savedBlockedKeys = useMemo(
     () => buildBlockedCellSet(combatState.blockedCells ?? []),
@@ -1165,6 +1179,12 @@ export function CombatBoard({
     }
   }
 
+  function clearMeasureMode() {
+    setMeasureMode(false);
+    setMeasureStartCell(null);
+    setMeasureHoverCell(null);
+  }
+
   function clearAttackFlow() {
     setAttackTargeting(null);
     setAttackSubmitDraft(null);
@@ -1173,7 +1193,7 @@ export function CombatBoard({
 
   async function handleSelectCombatOption(option: CombatOption) {
     if (!isImplementedCombatOption(option)) return;
-    if (attackTargeting || movementMode || turnTokenHasPendingAction) return;
+    if (attackTargeting || movementMode || measureMode || turnTokenHasPendingAction) return;
 
     if (isHelpActionOption(option)) {
       if (!currentTurnToken) return;
@@ -1221,10 +1241,42 @@ export function CombatBoard({
         return;
       }
       setMovementMode(false);
+      clearMeasureMode();
       clearAttackFlow();
       setAttackTargeting({ option, attack });
       return;
     }
+  }
+
+  function handleToggleMeasureMode() {
+    if (!measureMode && !canUseMeasure) return;
+    if (measureMode) {
+      clearMeasureMode();
+      return;
+    }
+    setMeasureStartCell(null);
+    setMeasureHoverCell(null);
+    setMeasureMode(true);
+  }
+
+  function handleMeasureCellClick(cell: GridPosition) {
+    if (!measureStartCell) {
+      setMeasureStartCell(cell);
+      setMeasureHoverCell(null);
+      return;
+    }
+
+    const distanceFeet = distanceFeetBetweenCells(
+      measureStartCell,
+      cell,
+      combatState.tileFeet
+    );
+    setMeasureResult({
+      start: measureStartCell,
+      end: cell,
+      distanceFeet,
+    });
+    clearMeasureMode();
   }
 
   const mapSelectionActive = Boolean(attackTargeting || movementMode);
@@ -1624,6 +1676,7 @@ export function CombatBoard({
   function handleToggleMovementMode() {
     if (
       attackTargeting ||
+      measureMode ||
       turnTokenHasPendingAction ||
       provokingMovePending ||
       pendingOpportunityAttackMove
@@ -1680,12 +1733,17 @@ export function CombatBoard({
     setPendingOpportunityAttackMove(null);
     setHelpTargetPickerAllies(null);
     setEndTurnConfirmOpen(false);
+    clearMeasureMode();
     clearAttackFlow();
   }, [currentTurnTokenId, userControlsTurn]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        if (measureMode) {
+          clearMeasureMode();
+          return;
+        }
         clearAttackFlow();
       }
     }
@@ -1901,7 +1959,7 @@ export function CombatBoard({
   }
 
   function handleTokenClick(tokenId: string, event: React.MouseEvent) {
-    if (attackTargeting || movementMode || draggingTokenId || collisionEditMode) return;
+    if (attackTargeting || movementMode || measureMode || draggingTokenId || collisionEditMode) return;
     event.stopPropagation();
 
     const token = combatState.tokens.find((entry) => entry.id === tokenId);
@@ -2919,6 +2977,14 @@ export function CombatBoard({
                   )}
                 </div>
               ) : null}
+              <button
+                type="button"
+                className={`candy-btn combat-measure-btn${measureMode ? " candy-btn-active" : ""}`}
+                disabled={!measureMode && !canUseMeasure}
+                onClick={handleToggleMeasureMode}
+              >
+                Measure
+              </button>
             </div>
 
             {isDm ? (
@@ -3102,7 +3168,7 @@ export function CombatBoard({
             <div className="combat-grid-shell">
               <div
                 ref={gridRef}
-                className={`combat-grid${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}`}
+                className={`combat-grid${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}${measureMode ? " combat-grid-measure-mode" : ""}`}
                 style={{
                   ["--grid-width" as string]: combatState.gridWidth,
                   ["--grid-height" as string]: combatState.gridHeight,
@@ -3198,6 +3264,16 @@ export function CombatBoard({
                     onCellHover={setHoveredMovementCell}
                   />
                 ) : null}
+                {measureMode && !collisionEditMode ? (
+                  <CombatMeasureOverlay
+                    gridWidth={combatState.gridWidth}
+                    gridHeight={combatState.gridHeight}
+                    startCell={measureStartCell}
+                    hoveredCell={measureHoverCell}
+                    onCellHover={setMeasureHoverCell}
+                    onCellClick={handleMeasureCellClick}
+                  />
+                ) : null}
               </div>
             </div>
             {isDm && battleActive && dmApprovalTrayAttacks.length > 0 ? (
@@ -3287,6 +3363,14 @@ export function CombatBoard({
           endingTurn={endingTurn}
           onCancel={() => setEndTurnConfirmOpen(false)}
           onConfirm={() => void handleEndTurn()}
+        />
+      ) : null}
+      {measureResult ? (
+        <CombatMeasureResultModal
+          start={measureResult.start}
+          end={measureResult.end}
+          distanceFeet={measureResult.distanceFeet}
+          onDismiss={() => setMeasureResult(null)}
         />
       ) : null}
       {helpTargetPickerAllies ? (

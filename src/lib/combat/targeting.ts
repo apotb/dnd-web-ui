@@ -81,6 +81,15 @@ export function distanceFeetToCell(
   return min * tileFeet;
 }
 
+export function distanceFeetBetweenCells(
+  a: GridPosition,
+  b: GridPosition,
+  tileFeet: number
+): number {
+  const cheb = Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+  return cheb * tileFeet;
+}
+
 export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
   const range = attack.range.trim().toLowerCase();
 
