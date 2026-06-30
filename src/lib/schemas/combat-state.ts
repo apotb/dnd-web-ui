@@ -99,6 +99,8 @@ export const combatTokenSchema = z.object({
   kind: z.enum(TOKEN_KINDS),
   name: z.string().default(""),
   label: z.string().default(""),
+  /** When set, shown instead of the auto-generated label (e.g. "Thug A"). */
+  displayName: z.string().optional(),
   tooltip: z.string().default(""),
   enemySlug: z.string().optional(),
   characterId: z.string().optional(),
@@ -130,6 +132,8 @@ export const pendingOpportunityAttacksSchema = z.object({
   dashConsumed: z.boolean().nullish(),
 });
 
+export const DEFAULT_BOARD_TITLE = "Combat";
+
 export const blockedCellSchema = z.object({
   x: z.number().int().min(0),
   y: z.number().int().min(0),
@@ -157,6 +161,8 @@ export const combatStateSchema = z.object({
   }),
   pendingAttacks: z.array(pendingAttackSchema).default([]),
   pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
+  boardTitle: z.string().default(DEFAULT_BOARD_TITLE),
+  savedEncounterId: z.string().uuid().nullable().default(null),
 });
 
 export type BlockedCell = z.infer<typeof blockedCellSchema>;

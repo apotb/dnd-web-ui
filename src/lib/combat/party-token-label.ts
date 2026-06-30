@@ -11,5 +11,7 @@ export function getCombatTokenDisplayLabel(token: CombatToken): string {
   if (token.kind === "party") {
     return getPartyTokenLabel(token.name || token.label);
   }
+  const forcedName = token.displayName?.trim();
+  if (forcedName) return forcedName;
   return token.label;
 }

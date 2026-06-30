@@ -3,6 +3,7 @@ import { applyHpDamage } from "@/lib/character/combat-derivation";
 import { parseDamageNotation } from "@/lib/dnd/dice";
 import { consumeInventoryItem } from "@/lib/dnd/supplies";
 import { createThrownWeaponMarker } from "@/lib/combat/state-utils";
+import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
 import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
 import {
   hasPendingAttackForAttacker,
@@ -271,7 +272,7 @@ export function buildPendingTargetFromToken(
 
   return {
     tokenId: token.id,
-    label: token.label,
+    label: getCombatTokenDisplayLabel(token),
     ac,
     currentHp,
     maxHp,

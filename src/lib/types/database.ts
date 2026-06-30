@@ -98,6 +98,23 @@ export interface CampaignCalendarEvent {
   updated_at: string;
 }
 
+export interface Encounter {
+  id: string;
+  name: string;
+  background_path: string | null;
+  grid_width: number;
+  grid_height: number;
+  tile_feet: number;
+  blocked_cells: Json;
+  data: Json;
+  total_cr: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** @deprecated Use Encounter */
+export type SavedEncounter = Encounter;
+
 export type Database = {
   public: {
     Tables: {
@@ -217,6 +234,24 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<CampaignCalendarEvent>;
+        Relationships: [];
+      };
+      encounters: {
+        Row: Encounter;
+        Insert: {
+          id?: string;
+          name: string;
+          background_path?: string | null;
+          grid_width?: number;
+          grid_height?: number;
+          tile_feet?: number;
+          blocked_cells?: Json;
+          data?: Json;
+          total_cr?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Encounter>;
         Relationships: [];
       };
     };

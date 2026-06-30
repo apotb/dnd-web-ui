@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   addEnemyToState,
@@ -46,7 +47,7 @@ import {
 } from "@/lib/hooks/use-realtime-combat-state";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
-import { isCombatantToken } from "@/lib/schemas/combat-state";
+import { DEFAULT_BOARD_TITLE, isCombatantToken } from "@/lib/schemas/combat-state";
 import {
   MAX_GRID_SIZE,
   MAX_TILE_FEET,
@@ -55,6 +56,14 @@ import {
 } from "@/lib/schemas/combat-grid";
 import { AddEnemyDialog } from "@/components/combat/add-enemy-dialog";
 import { AddPartyMemberDialog } from "@/components/combat/add-party-member-dialog";
+import {
+  CharacterSlotAssignModal,
+  CharacterSlotClaimModal,
+} from "@/components/combat/character-slot-modal";
+import { EnemyTokenDialog, type EnemyTokenDialogValues } from "@/components/combat/enemy-token-dialog";
+import { EncounterLoadDialog } from "@/components/combat/encounter-load-dialog";
+import { EncounterNameModal } from "@/components/combat/encounter-name-modal";
+import { EncounterOverwriteConfirmModal } from "@/components/combat/encounter-overwrite-confirm-modal";
 import { MarkerDialog, type MarkerDialogValues } from "@/components/combat/marker-dialog";
 import {
   CombatActionPanel,
@@ -75,6 +84,8 @@ import type { AttackSubmitValues } from "@/components/combat/combat-attack-submi
 import { CombatDmApprovalTray } from "@/components/combat/combat-dm-approval-tray";
 import { CombatSaveRollModal } from "@/components/combat/combat-save-roll-modal";
 import { CombatTargetingOverlay } from "@/components/combat/combat-targeting-overlay";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { AlertModal } from "@/components/ui/alert-modal";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   getCombatOptionGroupsForToken,
@@ -159,6 +170,26 @@ import {
 } from "@/lib/combat/movement";
 import { commitCombatMove } from "@/lib/combat/movement-actions";
 import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
+import {
+  assignCharacterToPlaceholder,
+  canPlayerClaimPlaceholder,
+  hasUnclaimedCharacterPlaceholders,
+  isCharacterPlaceholder,
+} from "@/lib/combat/character-placeholder";
+import {
+  combatStateToEncounterPayload,
+  isPreBattleSetup,
+  savedEncounterToCombatState,
+} from "@/lib/combat/saved-encounters";
+import type { Encounter } from "@/lib/types/database";
+
+type ConfirmRequest = {
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  destructive?: boolean;
+  onConfirm: () => void | Promise<void>;
+};
 
 interface CombatBoardProps {
   campaignId: string;
@@ -167,6 +198,7 @@ interface CombatBoardProps {
   enemies: EnemyRecord[];
   isDm: boolean;
   userId: string | null;
+  ownedCharacterId?: string | null;
 }
 
 function tokenColorClass(kind: CombatToken["kind"]): string {
@@ -377,7 +409,9 @@ export function CombatBoard({
   enemies,
   isDm,
   userId,
+  ownedCharacterId = null,
 }: CombatBoardProps) {
+  const router = useRouter();
   const enemiesBySlug = useMemo(
     () => Object.fromEntries(enemies.map((enemy) => [enemy.slug, enemy])),
     [enemies]
@@ -388,6 +422,10 @@ export function CombatBoard({
   const charactersById = useMemo(
     () => Object.fromEntries(localCharacters.map((character) => [character.id, character])),
     [localCharacters]
+  );
+  const ownedCharacter = useMemo(
+    () => (ownedCharacterId ? charactersById[ownedCharacterId] ?? null : null),
+    [charactersById, ownedCharacterId]
   );
 
   useEffect(() => {
@@ -400,6 +438,23 @@ export function CombatBoard({
   const [addPartyOpen, setAddPartyOpen] = useState(false);
   const [addMarkerOpen, setAddMarkerOpen] = useState(false);
   const [editMarkerOpen, setEditMarkerOpen] = useState(false);
+  const [editEnemyOpen, setEditEnemyOpen] = useState(false);
+  const [encounterLoadOpen, setEncounterLoadOpen] = useState(false);
+  const [savingEncounter, setSavingEncounter] = useState(false);
+  const [saveEncounterNameOpen, setSaveEncounterNameOpen] = useState(false);
+  const [overwriteConfirmEncounter, setOverwriteConfirmEncounter] = useState<Encounter | null>(null);
+  const [pendingSaveName, setPendingSaveName] = useState<string | null>(null);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const pendingNavigationHrefRef = useRef<string | null>(null);
+  const showAlert = useCallback((message: string | { error?: string }) => {
+    const text = typeof message === "string" ? message : message.error ?? "Something went wrong.";
+    setAlertMessage(text);
+  }, []);
+  const requestConfirm = useCallback((request: ConfirmRequest) => setConfirmRequest(request), []);
+  const [characterSlotTokenId, setCharacterSlotTokenId] = useState<string | null>(null);
+  const [assigningCharacterSlot, setAssigningCharacterSlot] = useState(false);
   const [startingInitiative, setStartingInitiative] = useState(false);
   const [endingTurn, setEndingTurn] = useState(false);
   const [attackTargeting, setAttackTargeting] = useState<{
@@ -563,22 +618,26 @@ export function CombatBoard({
       const href = anchor.getAttribute("href");
       if (!href || href.startsWith("#")) return;
 
-      if (
-        !window.confirm(
-          "You have unsaved collision edits. Discard them and leave this page?"
-        )
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-
-      discardCollisionEdits();
+      event.preventDefault();
+      event.stopPropagation();
+      pendingNavigationHrefRef.current = href;
+      requestConfirm({
+        title: "Discard collision edits?",
+        description: "You have unsaved collision edits. Discard them and leave this page?",
+        confirmLabel: "Leave",
+        destructive: true,
+        onConfirm: () => {
+          discardCollisionEdits();
+          const target = pendingNavigationHrefRef.current;
+          pendingNavigationHrefRef.current = null;
+          if (target) router.push(target);
+        },
+      });
     }
 
     document.addEventListener("click", handleDocumentClick, true);
     return () => document.removeEventListener("click", handleDocumentClick, true);
-  }, [collisionDirty, discardCollisionEdits]);
+  }, [collisionDirty, discardCollisionEdits, requestConfirm, router]);
 
   useEffect(() => {
     if (!collisionEditMode) return;
@@ -803,6 +862,8 @@ export function CombatBoard({
     ? combatState.tokens.find((token) => token.id === selectedTokenId) ?? null
     : null;
   const selectedMarker = selectedToken?.kind === "marker" ? selectedToken : null;
+  const selectedEnemy = selectedToken?.kind === "enemy" ? selectedToken : null;
+  const canEditSelectedToken = selectedMarker != null || selectedEnemy != null;
   const combatantCount = useMemo(
     () => combatState.tokens.filter(isCombatantToken).length,
     [combatState.tokens]
@@ -814,7 +875,13 @@ export function CombatBoard({
     isDm &&
     combatState.initiative.status === "none" &&
     combatantCount > 0 &&
-    !startingInitiative;
+    !startingInitiative &&
+    !hasUnclaimedCharacterPlaceholders(combatState);
+
+  const preBattleSetup = isPreBattleSetup(combatState);
+  const characterSlotToken = characterSlotTokenId
+    ? combatState.tokens.find((token) => token.id === characterSlotTokenId) ?? null
+    : null;
 
   const battleActive = isBattleActive(combatState);
   const currentTurnTokenId = getCurrentTurnTokenId(combatState);
@@ -1069,7 +1136,7 @@ export function CombatBoard({
     setEndingTurn(false);
     setEndTurnConfirmOpen(false);
     if (error) {
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (isDm) {
@@ -1102,7 +1169,7 @@ export function CombatBoard({
         isDm,
       });
       if (error) {
-        window.alert(error);
+        showAlert(error);
         return;
       }
       if (isDm) {
@@ -1129,7 +1196,7 @@ export function CombatBoard({
         currentTurnToken &&
         hasPendingAttackForAttacker(combatState, currentTurnToken.id)
       ) {
-        window.alert("You already have an action pending.");
+        showAlert("You already have an action pending.");
         return;
       }
       setMovementMode(false);
@@ -1354,7 +1421,7 @@ export function CombatBoard({
       if (attackSubmitDraft.isOpportunityAttack) {
         setUserOaLocked(false);
       }
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (attackSubmitDraft.isOpportunityAttack) {
@@ -1403,7 +1470,7 @@ export function CombatBoard({
     setSkippingOpportunityAttack(false);
     if (error) {
       setUserOaLocked(false);
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (isDm) {
@@ -1424,7 +1491,7 @@ export function CombatBoard({
     });
     setSubmittingSaveId(null);
     if (error) {
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (isDm) {
@@ -1448,7 +1515,7 @@ export function CombatBoard({
     );
     setSubmittingSaveId(null);
     if (error) {
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (isDm) {
@@ -1468,7 +1535,7 @@ export function CombatBoard({
     );
     setResolvingAttackId(null);
     if (error) {
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (isDm) {
@@ -1485,7 +1552,7 @@ export function CombatBoard({
       isDm
     );
     if (error) {
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (isDm) {
@@ -1515,7 +1582,7 @@ export function CombatBoard({
       void resolveCombatAttack(campaignId, combatState, pending, charactersById, isDm)
         .then(({ next, error, characterUpdates }) => {
           if (error) {
-            window.alert(error);
+            showAlert(error);
             return;
           }
           setDraft(next);
@@ -1662,7 +1729,7 @@ export function CombatBoard({
     });
 
     if (error) {
-      window.alert(error);
+      showAlert(error);
       return;
     }
 
@@ -1701,7 +1768,7 @@ export function CombatBoard({
     setPendingDashActionConfirm(false);
     const { next, error } = await recordCombatDash(campaignId, combatState, { isDm });
     if (error) {
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (isDm) {
@@ -1718,7 +1785,7 @@ export function CombatBoard({
     });
     setPendingRollOption(null);
     if (error) {
-      window.alert(error);
+      showAlert(error);
       return;
     }
     if (isDm) {
@@ -1762,7 +1829,7 @@ export function CombatBoard({
     const persistError = await persist(next);
     if (persistError) {
       setApplyingHp(false);
-      window.alert(persistError);
+      showAlert(persistError);
       return;
     }
 
@@ -1779,7 +1846,7 @@ export function CombatBoard({
       );
       if (error) {
         setApplyingHp(false);
-        window.alert(error);
+        showAlert(error);
         return;
       }
       setLocalCharacters((current) =>
@@ -1808,13 +1875,29 @@ export function CombatBoard({
     const error = await persist(next);
     setAdjustingMovement(false);
     if (error) {
-      window.alert(error);
+      showAlert(error);
     }
   }
 
   function handleTokenClick(tokenId: string, event: React.MouseEvent) {
-    if (!isDm || attackTargeting || movementMode || draggingTokenId || collisionEditMode) return;
+    if (attackTargeting || movementMode || draggingTokenId || collisionEditMode) return;
     event.stopPropagation();
+
+    const token = combatState.tokens.find((entry) => entry.id === tokenId);
+    if (!token) return;
+
+    if (isCharacterPlaceholder(token)) {
+      if (isDm) {
+        setCharacterSlotTokenId(tokenId);
+        return;
+      }
+      if (canPlayerClaimPlaceholder(token, ownedCharacter, presentCharacterIds)) {
+        setCharacterSlotTokenId(tokenId);
+      }
+      return;
+    }
+
+    if (!isDm) return;
     setSelectedTokenId(tokenId);
   }
 
@@ -1925,7 +2008,7 @@ export function CombatBoard({
       const error = await persist(next);
       setSavingCollision(false);
       if (error) {
-        window.alert(error);
+        showAlert(error);
         return;
       }
       setCollisionEditMode(false);
@@ -1960,7 +2043,7 @@ export function CombatBoard({
         values.portraitFile
       );
       if (error) {
-        window.alert(error);
+        showAlert(error);
         return;
       }
       portraitPath = path;
@@ -1990,7 +2073,7 @@ export function CombatBoard({
         values.portraitFile
       );
       if (error) {
-        window.alert(error);
+        showAlert(error);
         return;
       }
       portraitPath = path;
@@ -2004,7 +2087,7 @@ export function CombatBoard({
     });
     const persistError = await persist(next);
     if (persistError) {
-      window.alert(persistError);
+      showAlert(persistError);
       return;
     }
 
@@ -2015,34 +2098,90 @@ export function CombatBoard({
     setEditMarkerOpen(false);
   }
 
+  async function handleEditEnemy(values: EnemyTokenDialogValues) {
+    if (!selectedEnemy) return;
+
+    const next = updateTokenInState(combatState, selectedEnemy.id, {
+      displayName: values.displayName || undefined,
+    });
+    const persistError = await persist(next);
+    if (persistError) {
+      showAlert(persistError);
+      return;
+    }
+    setEditEnemyOpen(false);
+  }
+
   async function handleAddPartyMembers(selected: ParsedCharacter[]) {
     const next = addPartyMembersToState(combatState, selected);
     await persist(next);
   }
 
-  async function handleRemoveSelected() {
+  function handleRemoveSelected() {
     if (!selectedToken) return;
-    const label = selectedToken.label;
-    if (!window.confirm(`Remove ${label} from the board?`)) return;
-    const next = removeTokenFromState(combatState, selectedToken.id);
-    await persist(next);
-    setSelectedTokenId(null);
+    const tokenId = selectedToken.id;
+    const label = getCombatTokenDisplayLabel(selectedToken);
+    requestConfirm({
+      title: `Remove ${label}?`,
+      description: `Remove ${label} from the board?`,
+      confirmLabel: "Remove",
+      destructive: true,
+      onConfirm: async () => {
+        const next = removeTokenFromState(combatStateRef.current, tokenId);
+        await persist(next);
+        setSelectedTokenId(null);
+      },
+    });
   }
 
-  async function handleResetBoard() {
-    if (
-      !window.confirm(
-        "Reset the combat board?\n\nAll enemies will be removed, initiative will clear, and every party member will return to default starting positions."
-      )
-    ) {
-      return;
-    }
+  function handleResetBoard() {
+    requestConfirm({
+      title: "Reset combat board?",
+      description:
+        "All enemies will be removed, initiative will clear, and every party member will return to default starting positions.",
+      confirmLabel: "Reset",
+      destructive: true,
+      onConfirm: async () => {
+        await clearCampaignInitiativeRolls(
+          campaignId,
+          characters.map((character) => character.id)
+        );
+        const next = resetCombatBoard(combatStateRef.current, characters);
+        await persist(next);
+        setSelectedTokenId(null);
+        if (collisionEditMode) {
+          setCollisionEditMode(false);
+          setCollisionDragStart(null);
+          setCollisionDragEnd(null);
+          setCollisionDragRemoving(false);
+          collisionPointerIdRef.current = null;
+          setCollisionDraft(buildBlockedCellSet(next.blockedCells ?? []));
+        }
+      },
+    });
+  }
 
+  async function handleConfirmModalConfirm() {
+    if (!confirmRequest) return;
+    setConfirmBusy(true);
+    try {
+      await confirmRequest.onConfirm();
+    } finally {
+      setConfirmBusy(false);
+      setConfirmRequest(null);
+    }
+  }
+
+  async function handleLoadEncounter(encounter: Encounter) {
     await clearCampaignInitiativeRolls(
       campaignId,
       characters.map((character) => character.id)
     );
-    const next = resetCombatBoard(combatState, characters);
+    const next = savedEncounterToCombatState(
+      encounter,
+      enemiesBySlug,
+      characters.map((character) => character.id)
+    );
     await persist(next);
     setSelectedTokenId(null);
     if (collisionEditMode) {
@@ -2051,14 +2190,181 @@ export function CombatBoard({
       setCollisionDragEnd(null);
       setCollisionDragRemoving(false);
       collisionPointerIdRef.current = null;
-      setCollisionDraft(new Set());
+      setCollisionDraft(buildBlockedCellSet(next.blockedCells ?? []));
     }
+  }
+
+  async function handleBoardTitleCommit(rawValue: string) {
+    const nextTitle = rawValue.trim() || DEFAULT_BOARD_TITLE;
+    if (nextTitle === (combatState.boardTitle ?? DEFAULT_BOARD_TITLE)) return;
+    await persist({ ...combatStateRef.current, boardTitle: nextTitle });
+  }
+
+  async function linkBoardToEncounter(name: string, encounterId: string) {
+    await persist({
+      ...combatStateRef.current,
+      boardTitle: name,
+      savedEncounterId: encounterId,
+    });
+  }
+
+  async function persistEncounterOverwrite(name: string, targetId: string) {
+    setSavingEncounter(true);
+    const payload = combatStateToEncounterPayload(combatState, enemiesBySlug);
+
+    const { error } = await supabase
+      .from("encounters")
+      .update({
+        name,
+        background_path: payload.backgroundPath,
+        grid_width: payload.gridWidth,
+        grid_height: payload.gridHeight,
+        tile_feet: payload.tileFeet,
+        blocked_cells: payload.blockedCells,
+        data: payload.data,
+        total_cr: payload.totalCr,
+      })
+      .eq("id", targetId);
+
+    setSavingEncounter(false);
+    setSaveEncounterNameOpen(false);
+    setOverwriteConfirmEncounter(null);
+    setPendingSaveName(null);
+    if (error) {
+      showAlert(error.message);
+      return;
+    }
+    await linkBoardToEncounter(name, targetId);
+  }
+
+  async function persistEncounterInsert(name: string) {
+    setSavingEncounter(true);
+    const payload = combatStateToEncounterPayload(combatState, enemiesBySlug);
+
+    const { data, error } = await supabase
+      .from("encounters")
+      .insert({
+        name,
+        background_path: payload.backgroundPath,
+        grid_width: payload.gridWidth,
+        grid_height: payload.gridHeight,
+        tile_feet: payload.tileFeet,
+        blocked_cells: payload.blockedCells,
+        data: payload.data,
+        total_cr: payload.totalCr,
+      })
+      .select("*")
+      .single();
+
+    setSavingEncounter(false);
+    setSaveEncounterNameOpen(false);
+    setOverwriteConfirmEncounter(null);
+    setPendingSaveName(null);
+    if (error) {
+      showAlert(error.message);
+      return;
+    }
+    if (data) {
+      await linkBoardToEncounter(data.name, data.id);
+    }
+  }
+
+  function handleSaveEncounterClick() {
+    if (!isDm || !preBattleSetup) return;
+    setOverwriteConfirmEncounter(null);
+    setPendingSaveName(null);
+    setSaveEncounterNameOpen(true);
+  }
+
+  async function handleSaveEncounterSubmit(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    const { data, error } = await supabase
+      .from("encounters")
+      .select("*")
+      .eq("name", trimmed)
+      .limit(1);
+
+    if (error) {
+      showAlert(error.message);
+      return;
+    }
+
+    const existing = (data?.[0] ?? null) as Encounter | null;
+    if (existing) {
+      setPendingSaveName(trimmed);
+      setOverwriteConfirmEncounter(existing);
+      setSaveEncounterNameOpen(false);
+      return;
+    }
+
+    await persistEncounterInsert(trimmed);
+  }
+
+  async function handleConfirmOverwriteExistingEncounter() {
+    if (!overwriteConfirmEncounter || !pendingSaveName) return;
+    await persistEncounterOverwrite(pendingSaveName, overwriteConfirmEncounter.id);
+  }
+
+  const boardTitle = combatState.boardTitle ?? DEFAULT_BOARD_TITLE;
+  const defaultSaveEncounterName =
+    boardTitle === DEFAULT_BOARD_TITLE ? "" : boardTitle;
+
+  async function handleClaimCharacterSlot() {
+    if (!characterSlotToken || !ownedCharacter) return;
+    setAssigningCharacterSlot(true);
+    const next = assignCharacterToPlaceholder(
+      combatState,
+      characterSlotToken.id,
+      ownedCharacter
+    );
+    const error = await persist(next);
+    setAssigningCharacterSlot(false);
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    setCharacterSlotTokenId(null);
+  }
+
+  async function handleAssignCharacterSlot(characterId: string) {
+    if (!characterSlotToken) return;
+    const character = charactersById[characterId];
+    if (!character) return;
+
+    setAssigningCharacterSlot(true);
+    const next = assignCharacterToPlaceholder(
+      combatState,
+      characterSlotToken.id,
+      character
+    );
+    const error = await persist(next);
+    setAssigningCharacterSlot(false);
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    setCharacterSlotTokenId(null);
+  }
+
+  async function handleRemoveCharacterSlot() {
+    if (!characterSlotToken) return;
+    setAssigningCharacterSlot(true);
+    const next = removeTokenFromState(combatState, characterSlotToken.id);
+    const error = await persist(next);
+    setAssigningCharacterSlot(false);
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    setCharacterSlotTokenId(null);
   }
 
   async function handleStartInitiative() {
     if (combatState.initiative.status !== "none") return;
     if (combatantCount === 0) {
-      window.alert("Add at least one combatant before starting initiative.");
+      showAlert("Add at least one combatant before starting initiative.");
       return;
     }
 
@@ -2069,7 +2375,7 @@ export function CombatBoard({
     const persistError = await persistCombatState(campaignId, next);
     if (persistError) {
       setStartingInitiative(false);
-      window.alert(persistError);
+      showAlert(persistError);
       return;
     }
     setDraft(next);
@@ -2124,16 +2430,22 @@ export function CombatBoard({
 
   async function handleRemoveBackground() {
     if (!combatState.backgroundPath) return;
-    if (!window.confirm("Remove the combat map background?")) return;
+    requestConfirm({
+      title: "Remove background?",
+      description: "Remove the combat map background?",
+      confirmLabel: "Remove",
+      destructive: true,
+      onConfirm: async () => {
+        const previousPath = combatStateRef.current.backgroundPath;
+        const next = { ...combatStateRef.current, backgroundPath: null, blockedCells: [] };
+        await persist(next);
+        await removeCombatImage(supabase, previousPath);
 
-    const previousPath = combatState.backgroundPath;
-    const next = { ...combatState, backgroundPath: null, blockedCells: [] };
-    await persist(next);
-    await removeCombatImage(supabase, previousPath);
-
-    if (collisionEditMode) {
-      setCollisionDraft(new Set());
-    }
+        if (collisionEditMode) {
+          setCollisionDraft(new Set());
+        }
+      },
+    });
   }
 
   function handleGridSettingCommit(
@@ -2189,6 +2501,10 @@ export function CombatBoard({
 
     const isDragging = draggingTokenId === token.id;
     const isActiveTurn = battleActive && token.id === currentTurnTokenId;
+    const isPlaceholder = isCharacterPlaceholder(token);
+    const isClaimablePlaceholder =
+      isPlaceholder &&
+      (isDm || canPlayerClaimPlaceholder(token, ownedCharacter, presentCharacterIds));
 
     const style = {
       gridColumn: `${token.x + 1} / span ${token.width}`,
@@ -2202,7 +2518,7 @@ export function CombatBoard({
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isAttackTarget ? " combat-token-attack-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -2371,7 +2687,21 @@ export function CombatBoard({
           <div className="combat-board-area">
             <div className="combat-toolbar combat-toolbar-header">
               <div className="combat-toolbar-meta">
-                <h2 className="combat-title">Combat</h2>
+                {isDm ? (
+                  <input
+                    type="text"
+                    className="combat-title combat-title-input"
+                    key={boardTitle}
+                    defaultValue={boardTitle}
+                    aria-label="Combat board title"
+                    onBlur={(event) => void handleBoardTitleCommit(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                  />
+                ) : (
+                  <h2 className="combat-title">{boardTitle}</h2>
+                )}
                 <p className="combat-meta">
                   {isDm ? (
                     <>
@@ -2614,74 +2944,14 @@ export function CombatBoard({
                   >
                     Add marker
                   </button>
-                  <div className="combat-hp-adjust-group">
-                    <button
-                      type="button"
-                      className="candy-btn"
-                      disabled={
-                        !selectedToken ||
-                        selectedToken.kind === "marker" ||
-                        !hpAmountValid ||
-                        applyingHp
-                      }
-                      onClick={() => void handleApplyHpToSelected(1)}
-                    >
-                      {applyingHp ? "…" : "Heal"}
-                    </button>
-                    <input
-                      type="number"
-                      className="combat-hp-amount-input"
-                      min={1}
-                      value={hpAmount}
-                      onChange={(event) => setHpAmount(event.target.value)}
-                      disabled={
-                        !selectedToken ||
-                        selectedToken.kind === "marker" ||
-                        applyingHp
-                      }
-                      aria-label="HP amount"
-                    />
-                    <button
-                      type="button"
-                      className="candy-btn"
-                      disabled={
-                        !selectedToken ||
-                        selectedToken.kind === "marker" ||
-                        !hpAmountValid ||
-                        applyingHp
-                      }
-                      onClick={() => void handleApplyHpToSelected(-1)}
-                    >
-                      {applyingHp ? "…" : "Damage"}
-                    </button>
-                  </div>
-                  <div className="combat-hp-adjust-group">
-                    <button
-                      type="button"
-                      className="candy-btn"
-                      disabled={
-                        !canAdjustTurnMovement ||
-                        adjustingMovement ||
-                        movementUsedFeet === 0
-                      }
-                      onClick={() => void handleAdjustTurnMovement(-5)}
-                    >
-                      {adjustingMovement ? "…" : "+5 ft"}
-                    </button>
-                    <button
-                      type="button"
-                      className="candy-btn"
-                      disabled={!canAdjustTurnMovement || adjustingMovement}
-                      onClick={() => void handleAdjustTurnMovement(5)}
-                    >
-                      {adjustingMovement ? "…" : "-5 ft"}
-                    </button>
-                  </div>
                   <button
                     type="button"
                     className="candy-btn"
-                    onClick={() => setEditMarkerOpen(true)}
-                    disabled={!selectedMarker}
+                    onClick={() => {
+                      if (selectedMarker) setEditMarkerOpen(true);
+                      else if (selectedEnemy) setEditEnemyOpen(true);
+                    }}
+                    disabled={!canEditSelectedToken}
                   >
                     Edit
                   </button>
@@ -2693,6 +2963,91 @@ export function CombatBoard({
                   >
                     Remove
                   </button>
+                  {preBattleSetup ? (
+                    <>
+                      <button
+                        type="button"
+                        className="candy-btn"
+                        onClick={() => handleSaveEncounterClick()}
+                        disabled={savingEncounter}
+                      >
+                        {savingEncounter ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="candy-btn"
+                        onClick={() => setEncounterLoadOpen(true)}
+                      >
+                        Load
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="combat-hp-adjust-group">
+                        <button
+                          type="button"
+                          className="candy-btn"
+                          disabled={
+                            !selectedToken ||
+                            selectedToken.kind === "marker" ||
+                            !hpAmountValid ||
+                            applyingHp
+                          }
+                          onClick={() => void handleApplyHpToSelected(1)}
+                        >
+                          {applyingHp ? "…" : "Heal"}
+                        </button>
+                        <input
+                          type="number"
+                          className="combat-hp-amount-input"
+                          min={1}
+                          value={hpAmount}
+                          onChange={(event) => setHpAmount(event.target.value)}
+                          disabled={
+                            !selectedToken ||
+                            selectedToken.kind === "marker" ||
+                            applyingHp
+                          }
+                          aria-label="HP amount"
+                        />
+                        <button
+                          type="button"
+                          className="candy-btn"
+                          disabled={
+                            !selectedToken ||
+                            selectedToken.kind === "marker" ||
+                            !hpAmountValid ||
+                            applyingHp
+                          }
+                          onClick={() => void handleApplyHpToSelected(-1)}
+                        >
+                          {applyingHp ? "…" : "Damage"}
+                        </button>
+                      </div>
+                      <div className="combat-hp-adjust-group">
+                        <button
+                          type="button"
+                          className="candy-btn"
+                          disabled={
+                            !canAdjustTurnMovement ||
+                            adjustingMovement ||
+                            movementUsedFeet === 0
+                          }
+                          onClick={() => void handleAdjustTurnMovement(-5)}
+                        >
+                          {adjustingMovement ? "…" : "+5 ft"}
+                        </button>
+                        <button
+                          type="button"
+                          className="candy-btn"
+                          disabled={!canAdjustTurnMovement || adjustingMovement}
+                          onClick={() => void handleAdjustTurnMovement(5)}
+                        >
+                          {adjustingMovement ? "…" : "-5 ft"}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             ) : null}
@@ -2843,6 +3198,18 @@ export function CombatBoard({
         initialPortraitPath={selectedMarker?.portraitPath ?? null}
         onSubmit={(values) => void handleEditMarker(values)}
       />
+      <EnemyTokenDialog
+        open={editEnemyOpen}
+        onOpenChange={setEditEnemyOpen}
+        defaultLabel={selectedEnemy?.label ?? ""}
+        catalogName={
+          selectedEnemy?.enemySlug
+            ? enemiesBySlug[selectedEnemy.enemySlug]?.name ?? selectedEnemy.name
+            : selectedEnemy?.name ?? ""
+        }
+        initialDisplayName={selectedEnemy?.displayName ?? ""}
+        onSubmit={(values) => void handleEditEnemy(values)}
+      />
       {attackSubmitDraft ? (
         <CombatAttackSubmitModal
           attack={attackSubmitDraft.attack}
@@ -2906,6 +3273,81 @@ export function CombatBoard({
           reactorLabels={pendingOpportunityAttackMove.reactorLabels}
           onConfirm={() => void handleConfirmOpportunityAttackMove()}
           onCancel={() => setPendingOpportunityAttackMove(null)}
+        />
+      ) : null}
+      {saveEncounterNameOpen ? (
+        <EncounterNameModal
+          title="Save encounter"
+          description="Enter a name for this encounter setup."
+          initialName={pendingSaveName ?? defaultSaveEncounterName}
+          submitting={savingEncounter}
+          onCancel={() => {
+            if (!savingEncounter) {
+              setSaveEncounterNameOpen(false);
+              setPendingSaveName(null);
+            }
+          }}
+          onSubmit={(name) => void handleSaveEncounterSubmit(name)}
+        />
+      ) : null}
+      {overwriteConfirmEncounter ? (
+        <EncounterOverwriteConfirmModal
+          encounter={overwriteConfirmEncounter}
+          enemiesBySlug={enemiesBySlug}
+          submitting={savingEncounter}
+          onCancel={() => {
+            if (savingEncounter) return;
+            setOverwriteConfirmEncounter(null);
+            setSaveEncounterNameOpen(true);
+          }}
+          onConfirm={() => void handleConfirmOverwriteExistingEncounter()}
+        />
+      ) : null}
+      <ConfirmModal
+        open={confirmRequest != null}
+        title={confirmRequest?.title ?? ""}
+        description={confirmRequest?.description ?? ""}
+        confirmLabel={confirmBusy ? "…" : (confirmRequest?.confirmLabel ?? "Confirm")}
+        confirmDisabled={confirmBusy}
+        destructive={confirmRequest?.destructive}
+        onCancel={() => {
+          if (confirmBusy) return;
+          pendingNavigationHrefRef.current = null;
+          setConfirmRequest(null);
+        }}
+        onConfirm={() => void handleConfirmModalConfirm()}
+      />
+      <AlertModal
+        open={alertMessage != null}
+        message={alertMessage ?? ""}
+        onClose={() => setAlertMessage(null)}
+      />
+      <EncounterLoadDialog
+        open={encounterLoadOpen}
+        onOpenChange={setEncounterLoadOpen}
+        enemiesBySlug={enemiesBySlug}
+        onLoad={(encounter) => void handleLoadEncounter(encounter)}
+      />
+      {characterSlotToken && isCharacterPlaceholder(characterSlotToken) && isDm ? (
+        <CharacterSlotAssignModal
+          tokenLabel={getCombatTokenDisplayLabel(characterSlotToken)}
+          characters={localCharacters}
+          presentCharacterIds={presentCharacterIds}
+          submitting={assigningCharacterSlot}
+          onAssign={(characterId) => void handleAssignCharacterSlot(characterId)}
+          onRemove={() => void handleRemoveCharacterSlot()}
+          onCancel={() => setCharacterSlotTokenId(null)}
+        />
+      ) : null}
+      {characterSlotToken &&
+      isCharacterPlaceholder(characterSlotToken) &&
+      !isDm &&
+      ownedCharacter ? (
+        <CharacterSlotClaimModal
+          characterName={ownedCharacter.name}
+          claiming={assigningCharacterSlot}
+          onConfirm={() => void handleClaimCharacterSlot()}
+          onCancel={() => setCharacterSlotTokenId(null)}
         />
       ) : null}
     </div>

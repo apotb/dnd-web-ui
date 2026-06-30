@@ -1,10 +1,12 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { isCharacterPlaceholder } from "@/lib/combat/character-placeholder";
 import { sortInitiativeTokenIds } from "@/lib/combat/initiative";
 import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
 import { getPartyTokenLabel } from "@/lib/combat/party-token-label";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { DEFAULT_GRID_SIZE, DEFAULT_TILE_FEET, MAX_GRID_SIZE, MAX_TILE_FEET, MIN_GRID_SIZE, MIN_TILE_FEET } from "@/lib/schemas/combat-grid";
 import {
+  DEFAULT_BOARD_TITLE,
   type CombatState,
   type CombatToken,
   combatTokenSchema,
@@ -90,6 +92,8 @@ export function createDefaultCombatState(
     turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
     pendingAttacks: [],
     pendingOpportunityAttacks: null,
+    boardTitle: DEFAULT_BOARD_TITLE,
+    savedEncounterId: null,
   };
 
   return {
@@ -566,13 +570,15 @@ export function resetCombatBoard(
     gridHeight: state.gridHeight,
     tileFeet: state.tileFeet,
     backgroundPath: state.backgroundPath ?? null,
-    blockedCells: [],
+    blockedCells: state.blockedCells ?? [],
     tokens: [],
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
     turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false },
     pendingAttacks: [],
     pendingOpportunityAttacks: null,
+    boardTitle: DEFAULT_BOARD_TITLE,
+    savedEncounterId: null,
   };
 
   return {
@@ -592,6 +598,9 @@ export function syncPartyTokens(
   state: CombatState,
   characters: ParsedCharacter[]
 ): CombatState {
+  const placeholders = state.tokens.filter(isCharacterPlaceholder);
+  const hasPlaceholders = placeholders.length > 0;
+
   const excluded = new Set(state.excludedPartyCharacterIds);
   const existingParty = new Map(
     state.tokens
@@ -603,7 +612,7 @@ export function syncPartyTokens(
     .filter((character) => !excluded.has(character.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  let workingState: CombatState = { ...state, tokens: [...nonParty] };
+  let workingState: CombatState = { ...state, tokens: [...nonParty, ...placeholders] };
   const partyTokens: CombatToken[] = [];
 
   for (const character of sorted) {
@@ -627,6 +636,8 @@ export function syncPartyTokens(
       continue;
     }
 
+    if (hasPlaceholders) continue;
+
     const width = 1;
     const height = 1;
     const { x, y } = findPartySpawnSlot(workingState, width, height);
@@ -649,7 +660,7 @@ export function syncPartyTokens(
 
   return {
     ...state,
-    tokens: relabelEnemyTokens([...partyTokens, ...nonParty]),
+    tokens: relabelEnemyTokens([...partyTokens, ...placeholders, ...nonParty]),
   };
 }
 

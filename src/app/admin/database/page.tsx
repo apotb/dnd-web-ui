@@ -9,8 +9,10 @@ import { BackgroundsManager } from "../backgrounds/backgrounds-manager";
 import { FeatsManager } from "../feats/feats-manager";
 import { LanguagesManager } from "../languages/languages-manager";
 import { EnemiesManager } from "../enemies/enemies-manager";
+import { EncountersManager } from "../encounters/encounters-manager";
 import type { Item } from "@/lib/schemas/item";
 import { parseEnemyData } from "@/lib/schemas/enemy";
+import type { Encounter } from "@/lib/types/database";
 
 const CATEGORIES = [
   { id: "items",       label: "Items" },
@@ -21,6 +23,7 @@ const CATEGORIES = [
   { id: "feats",       label: "Feats" },
   { id: "languages",   label: "Languages" },
   { id: "enemies",     label: "Enemies" },
+  { id: "encounters",  label: "Encounters" },
 ] as const;
 
 type Category = (typeof CATEGORIES)[number]["id"];
@@ -104,6 +107,20 @@ export default async function DatabasePage({
       data: parseEnemyData(r.data),
     }));
     content = <EnemiesManager entries={entries} />;
+  } else if (cat === "encounters") {
+    const [{ data: encounterRows }, { data: enemyRows }] = await Promise.all([
+      supabase.from("encounters").select("*").order("name"),
+      supabase.from("enemies").select("slug,name").order("name"),
+    ]);
+    const enemiesBySlug = Object.fromEntries(
+      (enemyRows ?? []).map((row) => [row.slug as string, { name: row.name as string }])
+    );
+    content = (
+      <EncountersManager
+        entries={(encounterRows ?? []) as Encounter[]}
+        enemiesBySlug={enemiesBySlug}
+      />
+    );
   } else {
     const { data } = await supabase.from("feats").select("slug,name,description,prerequisite,source,data").order("name");
     const entries = (data ?? []).map((r) => ({ slug: r.slug as string, name: r.name as string, description: r.description as string, prerequisite: (r.prerequisite as string | null) ?? "", source: r.source as string, extra: r.data as Record<string, unknown> }));

@@ -50,6 +50,7 @@ export default async function CombatPage({
       enemies={enemies}
       isDm={access.isDm}
       userId={access.user?.id ?? null}
+      ownedCharacterId={access.ownedCharacter?.id ?? null}
     />
   );
 }
