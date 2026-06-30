@@ -168,7 +168,7 @@ export function HexRevealMap({
               ? {
                   width: `${zoom * 100}%`,
                   aspectRatio: `${viewWidth} / ${viewHeight}`,
-                  "--map-zoom": zoom * 2,
+                  ["--map-zoom" as string]: zoom * 2,
                 }
               : { aspectRatio: `${viewWidth} / ${viewHeight}` }
           }

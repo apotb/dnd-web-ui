@@ -698,7 +698,7 @@ function MapCanvas({
         className="campaign-map-canvas"
         style={{
           width: `${zoom * 100}%`,
-          "--map-zoom": expanded ? zoom * 2 : zoom,
+          ["--map-zoom" as string]: expanded ? zoom * 2 : zoom,
         }}
       >
         {imageUrl ? (
