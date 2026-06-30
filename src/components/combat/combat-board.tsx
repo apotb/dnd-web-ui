@@ -74,6 +74,7 @@ import {
 import { CombatEndTurnConfirmModal } from "@/components/combat/combat-end-turn-confirm-modal";
 import { CombatEndTurnPanel } from "@/components/combat/combat-end-turn-panel";
 import { CombatMovePanel } from "@/components/combat/combat-move-panel";
+import { CombatBoardFullscreen } from "@/components/combat/combat-board-fullscreen";
 import { CombatMeasureOverlay } from "@/components/combat/combat-measure-overlay";
 import { CombatMeasureResultModal } from "@/components/combat/combat-measure-result-modal";
 import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
@@ -525,6 +526,7 @@ export function CombatBoard({
     end: GridPosition;
     distanceFeet: number;
   } | null>(null);
+  const [boardExpanded, setBoardExpanded] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const draggingTokenIdRef = useRef<string | null>(null);
@@ -2722,6 +2724,116 @@ export function CombatBoard({
     );
   }
 
+  function renderCombatGrid(fullscreen: boolean) {
+    return (
+      <div
+        ref={gridRef}
+        className={`combat-grid${fullscreen ? " combat-grid-fullscreen" : ""}${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}${measureMode ? " combat-grid-measure-mode" : ""}`}
+        style={{
+          ["--grid-width" as string]: combatState.gridWidth,
+          ["--grid-height" as string]: combatState.gridHeight,
+          ["--grid-aspect-ratio" as string]: `${combatState.gridWidth} / ${combatState.gridHeight}`,
+        }}
+        onPointerMove={(event) => {
+          updateHoverFromPointer(event.clientX, event.clientY);
+        }}
+        onPointerUpCapture={attackTargeting ? handleGridTargetingPointerUp : undefined}
+        onPointerLeave={() => {
+          clearTokenHover();
+        }}
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) {
+            clearTokenHover();
+          }
+        }}
+        onClick={(event) => {
+          if (!isDm || collisionEditMode) return;
+          if (event.target === event.currentTarget) {
+            setSelectedTokenId(null);
+          }
+        }}
+      >
+        {backgroundUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={backgroundUrl}
+            alt=""
+            className="combat-grid-background"
+            draggable={false}
+          />
+        ) : null}
+        {collisionEditMode && isDm ? (
+          <CombatCollisionOverlay
+            gridWidth={combatState.gridWidth}
+            gridHeight={combatState.gridHeight}
+            blockedKeys={collisionDraft}
+            dragStart={collisionDragStart}
+            dragEnd={collisionDragEnd}
+            dragRemoving={collisionDragRemoving}
+            onPointerDown={handleCollisionPointerDown}
+          />
+        ) : null}
+        {showCollisionDragHint ? (
+          <CombatCollisionOverlay
+            gridWidth={combatState.gridWidth}
+            gridHeight={combatState.gridHeight}
+            blockedKeys={savedBlockedKeys}
+            translucent
+          />
+        ) : null}
+        {gridRenderTokens.map((token) => renderToken(token))}
+        {renderPendingMoveGhost()}
+        {attackTargeting && !collisionEditMode && currentTurnToken && userControlsTurn && targetingHighlights ? (
+          <CombatTargetingOverlay
+            gridWidth={combatState.gridWidth}
+            gridHeight={combatState.gridHeight}
+            attacker={currentTurnToken}
+            attack={attackTargeting.attack}
+            state={combatState}
+            validTargets={targetingHighlights.validTargets}
+            validCells={targetingHighlights.validCells}
+            hoveredCell={hoveredTargetingCell}
+            previewCenter={null}
+            hoveredTokenLabel={
+              hoveredTargetToken ? getCombatTokenDisplayLabel(hoveredTargetToken) : null
+            }
+            hoveredTokenDetail={hoveredTargetDetail}
+            onPointerMove={updateHoverFromPointer}
+            onPointerLeave={handleTargetingPointerLeave}
+            onCellHover={setHoveredTargetingCell}
+            onCancel={clearAttackFlow}
+          />
+        ) : null}
+        {movementMode && !collisionEditMode && currentTurnToken && userControlsTurn ? (
+          <CombatMovementOverlay
+            gridWidth={combatState.gridWidth}
+            gridHeight={combatState.gridHeight}
+            token={currentTurnToken}
+            destinations={movementDestinations}
+            hoveredCell={hoveredMovementCell}
+            remainingFeet={remainingMovementFeet}
+            speedFeet={currentSpeedFt}
+            usedFeet={movementUsedFeet}
+            dashUsed={dashUsed}
+            actionUsed={actionUsed}
+            onCellClick={(cellX, cellY) => void handleMovementCellClick(cellX, cellY)}
+            onCellHover={setHoveredMovementCell}
+          />
+        ) : null}
+        {measureMode && !collisionEditMode ? (
+          <CombatMeasureOverlay
+            gridWidth={combatState.gridWidth}
+            gridHeight={combatState.gridHeight}
+            startCell={measureStartCell}
+            hoveredCell={measureHoverCell}
+            onCellHover={setMeasureHoverCell}
+            onCellClick={handleMeasureCellClick}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="combat-stage">
       <div className="combat-layout">
@@ -2977,14 +3089,23 @@ export function CombatBoard({
                   )}
                 </div>
               ) : null}
-              <button
-                type="button"
-                className={`candy-btn combat-measure-btn${measureMode ? " candy-btn-active" : ""}`}
-                disabled={!measureMode && !canUseMeasure}
-                onClick={handleToggleMeasureMode}
-              >
-                Measure
-              </button>
+              <div className="combat-board-view-actions">
+                <button
+                  type="button"
+                  className="candy-btn combat-expand-btn"
+                  onClick={() => setBoardExpanded(true)}
+                >
+                  Expand
+                </button>
+                <button
+                  type="button"
+                  className={`candy-btn combat-measure-btn${measureMode ? " candy-btn-active" : ""}`}
+                  disabled={!measureMode && !canUseMeasure}
+                  onClick={handleToggleMeasureMode}
+                >
+                  Measure
+                </button>
+              </div>
             </div>
 
             {isDm ? (
@@ -3166,115 +3287,7 @@ export function CombatBoard({
             ) : null}
 
             <div className="combat-grid-shell">
-              <div
-                ref={gridRef}
-                className={`combat-grid${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}${measureMode ? " combat-grid-measure-mode" : ""}`}
-                style={{
-                  ["--grid-width" as string]: combatState.gridWidth,
-                  ["--grid-height" as string]: combatState.gridHeight,
-                  ["--grid-aspect-ratio" as string]: `${combatState.gridWidth} / ${combatState.gridHeight}`,
-                }}
-                onPointerMove={(event) => {
-                  updateHoverFromPointer(event.clientX, event.clientY);
-                }}
-                onPointerUpCapture={
-                  attackTargeting ? handleGridTargetingPointerUp : undefined
-                }
-                onPointerLeave={() => {
-                  clearTokenHover();
-                }}
-                onPointerDown={(event) => {
-                  if (event.target === event.currentTarget) {
-                    clearTokenHover();
-                  }
-                }}
-                onClick={(event) => {
-                  if (!isDm || collisionEditMode) return;
-                  if (event.target === event.currentTarget) {
-                    setSelectedTokenId(null);
-                  }
-                }}
-              >
-                {backgroundUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={backgroundUrl}
-                    alt=""
-                    className="combat-grid-background"
-                    draggable={false}
-                  />
-                ) : null}
-                {collisionEditMode && isDm ? (
-                  <CombatCollisionOverlay
-                    gridWidth={combatState.gridWidth}
-                    gridHeight={combatState.gridHeight}
-                    blockedKeys={collisionDraft}
-                    dragStart={collisionDragStart}
-                    dragEnd={collisionDragEnd}
-                    dragRemoving={collisionDragRemoving}
-                    onPointerDown={handleCollisionPointerDown}
-                  />
-                ) : null}
-                {showCollisionDragHint ? (
-                  <CombatCollisionOverlay
-                    gridWidth={combatState.gridWidth}
-                    gridHeight={combatState.gridHeight}
-                    blockedKeys={savedBlockedKeys}
-                    translucent
-                  />
-                ) : null}
-                {gridRenderTokens.map((token) => renderToken(token))}
-                {renderPendingMoveGhost()}
-                {attackTargeting && !collisionEditMode && currentTurnToken && userControlsTurn && targetingHighlights ? (
-                  <CombatTargetingOverlay
-                    gridWidth={combatState.gridWidth}
-                    gridHeight={combatState.gridHeight}
-                    attacker={currentTurnToken}
-                    attack={attackTargeting.attack}
-                    state={combatState}
-                    validTargets={targetingHighlights.validTargets}
-                    validCells={targetingHighlights.validCells}
-                    hoveredCell={hoveredTargetingCell}
-                    previewCenter={null}
-                    hoveredTokenLabel={
-                      hoveredTargetToken
-                        ? getCombatTokenDisplayLabel(hoveredTargetToken)
-                        : null
-                    }
-                    hoveredTokenDetail={hoveredTargetDetail}
-                    onPointerMove={updateHoverFromPointer}
-                    onPointerLeave={handleTargetingPointerLeave}
-                    onCellHover={setHoveredTargetingCell}
-                    onCancel={clearAttackFlow}
-                  />
-                ) : null}
-                {movementMode && !collisionEditMode && currentTurnToken && userControlsTurn ? (
-                  <CombatMovementOverlay
-                    gridWidth={combatState.gridWidth}
-                    gridHeight={combatState.gridHeight}
-                    token={currentTurnToken}
-                    destinations={movementDestinations}
-                    hoveredCell={hoveredMovementCell}
-                    remainingFeet={remainingMovementFeet}
-                    speedFeet={currentSpeedFt}
-                    usedFeet={movementUsedFeet}
-                    dashUsed={dashUsed}
-                    actionUsed={actionUsed}
-                    onCellClick={(cellX, cellY) => void handleMovementCellClick(cellX, cellY)}
-                    onCellHover={setHoveredMovementCell}
-                  />
-                ) : null}
-                {measureMode && !collisionEditMode ? (
-                  <CombatMeasureOverlay
-                    gridWidth={combatState.gridWidth}
-                    gridHeight={combatState.gridHeight}
-                    startCell={measureStartCell}
-                    hoveredCell={measureHoverCell}
-                    onCellHover={setMeasureHoverCell}
-                    onCellClick={handleMeasureCellClick}
-                  />
-                ) : null}
-              </div>
+              {!boardExpanded ? renderCombatGrid(false) : null}
             </div>
             {isDm && battleActive && dmApprovalTrayAttacks.length > 0 ? (
               <CombatDmApprovalTray
@@ -3373,6 +3386,9 @@ export function CombatBoard({
           onDismiss={() => setMeasureResult(null)}
         />
       ) : null}
+      <CombatBoardFullscreen open={boardExpanded} onClose={() => setBoardExpanded(false)}>
+        {renderCombatGrid(true)}
+      </CombatBoardFullscreen>
       {helpTargetPickerAllies ? (
         <CombatHelpTargetModal
           allies={helpTargetPickerAllies}

@@ -3101,10 +3101,17 @@ html.campaign-bg-active .retro-back-link {
   color: #cbd5e1;
 }
 
-.combat-measure-btn {
+.combat-board-view-actions {
   flex-shrink: 0;
   align-self: flex-start;
   margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.combat-expand-btn,
+.combat-measure-btn {
+  flex-shrink: 0;
   padding: 4px 10px;
   font-size: 0.78rem;
 }
@@ -3905,6 +3912,51 @@ html.campaign-bg-active .retro-back-link {
     inset 0 0 0 1px rgba(0, 0, 0, 0.5),
     0 8px 32px rgba(0, 0, 0, 0.55);
   overflow: visible;
+}
+
+.combat-grid-fullscreen {
+  width: min(100vw, calc(100vh * var(--grid-width) / var(--grid-height)));
+  max-height: 100vh;
+  flex-shrink: 0;
+}
+
+.combat-board-fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #000;
+}
+
+.combat-board-fullscreen-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(20, 20, 30, 0.85);
+  color: #f8fafc;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.combat-board-fullscreen-close:hover {
+  background: rgba(40, 40, 55, 0.95);
+}
+
+.combat-board-fullscreen-stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .combat-grid-dragging .combat-token:not(.combat-token-dragging) {
