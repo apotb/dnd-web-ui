@@ -90,7 +90,7 @@ export function createDefaultCombatState(
     tokens: [],
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     pendingAttacks: [],
     pendingOpportunityAttacks: null,
     boardTitle: DEFAULT_BOARD_TITLE,
@@ -499,17 +499,14 @@ export function createThrownWeaponMarker(
     droppedInventoryItemId: string;
     attacker: CombatToken;
     target: CombatToken;
+    slot?: { x: number; y: number };
   }
 ): CombatToken {
   const width = 1;
   const height = 1;
-  const { x, y } = findThrownWeaponMarkerSlot(
-    state,
-    options.attacker,
-    options.target,
-    width,
-    height
-  );
+  const { x, y } =
+    options.slot ??
+    findThrownWeaponMarkerSlot(state, options.attacker, options.target, width, height);
   const trimmedName = itemName.trim();
 
   return combatTokenSchema.parse({
@@ -532,6 +529,199 @@ export function createThrownWeaponMarker(
     placed: true,
     hasCollision: false,
   });
+}
+
+function isAmmoPickupMarker(token: CombatToken): boolean {
+  return (
+    token.kind === "marker" &&
+    token.isObject === true &&
+    token.itemPickup === true &&
+    Boolean(token.pickupItemId?.trim())
+  );
+}
+
+function chebyshevCellDistance(
+  a: { x: number; y: number },
+  b: { x: number; y: number }
+): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+export function formatPickupMarkerStackLabel(baseName: string, quantity: number): string {
+  const trimmed = baseName.trim();
+  if (quantity <= 1) return trimmed;
+  return `${trimmed} x${quantity}`;
+}
+
+export function findNearbyAmmoPickupMarker(
+  state: CombatState,
+  cell: { x: number; y: number },
+  pickupItemId: string
+): CombatToken | null {
+  const normalizedId = pickupItemId.trim();
+  const candidates = state.tokens.filter(
+    (token) =>
+      isAmmoPickupMarker(token) &&
+      token.placed &&
+      token.pickupItemId?.trim() === normalizedId &&
+      chebyshevCellDistance(cell, token) <= 1
+  );
+
+  if (candidates.length === 0) return null;
+
+  return [...candidates].sort(
+    (a, b) => chebyshevCellDistance(cell, a) - chebyshevCellDistance(cell, b)
+  )[0];
+}
+
+export function mergeAmmoPickupMarker(
+  existing: CombatToken,
+  options: {
+    shooterCharacterId: string;
+    shooterName: string;
+    baseName: string;
+  }
+): CombatToken {
+  const quantity = Math.max(1, existing.pickupQuantity ?? 1) + 1;
+  const label = formatPickupMarkerStackLabel(options.baseName, quantity);
+
+  const existingOwner = existing.droppedByCharacterId?.trim();
+  const newOwner = options.shooterCharacterId.trim();
+  let tooltip = "";
+  if (existing.tooltip?.trim()) {
+    if (!existingOwner || !newOwner || existingOwner === newOwner) {
+      tooltip = existing.tooltip;
+    }
+  }
+
+  return {
+    ...existing,
+    name: label,
+    label,
+    pickupQuantity: quantity,
+    tooltip,
+    droppedByCharacterId: existing.droppedByCharacterId ?? options.shooterCharacterId,
+  };
+}
+
+export function createAmmoPickupMarker(
+  itemName: string,
+  shotByLabel: string,
+  state: CombatState,
+  options: {
+    droppedByCharacterId: string;
+    pickupItemId: string;
+    attacker: CombatToken;
+    target: CombatToken;
+    slot?: { x: number; y: number };
+  }
+): CombatToken {
+  const width = 1;
+  const height = 1;
+  const { x, y } =
+    options.slot ??
+    findThrownWeaponMarkerSlot(state, options.attacker, options.target, width, height);
+  const trimmedName = itemName.trim();
+
+  return combatTokenSchema.parse({
+    id: crypto.randomUUID(),
+    kind: "marker",
+    name: trimmedName,
+    label: trimmedName,
+    tooltip: `Shot by ${shotByLabel}`.trim(),
+    droppedByCharacterId: options.droppedByCharacterId,
+    droppedItemId: options.pickupItemId,
+    isObject: true,
+    itemPickup: true,
+    pickupItemId: options.pickupItemId,
+    pickupQuantity: 1,
+    x,
+    y,
+    width,
+    height,
+    placed: true,
+    hasCollision: false,
+  });
+}
+
+export function placeAmmoPickupMarker(
+  state: CombatState,
+  attacker: CombatToken,
+  target: CombatToken,
+  options: {
+    pickupItemId: string;
+    baseName: string;
+    shooterCharacterId: string;
+    shooterName: string;
+  }
+): CombatToken[] {
+  const width = 1;
+  const height = 1;
+  const slot = findThrownWeaponMarkerSlot(state, attacker, target, width, height);
+  const existing = findNearbyAmmoPickupMarker(state, slot, options.pickupItemId);
+
+  if (existing) {
+    return state.tokens.map((token) =>
+      token.id === existing.id
+        ? mergeAmmoPickupMarker(token, {
+            shooterCharacterId: options.shooterCharacterId,
+            shooterName: options.shooterName,
+            baseName: options.baseName,
+          })
+        : token
+    );
+  }
+
+  const marker = createAmmoPickupMarker(options.baseName, options.shooterName, state, {
+    droppedByCharacterId: options.shooterCharacterId,
+    pickupItemId: options.pickupItemId,
+    attacker,
+    target,
+    slot,
+  });
+
+  return [...state.tokens, marker];
+}
+
+export function placeThrownWeaponPickupMarker(
+  state: CombatState,
+  attacker: CombatToken,
+  target: CombatToken,
+  options: {
+    pickupItemId: string;
+    baseName: string;
+    thrownByCharacterId: string;
+    thrownByName: string;
+    droppedInventoryItemId: string;
+  }
+): CombatToken[] {
+  const width = 1;
+  const height = 1;
+  const slot = findThrownWeaponMarkerSlot(state, attacker, target, width, height);
+  const existing = findNearbyAmmoPickupMarker(state, slot, options.pickupItemId);
+
+  if (existing) {
+    return state.tokens.map((token) =>
+      token.id === existing.id
+        ? mergeAmmoPickupMarker(token, {
+            shooterCharacterId: options.thrownByCharacterId,
+            shooterName: options.thrownByName,
+            baseName: options.baseName,
+          })
+        : token
+    );
+  }
+
+  const marker = createThrownWeaponMarker(options.baseName, options.thrownByName, state, {
+    droppedByCharacterId: options.thrownByCharacterId,
+    droppedItemId: options.pickupItemId,
+    droppedInventoryItemId: options.droppedInventoryItemId,
+    attacker,
+    target,
+    slot,
+  });
+
+  return [...state.tokens, marker];
 }
 
 export function createEnemyToken(enemy: EnemyRecord, state: CombatState): CombatToken {
@@ -648,7 +838,7 @@ function clearTokenFromInitiative(
   if (initiative.status === "none") {
     return {
       initiative,
-      turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+      turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     };
   }
 
@@ -658,7 +848,7 @@ function clearTokenFromInitiative(
   if (order.length === 0) {
     return {
       initiative: { status: "none", results: {}, order: [] },
-      turn: { active: false, index: 0, round: turn.round, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+      turn: { active: false, index: 0, round: turn.round, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     };
   }
 
@@ -684,7 +874,7 @@ function clearTokenFromInitiative(
         results,
         order: buildTurnOrder(tokens, results),
       },
-      turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+      turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     };
   }
 
@@ -694,7 +884,7 @@ function clearTokenFromInitiative(
       results,
       order: [],
     },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
   };
 }
 
@@ -764,7 +954,7 @@ export function resetCombatBoard(
     tokens: [],
     excludedPartyCharacterIds: characters.map((character) => character.id),
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
     pendingAttacks: [],
     pendingOpportunityAttacks: null,
     boardTitle: DEFAULT_BOARD_TITLE,

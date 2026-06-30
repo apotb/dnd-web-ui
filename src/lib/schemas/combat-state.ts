@@ -32,6 +32,8 @@ export const combatTurnSchema = z.object({
   dashUsed: z.boolean().default(false),
   /** Main-hand weapon attack used this turn; unlocks off-hand two-weapon fighting. */
   actionUsedForTwoWeapon: z.boolean().default(false),
+  /** Wield hand used for the action weapon attack when TWF unlocked; null otherwise. */
+  twoWeaponFightingUsedOffHand: z.boolean().nullable().default(null),
   /** Standard action consumed this turn. */
   actionUsed: z.boolean().default(false),
   /** Bonus action consumed this turn. */
@@ -82,8 +84,13 @@ export const pendingAttackSchema = z.object({
   damageType: z.string().optional(),
   damageDice: z.string().optional(),
   isMainHandWeapon: z.boolean().default(false),
+  /** When set, the action weapon attack unlocks a same-turn TWF bonus attack. */
+  unlocksTwoWeaponFighting: z.boolean().optional(),
+  /** Wield hand of the weapon used for an action attack (for TWF bonus routing). */
+  weaponWieldOffHand: z.boolean().optional(),
   isAoe: z.boolean().default(false),
   ammunitionInventoryItemId: z.string().optional(),
+  ammunitionItemId: z.string().optional(),
   ammunitionItemName: z.string().optional(),
   ammunitionQuantity: z.number().int().min(1).optional(),
   thrownInventoryItemId: z.string().optional(),
@@ -170,6 +177,7 @@ export const combatStateSchema = z.object({
     movementUsedFeet: 0,
     dashUsed: false,
     actionUsedForTwoWeapon: false,
+    twoWeaponFightingUsedOffHand: null,
     actionUsed: false,
     bonusActionUsed: false,
     disengageUsed: false,
@@ -211,6 +219,7 @@ const DEFAULT_TURN: CombatTurn = {
   movementUsedFeet: 0,
   dashUsed: false,
   actionUsedForTwoWeapon: false,
+  twoWeaponFightingUsedOffHand: null,
   actionUsed: false,
   bonusActionUsed: false,
   disengageUsed: false,
@@ -233,6 +242,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
         movementUsedFeet: 0,
         dashUsed: false,
         actionUsedForTwoWeapon: false,
+        twoWeaponFightingUsedOffHand: null,
         actionUsed: false,
         bonusActionUsed: false,
         disengageUsed: false,
@@ -251,6 +261,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
       movementUsedFeet: Math.max(0, state.turn.movementUsedFeet ?? 0),
       dashUsed: state.turn.dashUsed ?? false,
       actionUsedForTwoWeapon: state.turn.actionUsedForTwoWeapon ?? false,
+      twoWeaponFightingUsedOffHand: state.turn.twoWeaponFightingUsedOffHand ?? null,
       actionUsed: state.turn.actionUsed ?? false,
       bonusActionUsed: state.turn.bonusActionUsed ?? false,
       disengageUsed: state.turn.disengageUsed ?? false,

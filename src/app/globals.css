@@ -3346,7 +3346,8 @@ html.campaign-bg-active .retro-back-link {
   color: #94a3b8;
 }
 
-.combat-grid-movement-mode .combat-token {
+.combat-grid-movement-mode .combat-token,
+.combat-grid-movement-mode .combat-token * {
   pointer-events: none;
 }
 
@@ -3536,6 +3537,11 @@ html.campaign-bg-active .retro-back-link {
 .combat-grid-targeting-mode .combat-token,
 .combat-grid-targeting-mode .combat-token * {
   pointer-events: none !important;
+}
+
+.combat-grid-targeting-mode .combat-token-active-turn,
+.combat-grid-movement-mode .combat-token-active-turn {
+  z-index: 16;
 }
 
 .combat-object-interaction-overlay {
@@ -4008,6 +4014,12 @@ html.campaign-bg-active .retro-back-link {
 .combat-roll-notes {
   margin: 0;
   font-size: 0.85rem;
+}
+
+.combat-other-action-entry + .combat-other-action-entry {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--retro-border, rgba(255, 255, 255, 0.12));
 }
 
 .combat-toolbar-actions {

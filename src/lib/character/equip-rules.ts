@@ -131,6 +131,12 @@ function isTwoHandedWeapon(catalogItem: Item | null | undefined): boolean {
   return props?.weaponProperties.includes("two-handed") ?? false;
 }
 
+export function isOneHandedWeapon(catalogItem: Item | null | undefined): boolean {
+  if (!catalogItem) return false;
+  if (catalogItem.category !== "weapon") return false;
+  return !isTwoHandedWeapon(catalogItem);
+}
+
 /** Legacy saves: equipped weapon without wield flags counts as main hand. */
 export function getEffectiveWieldMain(
   item: InventoryItem,
@@ -226,7 +232,7 @@ export function canWieldOffHand(
 
   const catalog = resolveCatalog(item, catalogItems);
   if (getItemEquipSlot(catalog, item) !== "weapon") return false;
-  if (!isLightWeapon(catalog)) return false;
+  if (!isOneHandedWeapon(catalog)) return false;
   if (hasShieldEquipped(items, catalogItems)) return false;
   if (hasTwoHandedMainHandWeapon(items, catalogItems)) return false;
   if (stackQuantity(item) < 2 && getEffectiveWieldMain(item, catalog)) return false;
@@ -279,7 +285,7 @@ export function setWeaponWield(
   }
 
   if (hand === "off") {
-    if (!isLightWeapon(targetCatalog) || !canWieldOffHand(next, index, catalogItems)) {
+    if (!canWieldOffHand(next, index, catalogItems)) {
       return items;
     }
   }
@@ -462,9 +468,6 @@ export function sanitizeEquippedItems(
     if (slot === "weapon") {
       if (item.itemId && !catalog) return syncWeaponEquipped(item);
       if (!isEquippableItem(catalog, item)) return clearWeaponWield(item);
-      if (item.wieldOff && !isLightWeapon(catalog)) {
-        return syncWeaponEquipped({ ...item, wieldOff: false });
-      }
       if (stackQuantity(item) < 2 && item.wieldMain && item.wieldOff) {
         return syncWeaponEquipped({ ...item, wieldOff: false });
       }

@@ -47,6 +47,7 @@ import {
   getSpellAttackBonus,
   getSpellSaveDc,
 } from "@/lib/dnd/calculations";
+import { applyCurrencyDelta as applyWalletCurrencyDelta } from "@/lib/dnd/currency";
 import { levelFromXp, xpProgress } from "@/lib/dnd/xp";
 import {
   getMaxCastableSpellLevel,
@@ -172,7 +173,7 @@ import {
   isInventoryWithinMaxCapacity,
   resolveItemWeightLb,
 } from "@/lib/character/encumbrance";
-import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, canWieldMainHand, isLightWeapon, sortInventoryForDisplay } from "@/lib/character/equip-rules";
+import { isEquippableItem, setItemEquipped, setWeaponWield, getItemEquipSlot, getEffectiveWieldMain, getEffectiveWieldOff, canWieldOffHand, canWieldMainHand, isOneHandedWeapon, sortInventoryForDisplay } from "@/lib/character/equip-rules";
 import { mergeIntoInventory } from "@/lib/character/inventory-stack";
 import {
   fillEmptyWaterskin,
@@ -510,6 +511,9 @@ export function CharacterSheet({
   const [currencyDelta, setCurrencyDelta] = useState<
     Record<"cp" | "sp" | "ep" | "gp" | "pp", string>
   >({ cp: "", sp: "", ep: "", gp: "", pp: "" });
+  const [currencyDeltaError, setCurrencyDeltaError] = useState<
+    Record<"cp" | "sp" | "ep" | "gp" | "pp", boolean>
+  >({ cp: false, sp: false, ep: false, gp: false, pp: false });
   const [catalogItems, setCatalogItems] = useState<Record<string, Item>>({});
   const [catalogSpells, setCatalogSpells] = useState<Record<string, CatalogSpellRow>>({});
   const [catalogSpecies, setCatalogSpecies] = useState<PhbSpecies[]>([]);
@@ -753,14 +757,19 @@ export function CharacterSheet({
     const trimmed = currencyDelta[coin].trim();
     if (!isSignedDeltaValid(trimmed)) return;
     const delta = parseInt(trimmed, 10);
-    const next = Math.max(0, data.inventory.currency[coin] + delta);
+    const result = applyWalletCurrencyDelta(data.inventory.currency, coin, delta);
+    if (!result.ok) {
+      setCurrencyDeltaError((prev) => ({ ...prev, [coin]: true }));
+      return;
+    }
     update({
       inventory: {
         ...data.inventory,
-        currency: { ...data.inventory.currency, [coin]: next },
+        currency: result.currency,
       },
     });
     setCurrencyDelta((prev) => ({ ...prev, [coin]: "" }));
+    setCurrencyDeltaError((prev) => ({ ...prev, [coin]: false }));
   }
 
   const updateSpells = (spells: CharacterData["spells"]) => {
@@ -2379,6 +2388,9 @@ export function CharacterSheet({
                               const next = e.target.value;
                               if (next === "" || next === "-" || /^-?\d+$/.test(next)) {
                                 setCurrencyDelta((prev) => ({ ...prev, [coin]: next }));
+                                if (currencyDeltaError[coin]) {
+                                  setCurrencyDeltaError((prev) => ({ ...prev, [coin]: false }));
+                                }
                               }
                             }}
                             onKeyDown={(e) => {
@@ -2390,7 +2402,7 @@ export function CharacterSheet({
                           />
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant={currencyDeltaError[coin] ? "destructive" : "outline"}
                             className="h-8 shrink-0 px-2 text-xs"
                             disabled={!isSignedDeltaValid(currencyDelta[coin])}
                             onClick={() => applyCurrencyDelta(coin)}
@@ -2467,7 +2479,7 @@ export function CharacterSheet({
                       item.wieldMain ||
                       (getEffectiveWieldMain(item, catalogItem) && !item.wieldOff);
                     const wieldOff = getEffectiveWieldOff(item);
-                    const showOffHand = isWeapon && isLightWeapon(catalogItem);
+                    const showOffHand = isWeapon && isOneHandedWeapon(catalogItem);
                     const offHandEnabled = canWieldOffHand(data.inventory.items, i, catalogItems);
                     const mainHandEnabled = canWieldMainHand(data.inventory.items, i, catalogItems);
                     const wp = catalogItem ? getWeaponProperties(catalogItem) : null;

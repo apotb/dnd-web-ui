@@ -2,6 +2,12 @@ import type { InventoryItem } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
 import { getWeaponProperties } from "@/lib/schemas/item";
 
+const RECOVERABLE_AMMUNITION_SLUGS = new Set(["arrow", "crossbow-bolt"]);
+
+export function isRecoverableAmmunition(slug: string): boolean {
+  return RECOVERABLE_AMMUNITION_SLUGS.has(slug.trim().toLowerCase());
+}
+
 const WEAPON_AMMUNITION_SLUGS: Record<string, string> = {
   blowgun: "blowgun-needle",
   longbow: "arrow",

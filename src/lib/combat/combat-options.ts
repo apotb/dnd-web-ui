@@ -1,6 +1,5 @@
 import type { FeatureCatalogs } from "@/lib/character/feature-choices";
 import type { ParsedCharacter } from "@/lib/character/utils";
-import { getEffectiveWieldMain } from "@/lib/character/equip-rules";
 import {
   ACTION_COST_LABELS,
   actionSourceBadgeLabel,
@@ -9,12 +8,17 @@ import {
   type CharacterActionEntry,
 } from "@/lib/dnd/character-actions";
 import {
-  deriveUnarmedStrike,
   formatAttackRollLine,
   getAllAttacks,
   getAttackCategoryLabel,
+  hasTwoWeaponFighting,
+  MELEE_REACH_FT,
   type DerivedAttack,
 } from "@/lib/dnd/attacks";
+import {
+  canTwoWeaponFightSameTurn,
+  getWieldedWeaponPair,
+} from "@/lib/dnd/two-weapon-fighting";
 import {
   appendExhaustionSheetNote,
   getExhaustionAttackSaveSheetNote,
@@ -53,21 +57,15 @@ function actionSubtitle(action: CharacterActionEntry): string {
 }
 
 function attackTypeLabel(source: DerivedAttack["source"]): string {
-  if (source === "weapon" || source === "manual") return "Attack";
+  if (source === "weapon" || source === "manual" || source === "natural") return "Attack";
   if (source === "cantrip") return "Cantrip";
   return "Spell";
 }
 
-function attackOptionSubtitle(attack: DerivedAttack, kind: CombatOptionKind): string {
+function attackOptionSubtitle(attack: DerivedAttack): string {
   const typeLabel = attackTypeLabel(attack.source);
   const rollLine = formatAttackRollLine(attack);
-  const detail = `${typeLabel} · ${rollLine}`;
-
-  if (kind === "bonus-action" || attack.isOffHand) {
-    return `${ACTION_COST_LABELS["bonus-action"]} · ${detail}`;
-  }
-
-  return detail;
+  return `${typeLabel} · ${rollLine}`;
 }
 
 function inferEnemyActionTypeLabel(description: string): string {
@@ -83,7 +81,19 @@ function enemyActionSubtitle(description: string): string {
   return inferEnemyActionTypeLabel(description);
 }
 
-function formatAttackTooltip(attack: DerivedAttack, data: CharacterData): string {
+function stripBonusActionNote(notes: string): string {
+  return notes
+    .split(" · ")
+    .filter((part) => part !== "Bonus action")
+    .join(" · ")
+    .trim();
+}
+
+function formatAttackTooltip(
+  attack: DerivedAttack,
+  data: CharacterData,
+  options?: { omitBonusActionNote?: boolean }
+): string {
   const lines: string[] = [getAttackCategoryLabel(attack)];
 
   const rollAppliesExhaustion =
@@ -116,13 +126,24 @@ function formatAttackTooltip(attack: DerivedAttack, data: CharacterData): string
     lines.push(formatThrownWeaponLine(attack.thrownItemName, attack.thrownRemaining));
   }
 
-  if (attack.notes.trim()) lines.push(attack.notes.trim());
+  const notes = attack.notes.trim();
+  if (notes) {
+    const displayNotes = options?.omitBonusActionNote ? stripBonusActionNote(notes) : notes;
+    if (displayNotes) lines.push(displayNotes);
+  }
 
   return lines.join("\n");
 }
 
-function formatActionTooltip(action: CharacterActionEntry): string {
-  const lines = [`${ACTION_COST_LABELS[action.cost]} · ${actionSourceBadgeLabel(action)}`];
+function formatActionTooltip(
+  action: CharacterActionEntry,
+  options?: { omitCostLabel?: boolean }
+): string {
+  const lines = [
+    options?.omitCostLabel
+      ? actionSourceBadgeLabel(action)
+      : `${ACTION_COST_LABELS[action.cost]} · ${actionSourceBadgeLabel(action)}`,
+  ];
   const description =
     action.id === COMBAT_USE_OBJECT_ACTION_ID
       ? "Interact with an object on the battlefield. Your first object interaction each turn is free; use this action to interact with an additional object (or one that requires an action)."
@@ -175,31 +196,60 @@ export function buildMoveCombatOption(context: {
   };
 }
 
+function effectiveWeaponDamageDice(
+  attack: DerivedAttack,
+  kind: CombatOptionKind,
+  twf: boolean
+): string {
+  if (attack.source !== "weapon") return attack.damageDice;
+  if (kind === "action") return attack.damageDice;
+  if (kind === "bonus-action") {
+    return twf
+      ? attack.damageDice
+      : attack.damageDiceWithoutMod ?? attack.damageDice;
+  }
+  return attack.damageDice;
+}
+
+function attackWithDamageForKind(
+  attack: DerivedAttack,
+  kind: CombatOptionKind,
+  twf: boolean
+): DerivedAttack {
+  const damageDice = effectiveWeaponDamageDice(attack, kind, twf);
+  if (damageDice === attack.damageDice) return attack;
+  return { ...attack, damageDice };
+}
+
 function attackToCombatOption(
   attack: DerivedAttack,
   data: CharacterData,
-  kind: CombatOptionKind
+  kind: CombatOptionKind,
+  twf = false
 ): CombatOption {
-  let tooltip = formatAttackTooltip(attack, data);
-  if (attack.isOffHand) {
-    tooltip = `Bonus action · Two-weapon fighting\n${tooltip}`;
+  const displayAttack = attackWithDamageForKind(attack, kind, twf);
+  let tooltip = formatAttackTooltip(displayAttack, data, { omitBonusActionNote: true });
+  if (kind === "bonus-action" && attack.source === "weapon") {
+    tooltip = `Two-weapon fighting\n${tooltip}`;
   }
 
   return {
     id: `attack:${attack.id}`,
     name: attack.name,
-    subtitle: attackOptionSubtitle(attack, kind),
+    subtitle: attackOptionSubtitle(displayAttack),
     tooltip,
     kind,
-    attack,
+    attack: displayAttack,
   };
 }
 
-export function isMainHandWeaponAttackOption(option: CombatOption): boolean {
+export function isWieldedMainHandWeaponAttack(attack: DerivedAttack): boolean {
+  return attack.source === "weapon" && !attack.isOffHand;
+}
+
+export function isWeaponActionAttackOption(option: CombatOption): boolean {
   return Boolean(
-    option.attack?.source === "weapon" &&
-      !option.attack.isOffHand &&
-      option.kind === "attack"
+    option.attack?.source === "weapon" && option.kind === "attack"
   );
 }
 
@@ -229,15 +279,40 @@ export function isUseObjectActionOption(option: CombatOption): boolean {
   return option.action?.id === COMBAT_USE_OBJECT_ACTION_ID;
 }
 
-const COMBAT_CONFIRM_ACTION_IDS = new Set([
+const COMBAT_MERGED_OTHER_ACTION_IDS = new Set([
   "core:dodge",
   "core:hide",
   "core:ready",
   "core:search",
 ]);
 
-export function isConfirmActionOption(option: CombatOption): boolean {
-  return option.action?.id != null && COMBAT_CONFIRM_ACTION_IDS.has(option.action.id);
+export const COMBAT_OTHER_ACTIONS_ACTION_ID = "core:other-actions";
+
+const CORE_OTHER_ACTIONS_ACTION: CharacterActionEntry = {
+  id: COMBAT_OTHER_ACTIONS_ACTION_ID,
+  name: "Other Actions",
+  cost: "action",
+  description:
+    "Dodge, Hide, Ready, or Search. Declare which action you are taking to the DM.",
+  source: "core",
+  sourceLabel: "Standard",
+};
+
+export function getCombatOtherActionEntries(): CharacterActionEntry[] {
+  return getStandardCombatActions().filter((action) =>
+    COMBAT_MERGED_OTHER_ACTION_IDS.has(action.id)
+  );
+}
+
+function buildOtherActionsTooltip(): string {
+  const actionNames = getCombatOtherActionEntries()
+    .map((action) => action.name)
+    .join(", ");
+  return `${ACTION_COST_LABELS.action} · ${actionSourceBadgeLabel(CORE_OTHER_ACTIONS_ACTION)}\n${actionNames}`;
+}
+
+export function isOtherActionsOption(option: CombatOption): boolean {
+  return option.action?.id === COMBAT_OTHER_ACTIONS_ACTION_ID;
 }
 
 function buildStandardActionOptions(
@@ -250,10 +325,11 @@ function buildStandardActionOptions(
   canUseHelp: boolean,
   canUseObject: boolean
 ): CombatOption[] {
-  return getStandardCombatActions()
+  const options = getStandardCombatActions()
     .filter(
       (action) =>
         action.cost === "action" &&
+        !COMBAT_MERGED_OTHER_ACTION_IDS.has(action.id) &&
         (action.id !== COMBAT_USE_OBJECT_ACTION_ID || canUseObject) &&
         (action.id === COMBAT_USE_OBJECT_ACTION_ID || !turn.actionUsed) &&
         (action.id !== COMBAT_DASH_ACTION_ID || !turn.dashUsed) &&
@@ -268,9 +344,20 @@ function buildStandardActionOptions(
       kind: "action" as const,
       action,
     }));
-}
 
-const MELEE_REACH_FT = 10;
+  if (!turn.actionUsed) {
+    options.push({
+      id: `action:${COMBAT_OTHER_ACTIONS_ACTION_ID}`,
+      name: CORE_OTHER_ACTIONS_ACTION.name,
+      subtitle: actionSubtitle(CORE_OTHER_ACTIONS_ACTION),
+      tooltip: buildOtherActionsTooltip(),
+      kind: "action",
+      action: CORE_OTHER_ACTIONS_ACTION,
+    });
+  }
+
+  return options;
+}
 
 function isMeleeAttackRange(attack: DerivedAttack): boolean {
   const spec = parseAttackRangeSpec(attack);
@@ -281,8 +368,6 @@ export function isMeleeOpportunityAttack(
   attack: DerivedAttack,
   catalogItems: Record<string, Item> = {}
 ): boolean {
-  if (attack.isOffHand) return false;
-
   if (attack.source === "weapon" && attack.itemId) {
     if (attack.throwsWeapon) return false;
     const catalogItem = catalogItems[attack.itemId];
@@ -300,16 +385,20 @@ export function isMeleeOpportunityAttack(
   return isMeleeAttackRange(attack);
 }
 
+function getOpportunityAttackAttacks(
+  character: CharacterData,
+  catalogItems: Record<string, Item>,
+  classCatalog: PhbClass[]
+): DerivedAttack[] {
+  return getAllAttacks(character, catalogItems, classCatalog);
+}
+
 export function getOpportunityAttackOptionsForCharacter(
   character: ParsedCharacter,
   catalogItems: Record<string, Item>,
   classCatalog: PhbClass[]
 ): CombatOption[] {
-  const attacks = [
-    ...getAllAttacks(character.data, catalogItems, classCatalog),
-    deriveUnarmedStrike(character.data),
-  ];
-  return attacks
+  return getOpportunityAttackAttacks(character.data, catalogItems, classCatalog)
     .filter((attack) => isMeleeOpportunityAttack(attack, catalogItems))
     .map((attack) => attackToCombatOption(attack, character.data, "attack"));
 }
@@ -358,6 +447,7 @@ function buildPartyOptionGroups(
   featureCatalogs: FeatureCatalogs,
   turn: {
     actionUsedForTwoWeapon: boolean;
+    twoWeaponFightingUsedOffHand: boolean | null;
     actionUsed: boolean;
     bonusActionUsed: boolean;
     dashUsed: boolean;
@@ -371,26 +461,49 @@ function buildPartyOptionGroups(
   const characterActions = getAllCharacterActions(character.data, featureCatalogs).filter(
     (action) => action.id !== "core:move"
   );
+  const twf = hasTwoWeaponFighting(character.data, classCatalog);
 
-  const mainHandAttacks = attacks.filter((attack) => !attack.isOffHand);
-  const offHandAttacks = attacks.filter((attack) => attack.isOffHand);
+  const wieldedAttacks = attacks.filter(
+    (attack) =>
+      attack.source === "weapon" ||
+      attack.source === "cantrip" ||
+      attack.source === "spell"
+  );
+  const naturalAttacks = attacks.filter((attack) => attack.source === "natural");
 
-  const hasMainHandWielded = character.data.inventory.items.some((invItem) => {
-    if (!invItem.itemId) return false;
-    const catalogItem = catalogItems[invItem.itemId];
-    if (!catalogItem) return false;
-    return getEffectiveWieldMain(invItem, catalogItem);
-  });
+  const mainHandAttacks = wieldedAttacks.filter((attack) => !attack.isOffHand);
+  const offHandAttacks = wieldedAttacks.filter((attack) => attack.isOffHand);
 
-  const actionPanelAttacks = hasMainHandWielded
-    ? mainHandAttacks
-    : offHandAttacks.length > 0
-      ? offHandAttacks
-      : mainHandAttacks;
+  const { main: mainWeapon, off: offWeapon } = getWieldedWeaponPair(
+    character.data,
+    catalogItems
+  );
+  const bothHandsWielded = mainWeapon != null && offWeapon != null;
+
+  const hasMainHandWielded = mainWeapon != null;
+  const hasAnyWeaponWielded = mainWeapon != null || offWeapon != null;
+
+  const wieldedActionPanelAttacks = bothHandsWielded
+    ? [...mainHandAttacks, ...offHandAttacks]
+    : hasMainHandWielded
+      ? mainHandAttacks
+      : offHandAttacks.length > 0
+        ? offHandAttacks
+        : mainHandAttacks;
+
+  const actionNaturalAttacks = naturalAttacks.filter(
+    (attack) =>
+      !attack.bonusActionOnly &&
+      (attack.alwaysAvailable || !hasAnyWeaponWielded)
+  );
+
+  const actionPanelAttacks = [...wieldedActionPanelAttacks, ...actionNaturalAttacks];
 
   const attackOptions: CombatOption[] = turn.actionUsed
     ? []
-    : actionPanelAttacks.map((attack) => attackToCombatOption(attack, character.data, "attack"));
+    : actionPanelAttacks.map((attack) =>
+        attackToCombatOption(attack, character.data, "attack", twf)
+      );
 
   const actionOptions: CombatOption[] = buildStandardActionOptions(
     turn,
@@ -406,22 +519,55 @@ function buildPartyOptionGroups(
         .map((action) => ({
           id: `bonus-action:${action.id}`,
           name: action.name,
-          subtitle: actionSubtitle(action),
-          tooltip: formatActionTooltip(action),
+          subtitle: actionSourceBadgeLabel(action),
+          tooltip: formatActionTooltip(action, { omitCostLabel: true }),
           kind: "bonus-action",
           action,
         }));
 
-  const offHandAttackOptions: CombatOption[] =
-    !turn.bonusActionUsed && turn.actionUsedForTwoWeapon && !turn.dashUsed
-      ? offHandAttacks.map((attack) =>
-          attackToCombatOption(attack, character.data, "bonus-action")
+  const twfSameTurn = canTwoWeaponFightSameTurn(
+    character.data,
+    catalogItems,
+    classCatalog
+  );
+
+  const bonusWeaponAttacks =
+    turn.twoWeaponFightingUsedOffHand != null
+      ? [...mainHandAttacks, ...offHandAttacks].filter(
+          (attack) => attack.isOffHand !== turn.twoWeaponFightingUsedOffHand
         )
       : [];
 
+  const offHandAttackOptions: CombatOption[] =
+    !turn.bonusActionUsed &&
+    turn.actionUsedForTwoWeapon &&
+    twfSameTurn &&
+    turn.twoWeaponFightingUsedOffHand != null &&
+    !turn.dashUsed
+      ? bonusWeaponAttacks.map((attack) =>
+          attackToCombatOption(attack, character.data, "bonus-action", twf)
+        )
+      : [];
+
+  const bonusNaturalAttacks = naturalAttacks.filter((attack) => {
+    if (!attack.bonusActionOnly) return false;
+    if (attack.monkBonusUnarmed) return turn.actionUsed;
+    return true;
+  });
+
+  const bonusNaturalAttackOptions: CombatOption[] = turn.bonusActionUsed
+    ? []
+    : bonusNaturalAttacks.map((attack) =>
+        attackToCombatOption(attack, character.data, "bonus-action", twf)
+      );
+
   return {
     actions: [...attackOptions, ...actionOptions],
-    bonusActions: [...bonusActionOptions, ...offHandAttackOptions],
+    bonusActions: [
+      ...bonusActionOptions,
+      ...offHandAttackOptions,
+      ...bonusNaturalAttackOptions,
+    ],
   };
 }
 
@@ -483,7 +629,7 @@ export function isImplementedCombatOption(option: CombatOption): boolean {
     isDisengageActionOption(option) ||
     isDashActionOption(option) ||
     isUseObjectActionOption(option) ||
-    isConfirmActionOption(option)
+    isOtherActionsOption(option)
   );
 }
 
@@ -496,6 +642,7 @@ export function getCombatOptionGroupsForToken(
     classCatalog: PhbClass[];
     featureCatalogs: FeatureCatalogs;
     actionUsedForTwoWeapon: boolean;
+    twoWeaponFightingUsedOffHand: boolean | null;
     actionUsed: boolean;
     bonusActionUsed: boolean;
     dashUsed: boolean;
@@ -513,6 +660,7 @@ export function getCombatOptionGroupsForToken(
       context.featureCatalogs,
       {
         actionUsedForTwoWeapon: context.actionUsedForTwoWeapon,
+        twoWeaponFightingUsedOffHand: context.twoWeaponFightingUsedOffHand,
         actionUsed: context.actionUsed,
         bonusActionUsed: context.bonusActionUsed,
         dashUsed: context.dashUsed,
@@ -566,10 +714,11 @@ export function findDerivedAttackByOptionId(
   if (!optionId.startsWith("attack:")) return null;
   const attackId = optionId.slice("attack:".length);
   if (token.kind === "party" && character) {
-    const attacks = [
-      ...getAllAttacks(character.data, catalogItems, classCatalog),
-      deriveUnarmedStrike(character.data),
-    ];
+    const attacks = getOpportunityAttackAttacks(
+      character.data,
+      catalogItems,
+      classCatalog
+    );
     return attacks.find((attack) => attack.id === attackId) ?? null;
   }
   return null;

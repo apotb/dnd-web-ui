@@ -153,7 +153,7 @@ export function finalizeInitiativeIfReady(state: CombatState): CombatState {
       status: "ready",
       order: buildTurnOrder(state.tokens, state.initiative.results),
     },
-    turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
   };
 }
 
@@ -161,7 +161,7 @@ export function clearInitiativeState(state: CombatState): CombatState {
   return {
     ...state,
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
   };
 }
 
@@ -227,7 +227,7 @@ export function startInitiativeCollection(
       results,
       order: [],
     },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
   };
 }
 
@@ -304,6 +304,75 @@ export function syncInitiativeAfterTokenHidden(
     }
   }
   return result;
+}
+
+export function getAddedCombatantTokens(
+  previous: CombatState,
+  next: CombatState
+): CombatToken[] {
+  const previousIds = new Set(previous.tokens.map((token) => token.id));
+  return next.tokens.filter(
+    (token) => !previousIds.has(token.id) && isCombatantToken(token)
+  );
+}
+
+/** Roll initiative for combatants added mid-battle or during collection. */
+export function integrateNewCombatantsInitiative(
+  state: CombatState,
+  addedTokens: CombatToken[],
+  characters: ParsedCharacter[],
+  enemiesBySlug: Record<string, { data: EnemyData }>,
+  dmUserId: string | null
+): {
+  state: CombatState;
+  charactersNeedingPlayerRolls: ParsedCharacter[];
+} {
+  if (state.initiative.status === "none" || addedTokens.length === 0) {
+    return { state, charactersNeedingPlayerRolls: [] };
+  }
+
+  const charactersById = new Map(characters.map((character) => [character.id, character]));
+  const results = { ...state.initiative.results };
+  const charactersNeedingPlayerRolls: ParsedCharacter[] = [];
+
+  for (const token of addedTokens.filter(isCombatantToken)) {
+    if (results[token.id] != null) continue;
+
+    if (token.kind === "enemy" && token.enemySlug) {
+      const enemy = enemiesBySlug[token.enemySlug];
+      if (!enemy) continue;
+      const { modifier, dexMod } = getEnemyInitiativeBreakdown(enemy.data);
+      results[token.id] = autoRollInitiative(modifier, dexMod);
+      continue;
+    }
+
+    if (token.kind === "party" && token.characterId) {
+      const character = charactersById.get(token.characterId);
+      if (!character) continue;
+      if (characterUsesAutoInitiativeRoll(character.owner_user_id, dmUserId)) {
+        const { modifier, dexMod } = getPartyInitiativeBreakdown(character.data);
+        results[token.id] = autoRollInitiative(modifier, dexMod);
+      } else {
+        charactersNeedingPlayerRolls.push(character);
+      }
+    }
+  }
+
+  let next: CombatState = {
+    ...state,
+    initiative: {
+      ...state.initiative,
+      results,
+    },
+  };
+
+  if (next.initiative.status === "collecting") {
+    next = finalizeInitiativeIfReady(next);
+  } else if (next.initiative.status === "ready") {
+    next = syncInitiativeOrder(next);
+  }
+
+  return { state: next, charactersNeedingPlayerRolls };
 }
 
 export function getPartyInitiativeModifierForCharacter(

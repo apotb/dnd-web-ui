@@ -139,6 +139,8 @@ export async function submitCombatAttack(
     submission: AttackSubmissionInput;
     charactersById: Record<string, ParsedCharacter>;
     enemiesBySlug: Record<string, { data: EnemyData }>;
+    catalogItems?: Record<string, import("@/lib/schemas/item").Item>;
+    classCatalog?: import("@/lib/dnd/phb/types").PhbClass[];
   }
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   if (hasPendingAttackForAttacker(state, options.attacker.id)) {
@@ -162,7 +164,7 @@ export async function submitCombatAttack(
     options.submission,
     options.charactersById,
     options.enemiesBySlug,
-    { skipDmReview }
+    { skipDmReview, catalogItems: options.catalogItems, classCatalog: options.classCatalog }
   );
 
   if (skipDmReview && pending.status === "awaiting-dm-review") {
@@ -192,6 +194,8 @@ export async function submitCombatOpportunityAttack(
     submission: AttackSubmissionInput;
     charactersById: Record<string, ParsedCharacter>;
     enemiesBySlug: Record<string, { data: EnemyData }>;
+    catalogItems?: Record<string, import("@/lib/schemas/item").Item>;
+    classCatalog?: import("@/lib/dnd/phb/types").PhbClass[];
   }
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   if (!canSubmitOpportunityAttack(state, options.attacker.id)) {

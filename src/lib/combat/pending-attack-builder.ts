@@ -14,7 +14,10 @@ import {
   parseAttackRangeSpec,
 } from "@/lib/combat/targeting";
 import type { CombatOption } from "@/lib/combat/combat-options";
-import { isMainHandWeaponAttackOption } from "@/lib/combat/combat-options";
+import { isWieldedMainHandWeaponAttack } from "@/lib/combat/combat-options";
+import { canTwoWeaponFightSameTurn } from "@/lib/dnd/two-weapon-fighting";
+import type { PhbClass } from "@/lib/dnd/phb/types";
+import type { Item } from "@/lib/schemas/item";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { findAmmunitionStack, findInventoryStack } from "@/lib/dnd/ammunition";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
@@ -86,7 +89,7 @@ function resolvePendingAmmunition(
   charactersById: Record<string, ParsedCharacter>
 ): Pick<
   PendingAttack,
-  "ammunitionInventoryItemId" | "ammunitionItemName" | "ammunitionQuantity"
+  "ammunitionInventoryItemId" | "ammunitionItemId" | "ammunitionItemName" | "ammunitionQuantity"
 > {
   if (!attack.ammunitionItemId || !attacker.characterId) return {};
 
@@ -100,6 +103,7 @@ function resolvePendingAmmunition(
 
   return {
     ammunitionInventoryItemId: stack?.id,
+    ammunitionItemId: attack.ammunitionItemId,
     ammunitionItemName: attack.ammunitionName,
     ammunitionQuantity: 1,
   };
@@ -175,7 +179,12 @@ export function createPendingAttack(
   submission: AttackSubmissionInput,
   charactersById: Record<string, ParsedCharacter>,
   enemiesBySlug: Record<string, { data: EnemyData }>,
-  options?: { isOpportunityAttack?: boolean; skipDmReview?: boolean }
+  options?: {
+    isOpportunityAttack?: boolean;
+    skipDmReview?: boolean;
+    catalogItems?: Record<string, Item>;
+    classCatalog?: PhbClass[];
+  }
 ): PendingAttack {
   const spec = parseAttackRangeSpec(attack);
   const requiresSave = attack.rollType === "save";
@@ -248,6 +257,24 @@ export function createPendingAttack(
       ? "awaiting-saves"
       : "awaiting-dm-review";
 
+  const attackerCharacter = attacker.characterId
+    ? charactersById[attacker.characterId] ?? null
+    : null;
+  const isWeaponAction =
+    getOptionActionCost(option, options) === "action" &&
+    option.attack?.source === "weapon";
+  const unlocksTwoWeaponFighting =
+    isWeaponAction &&
+    attackerCharacter != null &&
+    options?.catalogItems != null &&
+    canTwoWeaponFightSameTurn(
+      attackerCharacter.data,
+      options.catalogItems,
+      options.classCatalog
+    );
+  const weaponWieldOffHand =
+    isWeaponAction && option.attack ? !!option.attack.isOffHand : undefined;
+
   let pending: PendingAttack = {
     id: crypto.randomUUID(),
     attackerTokenId: attacker.id,
@@ -262,7 +289,11 @@ export function createPendingAttack(
     saveAbility: attack.saveAbility,
     damageType: attack.damageType,
     damageDice: attack.damageDice,
-    isMainHandWeapon: isMainHandWeaponAttackOption(option),
+    isMainHandWeapon: option.attack
+      ? isWieldedMainHandWeaponAttack(option.attack)
+      : false,
+    unlocksTwoWeaponFighting: unlocksTwoWeaponFighting || undefined,
+    weaponWieldOffHand,
     isAoe: spec.isAoe,
     ...resolvePendingAmmunition(attack, attacker, charactersById),
     ...resolvePendingThrownWeapon(attack, attacker, charactersById),

@@ -94,6 +94,7 @@ export const TURN_RESET_FIELDS = {
   movementUsedFeet: 0,
   dashUsed: false,
   actionUsedForTwoWeapon: false,
+  twoWeaponFightingUsedOffHand: null,
   actionUsed: false,
   bonusActionUsed: false,
   disengageUsed: false,
@@ -147,6 +148,19 @@ export function applyActionUsed(state: CombatState): CombatState {
     turn: {
       ...state.turn,
       actionUsed: true,
+    },
+  };
+}
+
+export function applyActionGranted(state: CombatState): CombatState {
+  if (!isBattleActive(state)) return state;
+  if (!state.turn.actionUsed) return state;
+
+  return {
+    ...state,
+    turn: {
+      ...state.turn,
+      actionUsed: false,
     },
   };
 }

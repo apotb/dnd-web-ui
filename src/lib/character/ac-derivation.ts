@@ -1,4 +1,5 @@
 import { isWornForAc } from "@/lib/character/equip-rules";
+import { hasDualWielderAcBonus } from "@/lib/dnd/two-weapon-fighting";
 import type { CharacterData } from "@/lib/schemas/character";
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import { getAbilityModifiers } from "@/lib/dnd/calculations";
@@ -195,12 +196,23 @@ export function calculateAcBreakdown(
     total += 1;
   }
 
+  if (hasDualWielderAcBonus(data, catalogItems, catalogClasses)) {
+    pushSource(sources, "Dual Wielder", 1);
+    total += 1;
+  }
+
   return { total, sources };
 }
 
 export function formatAcTooltip(breakdown: AcBreakdown): string | null {
   if (!breakdown.sources.length) return null;
-  const modLabels = new Set(["Dexterity", "Constitution", "Wisdom", "Warforged"]);
+  const modLabels = new Set([
+    "Dexterity",
+    "Constitution",
+    "Wisdom",
+    "Warforged",
+    "Dual Wielder",
+  ]);
   return breakdown.sources
     .map((source) => {
       if (modLabels.has(source.label)) {

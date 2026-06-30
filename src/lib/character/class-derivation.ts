@@ -1,6 +1,7 @@
 import type { AbilityKey, CharacterData } from "@/lib/schemas/character";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import type { PhbClass } from "@/lib/dnd/phb/types";
+import { hasTavernBrawler } from "@/lib/dnd/unarmed-mechanics";
 
 /** Resolve the character's primary class from stored labels (name or id). */
 export function resolveCharacterClass(
@@ -71,7 +72,8 @@ export function getEffectiveWeaponProficiencies(
   catalogClasses?: PhbClass[]
 ): string[] {
   const cls = resolveCharacterClass(data, catalogClasses);
-  return mergeProficiencyLists(data.weaponProficiencies, cls?.weaponProficiencies);
+  const featProfs = hasTavernBrawler(data) ? ["improvised weapons"] : [];
+  return mergeProficiencyLists(data.weaponProficiencies, cls?.weaponProficiencies, featProfs);
 }
 
 /** Stored proficiencies plus class-granted armor proficiencies. */

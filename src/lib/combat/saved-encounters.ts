@@ -153,6 +153,7 @@ const EMPTY_TURN: CombatState["turn"] = {
   movementUsedFeet: 0,
   dashUsed: false,
   actionUsedForTwoWeapon: false,
+  twoWeaponFightingUsedOffHand: null,
   actionUsed: false,
   bonusActionUsed: false,
   disengageUsed: false,

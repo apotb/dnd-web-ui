@@ -19,13 +19,16 @@ import { clearCampaignInitiativeRolls } from "@/lib/combat/initiative-actions";
 import {
   finalizeInitiativeIfReady,
   formatInitiativeResultTooltip,
+  getAddedCombatantTokens,
   getPartyInitiativeModifierForCharacter,
   getTokensNeedingPlayerRolls,
+  integrateNewCombatantsInitiative,
   sortInitiativeTokenIds,
   startInitiativeCollection,
   updateInitiativeAfterVisibilityChange,
 } from "@/lib/combat/initiative";
 import { saveCharacterData } from "@/lib/character/save-character-data";
+import { calculateAcBreakdown, formatAcTooltip } from "@/lib/character/ac-derivation";
 import {
   applyHpDelta,
   combatTokenHpFingerprint,
@@ -83,7 +86,7 @@ import { CombatMovementOverlay } from "@/components/combat/combat-movement-overl
 import { CombatCollisionOverlay } from "@/components/combat/combat-collision-overlay";
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
 import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
-import { CombatRollModal } from "@/components/combat/combat-roll-modal";
+import { CombatOtherActionsModal } from "@/components/combat/combat-other-actions-modal";
 import { CombatOpportunityAttackModal } from "@/components/combat/combat-opportunity-attack-modal";
 import { CombatOpportunityAttackPanel } from "@/components/combat/combat-opportunity-attack-panel";
 import { CombatAttackSubmitModal } from "@/components/combat/combat-attack-submit-modal";
@@ -100,7 +103,7 @@ import {
   getCombatOptionGroupsForToken,
   getOpportunityAttackOptionsForToken,
   isAttackTargetingOption,
-  isConfirmActionOption,
+  isOtherActionsOption,
   isDashActionOption,
   isDisengageActionOption,
   isHelpActionOption,
@@ -175,6 +178,7 @@ import {
 } from "@/lib/combat/engagement";
 import { endCombatTurn } from "@/lib/combat/turn-actions";
 import {
+  applyActionGranted,
   canUserControlTurn,
   canUserEndTurn,
   getCurrentTurnToken,
@@ -538,7 +542,7 @@ export function CombatBoard({
   const [pendingDashDestination, setPendingDashDestination] =
     useState<ReachableDestination | null>(null);
   const [pendingDashActionConfirm, setPendingDashActionConfirm] = useState(false);
-  const [pendingRollOption, setPendingRollOption] = useState<CombatOption | null>(null);
+  const [pendingOtherActionsConfirm, setPendingOtherActionsConfirm] = useState(false);
   const [pendingOpportunityAttackMove, setPendingOpportunityAttackMove] = useState<{
     destination: ReachableDestination;
     dashConsumed: boolean;
@@ -555,6 +559,7 @@ export function CombatBoard({
   const [hpAmount, setHpAmount] = useState("1");
   const [applyingHp, setApplyingHp] = useState(false);
   const [adjustingMovement, setAdjustingMovement] = useState(false);
+  const [grantingAction, setGrantingAction] = useState(false);
   const [endTurnConfirmOpen, setEndTurnConfirmOpen] = useState(false);
   const [collisionEditMode, setCollisionEditMode] = useState(false);
   const [collisionDraft, setCollisionDraft] = useState<Set<string>>(() => new Set());
@@ -999,6 +1004,7 @@ export function CombatBoard({
   const movementUsedFeet = combatState.turn.movementUsedFeet;
   const dashUsed = combatState.turn.dashUsed;
   const actionUsedForTwoWeapon = combatState.turn.actionUsedForTwoWeapon;
+  const twoWeaponFightingUsedOffHand = combatState.turn.twoWeaponFightingUsedOffHand;
   const actionUsed = combatState.turn.actionUsed;
   const bonusActionUsed = combatState.turn.bonusActionUsed;
   const disengageUsed = combatState.turn.disengageUsed;
@@ -1062,6 +1068,7 @@ export function CombatBoard({
       classCatalog,
       featureCatalogs,
       actionUsedForTwoWeapon,
+      twoWeaponFightingUsedOffHand,
       actionUsed,
       bonusActionUsed,
       dashUsed,
@@ -1073,6 +1080,7 @@ export function CombatBoard({
   }, [
     actionUsed,
     actionUsedForTwoWeapon,
+    twoWeaponFightingUsedOffHand,
     bonusActionUsed,
     canUseObjectAction,
     catalogItems,
@@ -1322,8 +1330,8 @@ export function CombatBoard({
       return;
     }
 
-    if (isConfirmActionOption(option)) {
-      setPendingRollOption(option);
+    if (isOtherActionsOption(option)) {
+      setPendingOtherActionsConfirm(true);
       return;
     }
 
@@ -1570,6 +1578,8 @@ export function CombatBoard({
       submission: values,
       charactersById,
       enemiesBySlug,
+      catalogItems,
+      classCatalog,
     });
     setSubmittingAttack(false);
     if (error) {
@@ -1819,7 +1829,7 @@ export function CombatBoard({
     setHoveredMovementCell(null);
     setPendingDashDestination(null);
     setPendingDashActionConfirm(false);
-    setPendingRollOption(null);
+    setPendingOtherActionsConfirm(false);
     setPendingOpportunityAttackMove(null);
     setHelpTargetPickerAllies(null);
     setEndTurnConfirmOpen(false);
@@ -1948,12 +1958,11 @@ export function CombatBoard({
     clearObjectInteractionMode();
   }
 
-  async function handleUseStandardAction() {
-    if (!pendingRollOption) return;
+  async function handleConfirmOtherActions() {
     const { next, error } = await recordCombatActionUsed(campaignId, combatState, {
       isDm,
     });
-    setPendingRollOption(null);
+    setPendingOtherActionsConfirm(false);
     if (error) {
       showAlert(error);
       return;
@@ -2054,6 +2063,18 @@ export function CombatBoard({
     setAdjustingMovement(true);
     const error = await persist(next);
     setAdjustingMovement(false);
+    if (error) {
+      showAlert(error);
+    }
+  }
+
+  async function handleGrantTurnAction() {
+    if (!canAdjustTurnMovement || !actionUsed) return;
+
+    const next = applyActionGranted(combatState);
+    setGrantingAction(true);
+    const error = await persist(next);
+    setGrantingAction(false);
     if (error) {
       showAlert(error);
     }
@@ -2257,9 +2278,42 @@ export function CombatBoard({
     setCollisionEditMode(true);
   }
 
+  async function promptPlayerInitiativeRolls(charactersToPrompt: ParsedCharacter[]) {
+    await Promise.all(
+      charactersToPrompt.map(async (character) => {
+        const modifier = getPartyInitiativeModifierForCharacter(character);
+        await saveCharacterData(
+          character.id,
+          {
+            ...character.data,
+            combat: {
+              ...character.data.combat,
+              pendingInitiativeRoll: {
+                tokenId: character.id,
+                modifier,
+              },
+            },
+          },
+          undefined,
+          { isDm: true, originalData: character.data }
+        );
+      })
+    );
+  }
+
   async function handleAddEnemy(enemy: EnemyRecord) {
-    const next = addEnemyToState(combatState, enemy);
-    await persist(next);
+    const previous = combatState;
+    const withToken = addEnemyToState(previous, enemy);
+    const added = getAddedCombatantTokens(previous, withToken);
+    const { state, charactersNeedingPlayerRolls } = integrateNewCombatantsInitiative(
+      withToken,
+      added,
+      characters,
+      enemiesBySlug,
+      userId
+    );
+    await persist(state);
+    await promptPlayerInitiativeRolls(charactersNeedingPlayerRolls);
   }
 
   async function handleAddMarker(values: MarkerDialogValues) {
@@ -2368,8 +2422,18 @@ export function CombatBoard({
   }
 
   async function handleAddPartyMembers(selected: ParsedCharacter[]) {
-    const next = addPartyMembersToState(combatState, selected);
-    await persist(next);
+    const previous = combatState;
+    const withTokens = addPartyMembersToState(previous, selected);
+    const added = getAddedCombatantTokens(previous, withTokens);
+    const { state, charactersNeedingPlayerRolls } = integrateNewCombatantsInitiative(
+      withTokens,
+      added,
+      characters,
+      enemiesBySlug,
+      userId
+    );
+    await persist(state);
+    await promptPlayerInitiativeRolls(charactersNeedingPlayerRolls);
   }
 
   function handleRemoveSelected() {
@@ -2645,27 +2709,7 @@ export function CombatBoard({
     }
 
     const claimedNeedingRolls = getTokensNeedingPlayerRolls(next, characters, userId);
-
-    await Promise.all(
-      claimedNeedingRolls.map(async (character) => {
-        const modifier = getPartyInitiativeModifierForCharacter(character);
-        await saveCharacterData(
-          character.id,
-          {
-            ...character.data,
-            combat: {
-              ...character.data.combat,
-              pendingInitiativeRoll: {
-                tokenId: character.id,
-                modifier,
-              },
-            },
-          },
-          undefined,
-          { isDm: true, originalData: character.data }
-        );
-      })
-    );
+    await promptPlayerInitiativeRolls(claimedNeedingRolls);
 
     setStartingInitiative(false);
   }
@@ -2747,6 +2791,12 @@ export function CombatBoard({
           .join(" ")
       : "";
     const enemyDamageTaken = token.damageTaken ?? 0;
+    const partyAcTooltip =
+      character != null
+        ? formatAcTooltip(
+            calculateAcBreakdown(character.data, catalogItems, classCatalog)
+          )
+        : null;
     const isExpanded =
       isHovered &&
       ((token.kind === "enemy" && (isDm ? enemy != null : true)) ||
@@ -2819,9 +2869,17 @@ export function CombatBoard({
                 {speciesClassLine ? (
                   <span className="combat-token-label-detail">{speciesClassLine}</span>
                 ) : null}
-                <span className="combat-token-label-detail">
-                  AC {character.data.combat.ac}
-                </span>
+                {partyAcTooltip ? (
+                  <Tooltip content={partyAcTooltip}>
+                    <span className="combat-token-label-detail">
+                      AC {character.data.combat.ac}
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <span className="combat-token-label-detail">
+                    AC {character.data.combat.ac}
+                  </span>
+                )}
                 <span className="combat-token-label-detail">
                   HP {token.currentHp ?? character.data.combat.currentHp}/
                   {token.maxHp ?? character.data.combat.maxHp}
@@ -3471,6 +3529,18 @@ export function CombatBoard({
                         >
                           {adjustingMovement ? "…" : "-5 ft"}
                         </button>
+                        <button
+                          type="button"
+                          className="candy-btn"
+                          disabled={
+                            !canAdjustTurnMovement ||
+                            grantingAction ||
+                            !actionUsed
+                          }
+                          onClick={() => void handleGrantTurnAction()}
+                        >
+                          {grantingAction ? "…" : "Grant action"}
+                        </button>
                       </div>
                     </>
                   )}
@@ -3611,11 +3681,10 @@ export function CombatBoard({
           onCancel={() => setPendingDashActionConfirm(false)}
         />
       ) : null}
-      {pendingRollOption ? (
-        <CombatRollModal
-          option={pendingRollOption}
-          onCancel={() => setPendingRollOption(null)}
-          onUse={() => void handleUseStandardAction()}
+      {pendingOtherActionsConfirm ? (
+        <CombatOtherActionsModal
+          onCancel={() => setPendingOtherActionsConfirm(false)}
+          onUse={() => void handleConfirmOtherActions()}
         />
       ) : null}
       {pendingOpportunityAttackMove ? (

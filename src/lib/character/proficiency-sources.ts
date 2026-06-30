@@ -13,6 +13,7 @@ import {
 import { resolveBackgroundToolProficiencies } from "@/lib/dnd/character-builder/build-character";
 import type { CharacterCreatorState } from "@/lib/dnd/character-builder/types";
 import { getFeat } from "@/lib/dnd/phb/feats";
+import { hasTavernBrawler } from "@/lib/dnd/unarmed-mechanics";
 import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
@@ -140,6 +141,10 @@ export function getWeaponProficienciesWithSources(
     )
   );
   cls?.weaponProficiencies?.forEach((w) => trackSource(tracker, w, classLabel));
+
+  if (hasTavernBrawler(data)) {
+    trackSource(tracker, "improvised weapons", "Feat (Tavern Brawler)");
+  }
 
   return entriesFromTracker(
     tracker,

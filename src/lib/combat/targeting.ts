@@ -1,6 +1,6 @@
 import { isHostileToken, isTokenEngaged } from "@/lib/combat/engagement";
 import { isCellBlocked } from "@/lib/combat/collision";
-import type { DerivedAttack } from "@/lib/dnd/attacks";
+import { isMeleeWeaponAttack, type DerivedAttack } from "@/lib/dnd/attacks";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { isHiddenEnemy } from "@/lib/schemas/combat-state";
 import type { GridPosition } from "@/lib/combat/movement";
@@ -187,9 +187,16 @@ export function isAttackAtLongRange(
 export function isRangedAttackRoll(attack: DerivedAttack): boolean {
   const rollType = attack.rollType ?? "attack";
   if (rollType !== "attack") return false;
+  if (isMeleeWeaponAttack(attack)) return false;
   const spec = parseAttackRangeSpec(attack);
   if (spec.isAoe) return false;
   return spec.normalRangeFt > 5;
+}
+
+export function attackRequiresLineOfSight(attack: DerivedAttack): boolean {
+  if (isRangedAttackRoll(attack)) return true;
+  if (!isMeleeWeaponAttack(attack)) return false;
+  return parseAttackRangeSpec(attack).maxFt > 5;
 }
 
 export function hasRangedAttackAdjacentDisadvantage(
@@ -273,7 +280,7 @@ export function getValidHostileTargetsForAttack(
   attack?: DerivedAttack
 ): CombatToken[] {
   const targets = getValidHostileTargets(attacker, state, spec.maxFt);
-  if (!attack || !isRangedAttackRoll(attack)) return targets;
+  if (!attack || !attackRequiresLineOfSight(attack)) return targets;
   return targets.filter((token) => hasLineOfSightToToken(attacker, token, state));
 }
 
@@ -496,7 +503,7 @@ export function getTargetingHighlights(
     ? undefined
     : ranged
       ? buildRangedAttackCellZones(attacker, state, spec)
-      : buildMeleeAttackCellZones(attacker, state, spec);
+      : buildMeleeAttackCellZones(attacker, state, spec, attack);
 
   return {
     spec,
@@ -617,6 +624,7 @@ export function buildRangedAttackCellZones(
       if (isCellBlocked(state, x, y)) continue;
 
       const cell = { x, y };
+      if (tokenOccupiesCell(attacker, cell)) continue;
       if (!hasLineOfSightToCell(attacker, cell, state)) continue;
 
       const distanceFt = distanceFeetToCell(attacker, cell, tileFeet);
@@ -638,17 +646,24 @@ export function buildRangedAttackCellZones(
 export function buildMeleeAttackCellZones(
   attacker: CombatToken,
   state: CombatState,
-  spec: AttackRangeSpec
+  spec: AttackRangeSpec,
+  attack?: DerivedAttack
 ): Map<string, RangedAttackCellZone> {
   const zones = new Map<string, RangedAttackCellZone>();
   if (!isTokenOnGrid(attacker, state)) return zones;
 
   const tileFeet = state.tileFeet;
+  const requiresLineOfSight = attack != null && attackRequiresLineOfSight(attack);
+
   for (let y = 0; y < state.gridHeight; y++) {
     for (let x = 0; x < state.gridWidth; x++) {
       if (isCellBlocked(state, x, y)) continue;
 
-      const distanceFt = distanceFeetToCell(attacker, { x, y }, tileFeet);
+      const cell = { x, y };
+      if (tokenOccupiesCell(attacker, cell)) continue;
+      if (requiresLineOfSight && !hasLineOfSightToCell(attacker, cell, state)) continue;
+
+      const distanceFt = distanceFeetToCell(attacker, cell, tileFeet);
       if (distanceFt <= spec.maxFt) {
         zones.set(`${x},${y}`, "normal");
       }

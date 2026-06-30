@@ -2,8 +2,12 @@ import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyHpDamage } from "@/lib/character/combat-derivation";
 import { parseDamageNotation } from "@/lib/dnd/dice";
 import { consumeInventoryItem } from "@/lib/dnd/supplies";
+import { isRecoverableAmmunition } from "@/lib/dnd/ammunition";
 import { consumeThrownWeaponInventoryItem } from "@/lib/character/equip-rules";
-import { createThrownWeaponMarker } from "@/lib/combat/state-utils";
+import {
+  placeAmmoPickupMarker,
+  placeThrownWeaponPickupMarker,
+} from "@/lib/combat/state-utils";
 import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
 import { patchTokenHpFromDamage } from "@/lib/combat/hp-adjust";
 import { syncInitiativeAfterTokenHidden } from "@/lib/combat/initiative";
@@ -164,7 +168,7 @@ export function applyResolvedAttack(
   });
 
   const attacker = state.tokens.find((token) => token.id === pending.attackerTokenId);
-  let markerToken: CombatToken | null = null;
+  let resolvedTokens = tokens;
 
   if (attacker?.characterId) {
     const character = charactersById[attacker.characterId];
@@ -178,6 +182,8 @@ export function applyResolvedAttack(
       }
 
       let inventoryChanged = false;
+      const consumedAmmo =
+        Boolean(pending.ammunitionInventoryItemId) && Boolean(pending.ammunitionQuantity);
       if (pending.ammunitionInventoryItemId && pending.ammunitionQuantity) {
         inventoryItems = consumeInventoryItem(
           inventoryItems,
@@ -204,25 +210,46 @@ export function applyResolvedAttack(
         });
       }
 
-      if (pending.thrownInventoryItemId && pending.thrownItemName) {
-        const targetToken =
-          pending.targets.length > 0
-            ? tokens.find((token) => token.id === pending.targets[0].tokenId)
-            : null;
-        if (targetToken) {
-          markerToken = createThrownWeaponMarker(
-            pending.thrownItemName,
-            character.name,
-            { ...state, tokens },
-            {
-              droppedByCharacterId: attacker.characterId,
-              droppedItemId: pending.thrownItemId ?? "",
-              droppedInventoryItemId: pending.thrownInventoryItemId,
-              attacker,
-              target: targetToken,
-            }
-          );
-        }
+      const targetToken =
+        pending.targets.length > 0
+          ? resolvedTokens.find((token) => token.id === pending.targets[0].tokenId)
+          : null;
+
+      if (pending.thrownInventoryItemId && pending.thrownItemName && targetToken) {
+        resolvedTokens = placeThrownWeaponPickupMarker(
+          { ...state, tokens: resolvedTokens },
+          attacker,
+          targetToken,
+          {
+            pickupItemId: pending.thrownItemId ?? "",
+            baseName: pending.thrownItemName,
+            thrownByCharacterId: attacker.characterId,
+            thrownByName: character.name,
+            droppedInventoryItemId: pending.thrownInventoryItemId,
+          }
+        );
+      }
+
+      const ammoSlug = pending.ammunitionItemId?.trim();
+      if (
+        consumedAmmo &&
+        ammoSlug &&
+        isRecoverableAmmunition(ammoSlug) &&
+        pending.ammunitionItemName &&
+        targetToken &&
+        Math.random() < 0.5
+      ) {
+        resolvedTokens = placeAmmoPickupMarker(
+          { ...state, tokens: resolvedTokens },
+          attacker,
+          targetToken,
+          {
+            pickupItemId: ammoSlug,
+            baseName: pending.ammunitionItemName,
+            shooterCharacterId: attacker.characterId,
+            shooterName: character.name,
+          }
+        );
       }
     }
   }
@@ -233,8 +260,12 @@ export function applyResolvedAttack(
       turn = {
         ...turn,
         actionUsed: true,
-        actionUsedForTwoWeapon:
-          pending.isMainHandWeapon || turn.actionUsedForTwoWeapon,
+        ...(pending.unlocksTwoWeaponFighting && pending.weaponWieldOffHand != null
+          ? {
+              actionUsedForTwoWeapon: true,
+              twoWeaponFightingUsedOffHand: pending.weaponWieldOffHand,
+            }
+          : {}),
       };
     } else if (pending.actionCost === "bonus-action") {
       turn = { ...turn, bonusActionUsed: true };
@@ -244,7 +275,7 @@ export function applyResolvedAttack(
   let nextState: CombatState = removePendingAttack(
     {
       ...state,
-      tokens: markerToken ? [...tokens, markerToken] : tokens,
+      tokens: resolvedTokens,
       turn,
     },
     pending.id

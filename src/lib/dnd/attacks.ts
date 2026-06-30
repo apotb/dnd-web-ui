@@ -26,6 +26,14 @@ import {
 } from "@/lib/dnd/calculations";
 import { levelFromXp } from "@/lib/dnd/xp";
 import { canCastSpellWithRemainingSlots } from "@/lib/dnd/spellcasting";
+import {
+  getCharacterLevel,
+  getNaturalAttackSpecs,
+  hasMonkMartialArts,
+  isMonkWeapon,
+  resolveUnarmedDamageDie,
+  type NaturalAttackSpec,
+} from "@/lib/dnd/unarmed-mechanics";
 
 type OffensiveSpellRollType = "attack" | "save" | "auto";
 
@@ -225,6 +233,9 @@ function spellSlug(spell: Spell): string | null {
   return slug || null;
 }
 
+/** Melee reach weapons (glaive, whip, etc.) attack from this distance in feet. */
+export const MELEE_REACH_FT = 10;
+
 /** A single derived or manual attack entry for display. */
 export interface DerivedAttack {
   id: string;
@@ -234,7 +245,7 @@ export interface DerivedAttack {
   damageType: string;
   range: string;
   notes: string;
-  source: "weapon" | "cantrip" | "spell" | "manual";
+  source: "weapon" | "cantrip" | "spell" | "manual" | "natural";
   spellLevel?: number;
   rollType?: OffensiveSpellRollType;
   saveAbility?: string;
@@ -245,6 +256,8 @@ export interface DerivedAttack {
   inventoryStackId?: string;
   /** Off-hand weapon attack from two-weapon fighting (bonus action). */
   isOffHand?: boolean;
+  /** Weapon damage dice without ability modifier (for bonus-action display). */
+  damageDiceWithoutMod?: string;
   /** Catalog slug of ammunition consumed per attack, if any. */
   ammunitionItemId?: string;
   /** Display name of the ammunition type. */
@@ -257,6 +270,12 @@ export interface DerivedAttack {
   thrownItemName?: string;
   /** Remaining thrown weapons in this stack when derived. */
   thrownRemaining?: number;
+  /** Natural weapon available even when a main-hand weapon is wielded (e.g. Lizardfolk Bite). */
+  alwaysAvailable?: boolean;
+  /** Only offered as a bonus-action attack in combat. */
+  bonusActionOnly?: boolean;
+  /** Monk bonus unarmed — only after taking the Attack action. */
+  monkBonusUnarmed?: boolean;
 }
 
 export function formatAttackRollLine(attack: DerivedAttack): string {
@@ -277,6 +296,13 @@ function parseNormalRangeFt(range: string): number {
   return 5;
 }
 
+/** Weapon attack roll that is not thrown (includes reach melee). */
+export function isMeleeWeaponAttack(attack: DerivedAttack): boolean {
+  if (attack.source !== "weapon") return false;
+  if (attack.throwsWeapon || attack.id.endsWith("-thrown")) return false;
+  return (attack.rollType ?? "attack") === "attack";
+}
+
 /** Combat tooltip category: Melee, Ranged, Thrown, Spell, Cantrip, etc. */
 export function getAttackCategoryLabel(attack: DerivedAttack): string {
   if (attack.source === "cantrip") return "Cantrip";
@@ -285,11 +311,12 @@ export function getAttackCategoryLabel(attack: DerivedAttack): string {
 
   const rollType = attack.rollType ?? "attack";
   if (rollType === "attack") {
+    if (isMeleeWeaponAttack(attack)) return "Melee";
     if (parseNormalRangeFt(attack.range) > 5) return "Ranged";
     return "Melee";
   }
 
-  if (attack.source === "manual") return "Melee";
+  if (attack.source === "manual" || attack.source === "natural") return "Melee";
   return "Special";
 }
 
@@ -336,7 +363,7 @@ function isProficientWithWeapon(
   return profs.some((p) => p === slug || p === name);
 }
 
-function hasTwoWeaponFighting(
+export function hasTwoWeaponFighting(
   character: CharacterData,
   catalogClasses?: PhbClass[]
 ): boolean {
@@ -362,7 +389,7 @@ export function deriveWeaponAttacks(
   const attacks: DerivedAttack[] = [];
   const mods = getAbilityModifiers(character.abilityScores);
   const prof = getProficiencyBonus(character);
-  const twf = hasTwoWeaponFighting(character, catalogClasses);
+  const monkMartialArts = hasMonkMartialArts(character, catalogClasses);
 
   for (const invItem of character.inventory.items) {
     if (!invItem.itemId) continue;
@@ -379,11 +406,14 @@ export function deriveWeaponAttacks(
     const isFinesse = wp.weaponProperties.includes("finesse");
     const isRanged = wp.weaponRange === "ranged";
     const isThrown = wp.weaponProperties.includes("thrown");
+    const monkWeapon = monkMartialArts && isMonkWeapon(catalogItem);
 
     let abilityMod: number;
     if (isFinesse) {
       abilityMod = Math.max(mods.str, mods.dex);
     } else if (isRanged) {
+      abilityMod = mods.dex;
+    } else if (monkWeapon) {
       abilityMod = mods.dex;
     } else {
       abilityMod = mods.str;
@@ -417,20 +447,23 @@ export function deriveWeaponAttacks(
         ? countAmmunitionInInventory(character.inventory.items, ammunitionItemId)
         : undefined;
 
+    const hasReach = wp.weaponProperties.includes("reach");
+    const meleeRangeFt = hasReach ? MELEE_REACH_FT : 5;
+    const meleeRange = `${meleeRangeFt} ft`;
+
     let singleRange = "";
     if (isRanged && wp.rangeNormal) {
       singleRange = `${wp.rangeNormal}/${wp.rangeLong ?? wp.rangeNormal * 4} ft`;
     } else if (isThrown && wp.throwRangeNormal) {
       singleRange = throwRange;
     } else if (!isRanged) {
-      singleRange = "5 ft";
+      singleRange = meleeRange;
     }
 
     const addAttack = (isOffHand: boolean, mode: "single" | "melee" | "thrown") => {
-      const includeMod = !isOffHand || twf;
-      const damageDiceStr = wp.damage
-        ? formatDamageDice(wp.damage, abilityMod, includeMod)
-        : "—";
+      const baseDice = wp.damage ?? "—";
+      const damageDiceStr = formatDamageDice(baseDice, abilityMod, true);
+      const damageDiceWithoutMod = baseDice;
 
       const offHandSuffix = isOffHand ? " (off-hand)" : "";
       const name =
@@ -455,12 +488,13 @@ export function deriveWeaponAttacks(
         notes.push(`Two-handed: ${wp.versatileDamage}${versMod}`);
       }
       if (wp.weaponProperties.includes("finesse")) notes.push("Finesse");
+      if (monkWeapon) notes.push("Monk weapon");
       if (mode !== "thrown" && wp.weaponProperties.includes("reach")) {
         notes.push("Reach (10 ft)");
       }
 
       const attackRange =
-        mode === "melee" ? "5 ft" : mode === "thrown" ? throwRange : singleRange;
+        mode === "thrown" ? throwRange : isRanged ? singleRange : meleeRange;
       const isThrownAttack = mode === "thrown" && throwsWeapon;
 
       attacks.push({
@@ -468,6 +502,7 @@ export function deriveWeaponAttacks(
         name,
         attackBonus,
         damageDice: damageDiceStr,
+        damageDiceWithoutMod,
         damageType: wp.damageType,
         range: attackRange,
         notes: notes.join(", "),
@@ -500,21 +535,69 @@ export function deriveWeaponAttacks(
   return attacks;
 }
 
-/** Derive unarmed strike for this character. */
-export function deriveUnarmedStrike(character: CharacterData): DerivedAttack {
+function buildNaturalAttackEntry(
+  spec: NaturalAttackSpec,
+  character: CharacterData,
+  catalogClasses?: PhbClass[]
+): DerivedAttack {
   const mods = getAbilityModifiers(character.abilityScores);
   const prof = getProficiencyBonus(character);
-  const damage = Math.max(1, 1 + mods.str);
+  const monk = hasMonkMartialArts(character, catalogClasses);
+  const level = getCharacterLevel(character);
+  const useMonkRules = monk && spec.isUnarmedStrike;
+  const abilityMod = useMonkRules ? mods.dex : mods.str;
+  const damageDice = resolveUnarmedDamageDie(
+    spec.baseDice,
+    useMonkRules ? level : null
+  );
+  const proficient = spec.proficient || (monk && spec.isUnarmedStrike);
+  const attackBonus = abilityMod + (proficient ? prof : 0);
+  const damageDiceStr = formatDamageDice(damageDice, abilityMod, true);
+
   return {
-    id: "unarmed-strike",
-    name: "Unarmed Strike",
-    attackBonus: mods.str + prof,
-    damageDice: `${damage}`,
-    damageType: "bludgeoning",
+    id: spec.id,
+    name: spec.name,
+    attackBonus,
+    damageDice: damageDiceStr,
+    damageDiceWithoutMod: damageDice,
+    damageType: spec.damageType,
     range: "5 ft",
-    notes: "",
-    source: "manual",
+    notes: spec.notes ?? "",
+    source: "natural",
+    alwaysAvailable: spec.alwaysAvailable,
+    bonusActionOnly: spec.bonusActionOnly,
+    monkBonusUnarmed: spec.id === "unarmed-strike-bonus",
   };
+}
+
+/** Derive unarmed strikes and species natural weapons for this character. */
+export function deriveNaturalAttacks(
+  character: CharacterData,
+  catalogClasses?: PhbClass[]
+): DerivedAttack[] {
+  return getNaturalAttackSpecs(character, catalogClasses).map((spec) =>
+    buildNaturalAttackEntry(spec, character, catalogClasses)
+  );
+}
+
+/** @deprecated Use deriveNaturalAttacks or getAllAttacks */
+export function deriveUnarmedStrike(
+  character: CharacterData,
+  catalogClasses?: PhbClass[]
+): DerivedAttack {
+  const attacks = deriveNaturalAttacks(character, catalogClasses);
+  return (
+    attacks.find((a) => a.id === "unarmed-strike") ?? {
+      id: "unarmed-strike",
+      name: "Unarmed Strike",
+      attackBonus: getAbilityModifiers(character.abilityScores).str,
+      damageDice: "1",
+      damageType: "bludgeoning",
+      range: "5 ft",
+      notes: "",
+      source: "natural",
+    }
+  );
 }
 
 function buildOffensiveSpellEntry(
@@ -621,10 +704,11 @@ export function getAllAttacks(
 ): DerivedAttack[] {
   const weapon = deriveWeaponAttacks(character, catalogItems, catalogClasses);
   const spells = deriveSpellAttacks(character);
+  const natural = deriveNaturalAttacks(character, catalogClasses);
   const manual: DerivedAttack[] = character.attacks.map((a) => ({
     ...a,
     source: "manual" as const,
   }));
 
-  return [...weapon, ...spells, ...manual];
+  return [...weapon, ...spells, ...natural, ...manual];
 }

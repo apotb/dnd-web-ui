@@ -104,7 +104,12 @@ export function formatPartyWeight(
 }
 
 function formatWeightLb(lb: number): string {
-  return `${Number.isInteger(lb) ? lb : lb.toFixed(1)} lb`;
+  const rounded = Math.round(lb * 100) / 100;
+  if (Number.isInteger(rounded)) {
+    return `${rounded} lb`;
+  }
+  const formatted = rounded.toFixed(2).replace(/\.?0+$/, "");
+  return `${formatted} lb`;
 }
 
 export function getAnimalSuppliesWeight(

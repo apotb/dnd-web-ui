@@ -26,8 +26,9 @@ function formatValue(
   if (optional && value == null) return "";
   const n = value ?? 0;
   if (allowDecimal) {
-    const rounded = Math.round(n * 10) / 10;
-    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(/\.0$/, "");
+    const rounded = Math.round(n * 100) / 100;
+    if (Number.isInteger(rounded)) return String(rounded);
+    return rounded.toFixed(2).replace(/\.?0+$/, "");
   }
   return String(Math.trunc(n));
 }
@@ -97,7 +98,7 @@ function clampValue(
   if (!allowNegative && value < 0) value = min ?? 0;
   if (min != null && value < min) value = min;
   if (max != null && value > max) value = max;
-  return allowDecimal ? Math.round(value * 10) / 10 : Math.trunc(value);
+  return allowDecimal ? Math.round(value * 100) / 100 : Math.trunc(value);
 }
 
 export function DraftNumberInput({
