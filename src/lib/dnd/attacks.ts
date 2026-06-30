@@ -650,7 +650,7 @@ function buildNaturalAttackEntry(
     spec.baseDice,
     useMonkRules ? level : null
   );
-  const proficient = spec.proficient || (monk && spec.isUnarmedStrike);
+  const proficient = spec.proficient || !!(monk && spec.isUnarmedStrike);
   const attackBonus = abilityMod + (proficient ? prof : 0);
   const attackBonusSources = buildAttackBonusSources(abilityLabel, abilityMod, proficient, prof);
   const damageBonusSources = buildDamageBonusSources(abilityLabel, abilityMod);
