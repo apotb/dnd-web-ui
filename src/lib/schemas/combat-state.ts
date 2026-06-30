@@ -130,11 +130,17 @@ export const pendingOpportunityAttacksSchema = z.object({
   dashConsumed: z.boolean().nullish(),
 });
 
+export const blockedCellSchema = z.object({
+  x: z.number().int().min(0),
+  y: z.number().int().min(0),
+});
+
 export const combatStateSchema = z.object({
   gridWidth: z.number().int().min(MIN_GRID_SIZE).max(MAX_GRID_SIZE).default(DEFAULT_GRID_SIZE),
   gridHeight: z.number().int().min(MIN_GRID_SIZE).max(MAX_GRID_SIZE).default(DEFAULT_GRID_SIZE),
   tileFeet: z.number().int().min(MIN_TILE_FEET).max(MAX_TILE_FEET).default(DEFAULT_TILE_FEET),
   backgroundPath: z.string().nullable().default(null),
+  blockedCells: z.array(blockedCellSchema).default([]),
   tokens: z.array(combatTokenSchema).default([]),
   excludedPartyCharacterIds: z.array(z.string()).default([]),
   initiative: combatInitiativeSchema.default({ status: "none", results: {}, order: [] }),
@@ -153,6 +159,7 @@ export const combatStateSchema = z.object({
   pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
 });
 
+export type BlockedCell = z.infer<typeof blockedCellSchema>;
 export type CombatToken = z.infer<typeof combatTokenSchema>;
 export type PendingOpportunityAttacks = z.infer<typeof pendingOpportunityAttacksSchema>;
 export type PendingAttackTarget = z.infer<typeof pendingAttackTargetSchema>;
@@ -237,6 +244,9 @@ export function parseCombatState(input: unknown): CombatState {
 
   return normalizeCombatTurn({
     ...parsed,
+    blockedCells: parsed.blockedCells.filter(
+      (cell) => cell.x < parsed.gridWidth && cell.y < parsed.gridHeight
+    ),
     tokens: parsed.tokens.map((token) => clampTokenToGrid(token, parsed)),
   });
 }

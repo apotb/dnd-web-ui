@@ -18,6 +18,7 @@ import {
   finalizeInitiativeIfReady,
   formatInitiativeResultTooltip,
   getPartyInitiativeModifierForCharacter,
+  getTokensNeedingPlayerRolls,
   startInitiativeCollection,
 } from "@/lib/combat/initiative";
 import { saveCharacterData } from "@/lib/character/save-character-data";
@@ -35,6 +36,7 @@ import {
   uploadMarkerPortrait,
 } from "@/lib/combat/storage";
 import { getCharacterPortraitUrl } from "@/lib/character/portrait-storage";
+import { preloadImageUrls } from "@/lib/image-preload";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { speciesSubtitleLabel } from "@/lib/content/catalog-tooltip";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
@@ -62,6 +64,7 @@ import { CombatEndTurnConfirmModal } from "@/components/combat/combat-end-turn-c
 import { CombatEndTurnPanel } from "@/components/combat/combat-end-turn-panel";
 import { CombatMovePanel } from "@/components/combat/combat-move-panel";
 import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
+import { CombatCollisionOverlay } from "@/components/combat/combat-collision-overlay";
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
 import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
 import { CombatRollModal } from "@/components/combat/combat-roll-modal";
@@ -109,6 +112,13 @@ import {
   canAdvanceTurnWithPendingAttacks,
 } from "@/lib/combat/pending-attacks";
 import { getTargetingHighlights, isAttackAtLongRange, parseAttackRangeSpec } from "@/lib/combat/targeting";
+import {
+  applyRectangleToBlockedSet,
+  areBlockedCellsEqual,
+  blockedCellsFromSet,
+  buildBlockedCellSet,
+  type BlockedCell,
+} from "@/lib/combat/collision";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import {
   submitCombatOpportunityAttack,
@@ -276,6 +286,39 @@ function gridCellFromPointer(
   return { x, y };
 }
 
+function gridCellFromPointerClamped(
+  clientX: number,
+  clientY: number,
+  gridEl: HTMLElement,
+  state: CombatState
+): { x: number; y: number } {
+  const rect = gridEl.getBoundingClientRect();
+  const content = getGridContentBox(gridEl, rect);
+  const x = Math.floor(
+    ((clientX - content.left) / content.width) * state.gridWidth
+  );
+  const y = Math.floor(
+    ((clientY - content.top) / content.height) * state.gridHeight
+  );
+
+  return {
+    x: Math.min(state.gridWidth - 1, Math.max(0, x)),
+    y: Math.min(state.gridHeight - 1, Math.max(0, y)),
+  };
+}
+
+function resolveGridCellFromPointer(
+  clientX: number,
+  clientY: number,
+  gridEl: HTMLElement,
+  state: CombatState
+): { x: number; y: number } {
+  return (
+    gridCellFromPointer(clientX, clientY, gridEl, state) ??
+    gridCellFromPointerClamped(clientX, clientY, gridEl, state)
+  );
+}
+
 function findTokenAtPointer(
   clientX: number,
   clientY: number,
@@ -408,9 +451,16 @@ export function CombatBoard({
   const [applyingHp, setApplyingHp] = useState(false);
   const [adjustingMovement, setAdjustingMovement] = useState(false);
   const [endTurnConfirmOpen, setEndTurnConfirmOpen] = useState(false);
+  const [collisionEditMode, setCollisionEditMode] = useState(false);
+  const [collisionDraft, setCollisionDraft] = useState<Set<string>>(() => new Set());
+  const [collisionDragStart, setCollisionDragStart] = useState<BlockedCell | null>(null);
+  const [collisionDragEnd, setCollisionDragEnd] = useState<BlockedCell | null>(null);
+  const [collisionDragRemoving, setCollisionDragRemoving] = useState(false);
+  const [savingCollision, setSavingCollision] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const draggingTokenIdRef = useRef<string | null>(null);
+  const collisionPointerIdRef = useRef<number | null>(null);
   const combatStateRef = useRef<CombatState>(initialCombatState);
   const attackTargetingRef = useRef(attackTargeting);
   attackTargetingRef.current = attackTargeting;
@@ -426,6 +476,35 @@ export function CombatBoard({
     () => resolveCombatImageUrl(supabase, combatState.backgroundPath),
     [combatState.backgroundPath, supabase]
   );
+
+  useEffect(() => {
+    preloadImageUrls(
+      combatState.tokens
+        .map((token) => resolveTokenPortraitUrl(supabase, token))
+        .filter((url): url is string => url != null)
+    );
+  }, [combatState.tokens, supabase]);
+
+  const collisionDirty = useMemo(
+    () =>
+      collisionEditMode &&
+      !areBlockedCellsEqual(
+        blockedCellsFromSet(collisionDraft),
+        combatState.blockedCells ?? []
+      ),
+    [collisionDraft, collisionEditMode, combatState.blockedCells]
+  );
+
+  const canUseCollisionEdit =
+    !movementMode && !attackTargeting && !draggingTokenId && !startingInitiative;
+
+  const savedBlockedKeys = useMemo(
+    () => buildBlockedCellSet(combatState.blockedCells ?? []),
+    [combatState.blockedCells]
+  );
+
+  const showCollisionDragHint =
+    isDm && !!draggingTokenId && !collisionEditMode && savedBlockedKeys.size > 0;
 
   const characterRosterKey = useMemo(
     () =>
@@ -452,6 +531,79 @@ export function CombatBoard({
 
   const persistRef = useRef(persist);
   persistRef.current = persist;
+
+  const discardCollisionEdits = useCallback(() => {
+    setCollisionEditMode(false);
+    setCollisionDragStart(null);
+    setCollisionDragEnd(null);
+    setCollisionDragRemoving(false);
+    collisionPointerIdRef.current = null;
+    setCollisionDraft(buildBlockedCellSet(combatStateRef.current.blockedCells ?? []));
+  }, []);
+
+  useEffect(() => {
+    if (!collisionDirty) return;
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [collisionDirty]);
+
+  useEffect(() => {
+    if (!collisionDirty) return;
+
+    function handleDocumentClick(event: MouseEvent) {
+      const anchor = (event.target as Element | null)?.closest("a");
+      if (!anchor || anchor.target === "_blank") return;
+
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#")) return;
+
+      if (
+        !window.confirm(
+          "You have unsaved collision edits. Discard them and leave this page?"
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      discardCollisionEdits();
+    }
+
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => document.removeEventListener("click", handleDocumentClick, true);
+  }, [collisionDirty, discardCollisionEdits]);
+
+  useEffect(() => {
+    if (!collisionEditMode) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Shift") return;
+      if (collisionPointerIdRef.current != null) {
+        setCollisionDragRemoving(true);
+      }
+    }
+
+    function handleKeyUp(event: KeyboardEvent) {
+      if (event.key !== "Shift") return;
+      if (collisionPointerIdRef.current != null) {
+        setCollisionDragRemoving(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [collisionEditMode]);
 
   const clearTokenHover = useCallback(() => {
     setHoveredTokenId(null);
@@ -506,6 +658,7 @@ export function CombatBoard({
 
   const beginTokenDrag = useCallback(
     (tokenId: string, pointerId: number, clientX: number, clientY: number) => {
+      if (collisionEditMode) return;
       const state = combatStateRef.current;
       const token = state.tokens.find((entry) => entry.id === tokenId);
       const grid = gridRef.current;
@@ -575,12 +728,12 @@ export function CombatBoard({
       dragGrid.addEventListener("pointerup", finishDrag);
       dragGrid.addEventListener("pointercancel", finishDrag);
     },
-    [clearTokenHover]
+    [clearTokenHover, collisionEditMode]
   );
 
   const handleTokenPointerDown = useCallback(
     (tokenId: string, event: React.PointerEvent<HTMLDivElement>) => {
-      if (!isDm) return;
+      if (!isDm || collisionEditMode) return;
       event.preventDefault();
       event.stopPropagation();
       setSelectedTokenId(tokenId);
@@ -617,7 +770,7 @@ export function CombatBoard({
       window.addEventListener("pointerup", handlePointerUp);
       window.addEventListener("pointercancel", handlePointerUp);
     },
-    [beginTokenDrag, isDm]
+    [beginTokenDrag, collisionEditMode, isDm]
   );
 
   const presentCharacterIds = useMemo(
@@ -1660,15 +1813,139 @@ export function CombatBoard({
   }
 
   function handleTokenClick(tokenId: string, event: React.MouseEvent) {
-    if (!isDm || attackTargeting || movementMode || draggingTokenId) return;
+    if (!isDm || attackTargeting || movementMode || draggingTokenId || collisionEditMode) return;
     event.stopPropagation();
     setSelectedTokenId(tokenId);
+  }
+
+  const handleCollisionPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!collisionEditMode || !isDm) return;
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const grid = gridRef.current;
+      if (!grid) return;
+
+      const dragStartCell = gridCellFromPointer(
+        event.clientX,
+        event.clientY,
+        grid,
+        combatStateRef.current
+      );
+      if (!dragStartCell) return;
+      const selectionStartX = dragStartCell.x;
+      const selectionStartY = dragStartCell.y;
+
+      const pointerId = event.pointerId;
+      collisionPointerIdRef.current = pointerId;
+      setCollisionDragStart(dragStartCell);
+      setCollisionDragEnd(dragStartCell);
+      setCollisionDragRemoving(event.shiftKey);
+
+      function handlePointerMove(moveEvent: PointerEvent) {
+        if (moveEvent.pointerId !== pointerId) return;
+        const activeGrid = gridRef.current;
+        if (!activeGrid) return;
+
+        const cell = resolveGridCellFromPointer(
+          moveEvent.clientX,
+          moveEvent.clientY,
+          activeGrid,
+          combatStateRef.current
+        );
+        setCollisionDragEnd(cell);
+        setCollisionDragRemoving(moveEvent.shiftKey);
+      }
+
+      function finishDrag(upEvent: PointerEvent) {
+        if (upEvent.pointerId !== pointerId) return;
+
+        cleanup();
+        const activeGrid = gridRef.current;
+        if (!activeGrid) {
+          setCollisionDragStart(null);
+          setCollisionDragEnd(null);
+          setCollisionDragRemoving(false);
+          collisionPointerIdRef.current = null;
+          return;
+        }
+
+        const end = resolveGridCellFromPointer(
+          upEvent.clientX,
+          upEvent.clientY,
+          activeGrid,
+          combatStateRef.current
+        );
+        const removing = upEvent.shiftKey;
+        const state = combatStateRef.current;
+
+        setCollisionDraft((prev) => {
+          const next = new Set(prev);
+          applyRectangleToBlockedSet(
+            next,
+            selectionStartX,
+            selectionStartY,
+            end.x,
+            end.y,
+            state.gridWidth,
+            state.gridHeight,
+            removing ? "remove" : "add"
+          );
+          return next;
+        });
+
+        setCollisionDragStart(null);
+        setCollisionDragEnd(null);
+        setCollisionDragRemoving(false);
+        collisionPointerIdRef.current = null;
+      }
+
+      function cleanup() {
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", finishDrag);
+        window.removeEventListener("pointercancel", finishDrag);
+      }
+
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", finishDrag);
+      window.addEventListener("pointercancel", finishDrag);
+    },
+    [collisionEditMode, isDm]
+  );
+
+  async function handleToggleCollisionEditMode() {
+    if (collisionEditMode) {
+      setSavingCollision(true);
+      const next = {
+        ...combatState,
+        blockedCells: blockedCellsFromSet(collisionDraft),
+      };
+      const error = await persist(next);
+      setSavingCollision(false);
+      if (error) {
+        window.alert(error);
+        return;
+      }
+      setCollisionEditMode(false);
+      setCollisionDragStart(null);
+      setCollisionDragEnd(null);
+      setCollisionDragRemoving(false);
+      collisionPointerIdRef.current = null;
+      return;
+    }
+
+    setCollisionDraft(buildBlockedCellSet(combatState.blockedCells ?? []));
+    setCollisionDragStart(null);
+    setCollisionDragEnd(null);
+    setCollisionDragRemoving(false);
+    setCollisionEditMode(true);
   }
 
   async function handleAddEnemy(enemy: EnemyRecord) {
     const next = addEnemyToState(combatState, enemy);
     await persist(next);
-    setAddOpen(false);
   }
 
   async function handleAddMarker(values: MarkerDialogValues) {
@@ -1768,6 +2045,14 @@ export function CombatBoard({
     const next = resetCombatBoard(combatState, characters);
     await persist(next);
     setSelectedTokenId(null);
+    if (collisionEditMode) {
+      setCollisionEditMode(false);
+      setCollisionDragStart(null);
+      setCollisionDragEnd(null);
+      setCollisionDragRemoving(false);
+      collisionPointerIdRef.current = null;
+      setCollisionDraft(new Set());
+    }
   }
 
   async function handleStartInitiative() {
@@ -1779,7 +2064,7 @@ export function CombatBoard({
 
     setStartingInitiative(true);
 
-    let next = startInitiativeCollection(combatState, characters, enemiesBySlug);
+    let next = startInitiativeCollection(combatState, characters, enemiesBySlug, userId);
     next = finalizeInitiativeIfReady(next);
     const persistError = await persistCombatState(campaignId, next);
     if (persistError) {
@@ -1794,15 +2079,7 @@ export function CombatBoard({
       return;
     }
 
-    const claimedNeedingRolls = next.tokens
-      .filter((token) => {
-        if (token.kind !== "party" || !token.characterId) return false;
-        if (next.initiative.results[token.id]) return false;
-        const character = charactersById[token.characterId];
-        return !!character?.owner_user_id;
-      })
-      .map((token) => charactersById[token.characterId!])
-      .filter(Boolean);
+    const claimedNeedingRolls = getTokensNeedingPlayerRolls(next, characters, userId);
 
     await Promise.all(
       claimedNeedingRolls.map(async (character) => {
@@ -1833,8 +2110,12 @@ export function CombatBoard({
     if (error || !path) return;
 
     const previousPath = combatState.backgroundPath;
-    const next = { ...combatState, backgroundPath: path };
+    const next = { ...combatState, backgroundPath: path, blockedCells: [] };
     await persist(next);
+
+    if (collisionEditMode) {
+      setCollisionDraft(new Set());
+    }
 
     if (previousPath && previousPath !== path) {
       await removeCombatImage(supabase, previousPath);
@@ -1846,9 +2127,13 @@ export function CombatBoard({
     if (!window.confirm("Remove the combat map background?")) return;
 
     const previousPath = combatState.backgroundPath;
-    const next = { ...combatState, backgroundPath: null };
+    const next = { ...combatState, backgroundPath: null, blockedCells: [] };
     await persist(next);
     await removeCombatImage(supabase, previousPath);
+
+    if (collisionEditMode) {
+      setCollisionDraft(new Set());
+    }
   }
 
   function handleGridSettingCommit(
@@ -1865,6 +2150,14 @@ export function CombatBoard({
       next.tileFeet === combatState.tileFeet
     ) {
       return;
+    }
+
+    if (
+      collisionEditMode &&
+      (next.gridWidth !== combatState.gridWidth ||
+        next.gridHeight !== combatState.gridHeight)
+    ) {
+      setCollisionDraft(new Set());
     }
 
     void persist(next);
@@ -1929,20 +2222,19 @@ export function CombatBoard({
             className={`combat-token-label${isExpanded ? " combat-token-label-expanded" : ""}`}
           >
             <span className="combat-token-label-name">{displayLabel}</span>
-            {isExpanded ? (
-              portraitUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={portraitUrl}
-                  alt=""
-                  className="combat-token-label-portrait"
-                  draggable={false}
-                />
-              ) : (
-                <div className="combat-token-label-portrait combat-token-label-portrait-fallback">
-                  {displayLabel.slice(0, 1)}
-                </div>
-              )
+            {portraitUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={portraitUrl}
+                alt=""
+                className="combat-token-label-portrait"
+                draggable={false}
+                decoding="async"
+              />
+            ) : isExpanded ? (
+              <div className="combat-token-label-portrait combat-token-label-portrait-fallback">
+                {displayLabel.slice(0, 1)}
+              </div>
             ) : null}
             {isExpanded && token.kind === "party" && character ? (
               <>
@@ -2299,6 +2591,14 @@ export function CombatBoard({
                   ) : null}
                   <button
                     type="button"
+                    className={`candy-btn${collisionEditMode ? " candy-btn-active" : ""}`}
+                    onClick={() => void handleToggleCollisionEditMode()}
+                    disabled={(!collisionEditMode && !canUseCollisionEdit) || savingCollision}
+                  >
+                    {savingCollision ? "Saving…" : "Collision"}
+                  </button>
+                  <button
+                    type="button"
                     className="candy-btn"
                     onClick={() => setAddPartyOpen(true)}
                   >
@@ -2400,10 +2700,11 @@ export function CombatBoard({
             <div className="combat-grid-shell">
               <div
                 ref={gridRef}
-                className={`combat-grid${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}`}
+                className={`combat-grid${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}`}
                 style={{
                   ["--grid-width" as string]: combatState.gridWidth,
                   ["--grid-height" as string]: combatState.gridHeight,
+                  ["--grid-aspect-ratio" as string]: `${combatState.gridWidth} / ${combatState.gridHeight}`,
                 }}
                 onPointerMove={(event) => {
                   updateHoverFromPointer(event.clientX, event.clientY);
@@ -2420,7 +2721,7 @@ export function CombatBoard({
                   }
                 }}
                 onClick={(event) => {
-                  if (!isDm) return;
+                  if (!isDm || collisionEditMode) return;
                   if (event.target === event.currentTarget) {
                     setSelectedTokenId(null);
                   }
@@ -2435,9 +2736,28 @@ export function CombatBoard({
                     draggable={false}
                   />
                 ) : null}
+                {collisionEditMode && isDm ? (
+                  <CombatCollisionOverlay
+                    gridWidth={combatState.gridWidth}
+                    gridHeight={combatState.gridHeight}
+                    blockedKeys={collisionDraft}
+                    dragStart={collisionDragStart}
+                    dragEnd={collisionDragEnd}
+                    dragRemoving={collisionDragRemoving}
+                    onPointerDown={handleCollisionPointerDown}
+                  />
+                ) : null}
+                {showCollisionDragHint ? (
+                  <CombatCollisionOverlay
+                    gridWidth={combatState.gridWidth}
+                    gridHeight={combatState.gridHeight}
+                    blockedKeys={savedBlockedKeys}
+                    translucent
+                  />
+                ) : null}
                 {gridRenderTokens.map((token) => renderToken(token))}
                 {renderPendingMoveGhost()}
-                {attackTargeting && currentTurnToken && userControlsTurn && targetingHighlights ? (
+                {attackTargeting && !collisionEditMode && currentTurnToken && userControlsTurn && targetingHighlights ? (
                   <CombatTargetingOverlay
                     gridWidth={combatState.gridWidth}
                     gridHeight={combatState.gridHeight}
@@ -2460,7 +2780,7 @@ export function CombatBoard({
                     onCancel={clearAttackFlow}
                   />
                 ) : null}
-                {movementMode && currentTurnToken && userControlsTurn ? (
+                {movementMode && !collisionEditMode && currentTurnToken && userControlsTurn ? (
                   <CombatMovementOverlay
                     gridWidth={combatState.gridWidth}
                     gridHeight={combatState.gridHeight}

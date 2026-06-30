@@ -83,6 +83,7 @@ export function createDefaultCombatState(
     gridHeight: DEFAULT_GRID_SIZE,
     tileFeet: DEFAULT_TILE_FEET,
     backgroundPath: null,
+    blockedCells: [],
     tokens: [],
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
@@ -565,6 +566,7 @@ export function resetCombatBoard(
     gridHeight: state.gridHeight,
     tileFeet: state.tileFeet,
     backgroundPath: state.backgroundPath ?? null,
+    blockedCells: [],
     tokens: [],
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
@@ -671,8 +673,12 @@ export function updateGridInState(
     ),
   };
 
+  const dimensionsChanged =
+    next.gridWidth !== state.gridWidth || next.gridHeight !== state.gridHeight;
+
   return {
     ...next,
+    blockedCells: dimensionsChanged ? [] : next.blockedCells,
     tokens: next.tokens.map((token) => clampTokenToGrid(token, next)),
   };
 }

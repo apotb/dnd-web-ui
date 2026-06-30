@@ -131,9 +131,19 @@ export function clearInitiativeState(state: CombatState): CombatState {
   };
 }
 
+/** Unclaimed characters and characters claimed by the DM roll automatically at battle start. */
+export function characterUsesAutoInitiativeRoll(
+  ownerUserId: string | null,
+  dmUserId: string | null
+): boolean {
+  if (!dmUserId) return ownerUserId === null;
+  return ownerUserId === null || ownerUserId === dmUserId;
+}
+
 export function getTokensNeedingPlayerRolls(
   state: CombatState,
-  characters: ParsedCharacter[]
+  characters: ParsedCharacter[],
+  dmUserId: string | null
 ): ParsedCharacter[] {
   const charactersById = new Map(characters.map((character) => [character.id, character]));
 
@@ -141,7 +151,8 @@ export function getTokensNeedingPlayerRolls(
     .filter((token) => {
       if (token.kind !== "party" || !token.characterId) return false;
       const character = charactersById.get(token.characterId);
-      if (!character?.owner_user_id) return false;
+      if (!character) return false;
+      if (characterUsesAutoInitiativeRoll(character.owner_user_id, dmUserId)) return false;
       return state.initiative.results[token.id] == null;
     })
     .map((token) => charactersById.get(token.characterId!)!)
@@ -151,7 +162,8 @@ export function getTokensNeedingPlayerRolls(
 export function startInitiativeCollection(
   state: CombatState,
   characters: ParsedCharacter[],
-  enemiesBySlug: Record<string, { data: EnemyData }>
+  enemiesBySlug: Record<string, { data: EnemyData }>,
+  dmUserId: string | null
 ): CombatState {
   const charactersById = new Map(characters.map((character) => [character.id, character]));
   const results: Record<string, InitiativeTokenResult> = {};
@@ -168,7 +180,7 @@ export function startInitiativeCollection(
     if (token.kind === "party" && token.characterId) {
       const character = charactersById.get(token.characterId);
       if (!character) continue;
-      if (character.owner_user_id) continue;
+      if (!characterUsesAutoInitiativeRoll(character.owner_user_id, dmUserId)) continue;
       const { modifier, dexMod } = getPartyInitiativeBreakdown(character.data);
       results[token.id] = autoRollInitiative(modifier, dexMod);
     }

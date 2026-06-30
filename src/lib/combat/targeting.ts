@@ -1,4 +1,5 @@
 import { isHostileToken } from "@/lib/combat/engagement";
+import { isCellBlocked } from "@/lib/combat/collision";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import type { GridPosition } from "@/lib/combat/movement";
@@ -393,6 +394,7 @@ export function getPlacableAoeCells(
     for (let x = 0; x < state.gridWidth; x++) {
       const cell = { x, y };
       if (distanceFeetToCell(attacker, cell, state.tileFeet) > spec.maxFt) continue;
+      if (isCellBlocked(state, x, y)) continue;
       cells.push(cell);
     }
   }
@@ -423,7 +425,9 @@ export function getTargetingHighlights(
   for (const token of validTargets) {
     for (let dy = 0; dy < token.height; dy++) {
       for (let dx = 0; dx < token.width; dx++) {
-        validCells.push({ x: token.x + dx, y: token.y + dy });
+        const cell = { x: token.x + dx, y: token.y + dy };
+        if (isCellBlocked(state, cell.x, cell.y)) continue;
+        validCells.push(cell);
       }
     }
   }
@@ -462,5 +466,6 @@ export function isCellInRangeForAoe(
   state: CombatState,
   spec: AttackRangeSpec
 ): boolean {
+  if (isCellBlocked(state, cell.x, cell.y)) return false;
   return distanceFeetToCell(attacker, cell, state.tileFeet) <= spec.maxFt;
 }

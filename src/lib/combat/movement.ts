@@ -1,5 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { getCharacterEffectiveSpeedFt } from "@/lib/character/combat-derivation";
+import { isFootprintOnBlocked } from "@/lib/combat/collision";
 import { tokenFootprintsOverlap } from "@/lib/combat/state-utils";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
@@ -128,6 +129,7 @@ export function canTraverseFootprint(
   state: CombatState
 ): boolean {
   if (!footprintInBounds(x, y, movingToken, state)) return false;
+  if (isFootprintOnBlocked(state, x, y, movingToken.width, movingToken.height)) return false;
 
   for (let dy = 0; dy < movingToken.height; dy++) {
     for (let dx = 0; dx < movingToken.width; dx++) {
@@ -151,6 +153,7 @@ export function canEndFootprintAt(
   state: CombatState
 ): boolean {
   if (!footprintInBounds(x, y, movingToken, state)) return false;
+  if (isFootprintOnBlocked(state, x, y, movingToken.width, movingToken.height)) return false;
 
   const probe = {
     ...movingToken,

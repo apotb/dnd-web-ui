@@ -3149,6 +3149,55 @@ html.campaign-bg-active .retro-back-link {
   pointer-events: none;
 }
 
+.combat-grid-collision-mode .combat-token {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.combat-collision-overlay {
+  position: relative;
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  z-index: 2;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.combat-collision-visuals {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-width), 1fr);
+  grid-template-rows: repeat(var(--grid-height), 1fr);
+  pointer-events: none;
+}
+
+.combat-collision-overlay-translucent {
+  pointer-events: none;
+  cursor: default;
+  touch-action: auto;
+  user-select: auto;
+}
+
+.combat-collision-overlay-translucent .combat-collision-cell {
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.combat-collision-cell {
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.88);
+}
+
+.combat-collision-preview-add {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.combat-collision-preview-remove {
+  background: rgba(220, 38, 38, 0.55);
+  box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.95);
+}
+
 .combat-movement-overlay {
   position: relative;
   grid-column: 1 / -1;
@@ -3725,8 +3774,8 @@ html.campaign-bg-active .retro-back-link {
   display: grid;
   grid-template-columns: repeat(var(--grid-width), 1fr);
   grid-template-rows: repeat(var(--grid-height), 1fr);
-  width: min(100%, 70vh);
-  aspect-ratio: var(--grid-width) / var(--grid-height);
+  width: min(100%, calc(70vh * var(--grid-width) / var(--grid-height)));
+  aspect-ratio: var(--grid-aspect-ratio);
   max-height: 70vh;
   background-color: #1a1a28;
   border: 2px solid rgba(248, 250, 252, 0.35);
@@ -3939,11 +3988,6 @@ html.campaign-bg-active .retro-back-link {
   min-width: 96px;
 }
 
-.combat-token-label-expanded .combat-token-label-portrait,
-.combat-token-label-expanded .combat-token-label-portrait-fallback {
-  margin-bottom: 4px;
-}
-
 .combat-token-label-portrait {
   width: 96px;
   height: 96px;
@@ -3957,6 +4001,17 @@ html.campaign-bg-active .retro-back-link {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   flex-shrink: 0;
   aspect-ratio: 1;
+  visibility: hidden;
+  position: absolute;
+  pointer-events: none;
+}
+
+.combat-token-label-expanded .combat-token-label-portrait,
+.combat-token-label-expanded .combat-token-label-portrait-fallback {
+  visibility: visible;
+  position: static;
+  pointer-events: auto;
+  margin-bottom: 4px;
 }
 
 .combat-token-label-portrait-fallback {

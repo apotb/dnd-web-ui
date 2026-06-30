@@ -133,7 +133,7 @@ export function AddEnemyDialog({
         </div>
 
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-          Cancel
+          Close
         </Button>
       </DialogContent>
     </Dialog>
