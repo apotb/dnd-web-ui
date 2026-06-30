@@ -182,6 +182,7 @@ import {
   hasUnclaimedCharacterPlaceholders,
   isCharacterPlaceholder,
 } from "@/lib/combat/character-placeholder";
+import { claimCombatCharacterSlot } from "@/lib/combat/character-slot-actions";
 import {
   combatStateToEncounterPayload,
   isPreBattleSetup,
@@ -2411,12 +2412,11 @@ export function CombatBoard({
   async function handleClaimCharacterSlot() {
     if (!characterSlotToken || !ownedCharacter) return;
     setAssigningCharacterSlot(true);
-    const next = assignCharacterToPlaceholder(
-      combatState,
-      characterSlotToken.id,
-      ownedCharacter
-    );
-    const error = await persist(next);
+    const { error } = await claimCombatCharacterSlot(campaignId, combatState, {
+      isDm,
+      tokenId: characterSlotToken.id,
+      character: ownedCharacter,
+    });
     setAssigningCharacterSlot(false);
     if (error) {
       showAlert(error);
