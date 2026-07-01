@@ -63,6 +63,8 @@ function makeGrantedFeature(
     id: `granted:${source}:${slug}`,
     name,
     description,
+    usesAction: false,
+    actionCost: "action",
     restReset,
     source,
     locked: true,
