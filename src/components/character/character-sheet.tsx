@@ -98,12 +98,14 @@ import {
   type ItemPickerCustomFields,
 } from "@/components/items/item-picker";
 import { SpellPicker } from "@/components/spells/spell-picker";
+import { ClassSpellListDialog } from "@/components/spells/class-spell-list-dialog";
 import { SpellbookDialog } from "@/components/spells/spellbook-dialog";
 import { SpellGlossaryMeta } from "@/components/spells/spell-glossary-meta";
 import { CharacterPortrait } from "@/components/character/character-portrait";
 import { CharacterRestButtons } from "@/components/character/character-rest-buttons";
 import { HumanoidSpeciesPicker } from "@/components/character-creator/humanoid-species-picker";
 import { TWO_HUMANOID_SPECIES_OPTION } from "@/lib/dnd/phb/favored-enemy-humanoids";
+import { getSpellsForList } from "@/lib/dnd/phb/spells";
 import { getItemsBySlugsClient } from "@/lib/items/catalog-client";
 import {
   getSpellsBySlugsClient,
@@ -750,6 +752,7 @@ export function CharacterSheet({
   const [itemPickerEditingCustom, setItemPickerEditingCustom] = useState(false);
   const [spellPickerOpen, setSpellPickerOpen] = useState(false);
   const [spellbookOpen, setSpellbookOpen] = useState(false);
+  const [classSpellListOpen, setClassSpellListOpen] = useState(false);
   const [spellPickerCantripOnly, setSpellPickerCantripOnly] = useState(false);
   const [dmCantripEditMode, setDmCantripEditMode] = useState(false);
   const [deathSaveRollOpen, setDeathSaveRollOpen] = useState(false);
@@ -935,6 +938,16 @@ export function CharacterSheet({
     () => (isWizardClass ? getWizardSpellbookSpells(data.spells.known) : []),
     [isWizardClass, data.spells.known]
   );
+  const preparedLeveledSlugs = useMemo(
+    () =>
+      data.spells.known
+        .filter(
+          (spell) =>
+            spell.prepared && spell.level > 0 && spell.spellId != null
+        )
+        .map((spell) => spell.spellId!),
+    [data.spells.known]
+  );
   const spellAttackBonus = useMemo(() => getSpellAttackBonus(data), [data]);
   const spellSaveDcTooltip = useMemo(() => formatSpellSaveDcTooltip(data), [data]);
   const spellAttackTooltip = useMemo(() => formatSpellAttackTooltip(data), [data]);
@@ -1095,6 +1108,12 @@ export function CharacterSheet({
     () => getMaxCastableSpellLevel(level, data.spells.slots),
     [level, data.spells.slots]
   );
+  const availableClassSpellCount = useMemo(() => {
+    if (!fullListPreparedCaster || !classSpellListId) return 0;
+    return getSpellsForList(classSpellListId).filter(
+      (spell) => spell.level > 0 && spell.level <= maxCastableSpellLevel
+    ).length;
+  }, [fullListPreparedCaster, classSpellListId, maxCastableSpellLevel]);
 
   const knownSpellGroups = useMemo(
     () =>
@@ -2278,6 +2297,18 @@ export function CharacterSheet({
                       : ""}
                   </Button>
                 ) : null}
+                {fullListPreparedCaster && classSpellListId ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setClassSpellListOpen(true)}
+                  >
+                    See spells
+                    {availableClassSpellCount > 0
+                      ? ` (${availableClassSpellCount})`
+                      : ""}
+                  </Button>
+                ) : null}
                 {showDmUi && editable ? (
                   <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                     <Checkbox
@@ -2826,6 +2857,16 @@ export function CharacterSheet({
               open={spellbookOpen}
               onClose={() => setSpellbookOpen(false)}
               spells={wizardSpellbookSpells}
+            />
+          ) : null}
+
+          {fullListPreparedCaster && classSpellListId ? (
+            <ClassSpellListDialog
+              open={classSpellListOpen}
+              onClose={() => setClassSpellListOpen(false)}
+              classListId={classSpellListId}
+              maxSpellLevel={maxCastableSpellLevel}
+              preparedSlugs={preparedLeveledSlugs}
             />
           ) : null}
 
