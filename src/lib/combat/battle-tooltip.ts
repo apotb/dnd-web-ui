@@ -10,7 +10,10 @@ import {
   type DerivedAttack,
 } from "@/lib/dnd/attacks";
 import { getSpell } from "@/lib/dnd/phb/spells";
-import type { CharacterData } from "@/lib/schemas/character";
+import {
+  createDefaultCharacterData,
+  type CharacterData,
+} from "@/lib/schemas/character";
 import type { EnemyNamedBlock } from "@/lib/schemas/enemy";
 import { formatThrownWeaponLine } from "@/lib/dnd/ammunition";
 import { buildSpellPickerHeader, stripRedundantSpellNotes } from "@/lib/dnd/spell-display";
@@ -131,6 +134,9 @@ function formatAttackNotesForTooltip(
   }
   return displayNotes;
 }
+
+/** Minimal character sheet used when building attack tooltips without attacker data. */
+export const battleTooltipFallbackCharacter = createDefaultCharacterData();
 
 function formatAmmoLine(name: string, count: number): string {
   const label = count === 1 ? name : `${name}s`;

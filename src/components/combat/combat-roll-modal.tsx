@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import { CombatBattleTooltipSummary } from "@/components/combat/combat-battle-tooltip-summary";
 import type { CombatOption } from "@/lib/combat/combat-options";
-import { buildBattleAttackTooltipParts } from "@/lib/combat/battle-tooltip";
+import {
+  battleTooltipFallbackCharacter,
+  buildBattleAttackTooltipParts,
+} from "@/lib/combat/battle-tooltip";
 import { formatModifier } from "@/lib/dnd/calculations";
 import { formatDamageRoll, rollD20, rollDamage } from "@/lib/dnd/dice";
 import type { CharacterData } from "@/lib/schemas/character";
@@ -30,7 +33,7 @@ export function CombatRollModal({
       attack
         ? buildBattleAttackTooltipParts(
             attack,
-            attackerCharacter ?? ({ basicInfo: { xp: 0 }, combat: { conditions: [] }, exhaustionLevels: [] } as CharacterData),
+            attackerCharacter ?? battleTooltipFallbackCharacter,
             { omitBonusActionNote: true }
           )
         : null,

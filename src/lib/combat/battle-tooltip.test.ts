@@ -7,16 +7,13 @@ import {
   formatBattleActionTooltip,
   formatBattleAttackTooltip,
   buildBattleAttackTooltipParts,
+  battleTooltipFallbackCharacter,
   formatBattleTooltip,
 } from "./battle-tooltip";
 import { formatSpellPickerCombatTooltip } from "@/lib/dnd/combat-spells";
 import type { Spell } from "@/lib/schemas/character";
 
-const baseCharacter = {
-  basicInfo: { xp: 0 },
-  combat: { conditions: [] },
-  exhaustionLevels: [],
-} as CharacterData;
+const baseCharacter = battleTooltipFallbackCharacter;
 
 function meleeAttack(overrides: Partial<DerivedAttack> = {}): DerivedAttack {
   return {

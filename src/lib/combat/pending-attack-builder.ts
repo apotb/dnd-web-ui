@@ -340,6 +340,8 @@ export function createPendingSpellCast(
     isOpportunityAttack: false,
     skipDmReview: options?.skipDmReview ?? false,
     rollType: "auto",
+    saveHalfDamageOnSuccess: true,
+    isMainHandWeapon: false,
     isAoe: false,
     status: "awaiting-dm-review",
     targets: [],

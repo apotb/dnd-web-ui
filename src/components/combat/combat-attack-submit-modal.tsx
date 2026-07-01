@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { CombatBattleTooltipSummary } from "@/components/combat/combat-battle-tooltip-summary";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
-import { buildBattleAttackTooltipParts } from "@/lib/combat/battle-tooltip";
+import {
+  battleTooltipFallbackCharacter,
+  buildBattleAttackTooltipParts,
+} from "@/lib/combat/battle-tooltip";
 import { formatAttackDisadvantageLabel } from "@/lib/combat/targeting";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
@@ -83,7 +86,7 @@ export function CombatAttackSubmitModal({
     () =>
       buildBattleAttackTooltipParts(
         attack,
-        attackerCharacter ?? ({ basicInfo: { xp: 0 }, combat: { conditions: [] }, exhaustionLevels: [] } as CharacterData),
+        attackerCharacter ?? battleTooltipFallbackCharacter,
         { omitBonusActionNote: true }
       ),
     [attack, attackerCharacter]
