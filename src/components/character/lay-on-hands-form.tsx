@@ -29,6 +29,8 @@ export interface LayOnHandsFormProps {
   onCancel: () => void;
   busy?: boolean;
   title?: string;
+  cureCost?: number;
+  enableCure?: boolean;
 }
 
 function healValidation(
@@ -46,12 +48,13 @@ function healValidation(
 
 function cureValidation(
   target: LayOnHandsTarget | null,
-  poolRemaining: number
+  poolRemaining: number,
+  cureCost: number
 ): string | null {
   if (!target) return "Select a target.";
   if (!target.poisoned) return "Target has no poison to cure.";
-  if (poolRemaining < LAY_ON_HANDS_CURE_COST) {
-    return `Need at least ${LAY_ON_HANDS_CURE_COST} pool HP to cure poison.`;
+  if (poolRemaining < cureCost) {
+    return `Need at least ${cureCost} pool HP to cure poison.`;
   }
   return null;
 }
@@ -69,6 +72,8 @@ export function LayOnHandsForm({
   onCancel,
   busy = false,
   title = "Lay on Hands",
+  cureCost = LAY_ON_HANDS_CURE_COST,
+  enableCure = cureCost > 0,
 }: LayOnHandsFormProps) {
   const selectedTarget =
     targets.find((target) => target.id === selectedTargetId) ?? targets[0] ?? null;
@@ -82,7 +87,7 @@ export function LayOnHandsForm({
   const validation =
     mode === "heal"
       ? healValidation(selectedTarget, healAmount, poolRemaining)
-      : cureValidation(selectedTarget, poolRemaining);
+      : cureValidation(selectedTarget, poolRemaining, cureCost);
   const canConfirm = validation == null && !busy;
 
   return (
@@ -133,14 +138,16 @@ export function LayOnHandsForm({
             >
               Heal
             </Button>
+            {enableCure ? (
             <Button
               type="button"
               size="sm"
               variant={mode === "cure" ? "default" : "outline"}
               onClick={() => onModeChange("cure")}
             >
-              Cure poison/disease ({LAY_ON_HANDS_CURE_COST} HP)
+              Cure poison/disease ({cureCost} HP)
             </Button>
+            ) : null}
           </div>
 
           {mode === "heal" ? (
@@ -170,13 +177,13 @@ export function LayOnHandsForm({
                 Max ({maxHeal})
               </Button>
             </div>
-          ) : (
+          ) : enableCure ? (
             <p className="text-xs retro-muted">
-              Spends {LAY_ON_HANDS_CURE_COST} pool HP to remove the poisoned
+              Spends {cureCost} pool HP to remove the poisoned
               condition. Other diseases are tracked by the DM until a disease
               condition exists.
             </p>
-          )}
+          ) : null}
 
           {validation ? (
             <p className="text-sm text-destructive">{validation}</p>

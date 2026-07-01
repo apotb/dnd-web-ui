@@ -10,21 +10,27 @@ import {
   canLayOnHandsHealTarget,
   canUseSecondWind,
   characterHasClassId,
+  deriveMechanicalFeatureActions,
+  enrichMechanicalFeature,
   getLayOnHandsPoolRemaining,
   getMechanicalFeatureCurrent,
+  getResolvedMechanicalFeature,
   getSpellRecoveryBudget,
   getSpellRecoveryOptions,
   LAY_ON_HANDS_ID,
   mechanicalFeatureQualifies,
   NATURAL_RECOVERY_ID,
+  RAGE_ID,
   resetMechanicalFeatureUses,
   SECOND_WIND_ID,
   spendLayOnHandsPool,
   validateSpellRecoverySelections,
 } from "@/lib/dnd/mechanical-features";
+import { deriveGrantedFeatures, type GrantedFeature } from "@/lib/character/feature-derivation";
 import { getAllCharacterActions } from "@/lib/dnd/character-actions";
 import { findLayOnHandsAction } from "@/lib/combat/combat-mechanical-actions";
 import type { CharacterData } from "@/lib/schemas/character";
+import type { PhbClass } from "@/lib/dnd/phb/types";
 
 function wizardData(overrides: Partial<CharacterData> = {}): CharacterData {
   return {
@@ -398,5 +404,122 @@ describe("mechanical-features", () => {
     assert.equal(result!.paladinData.combat.currentHp, 15);
     assert.equal(getLayOnHandsPoolRemaining(result!.paladinData), 5);
     assert.equal(result!.paladinData, result!.targetData);
+  });
+
+  it("resolves rage uses from catalog mechanics on PHB barbarian", () => {
+    const barbarian = wizardData({
+      basicInfo: { ...wizardData().basicInfo, classes: ["Barbarian"], xp: 6500 },
+      featureUseState: { [RAGE_ID]: { current: 1 } },
+    });
+    const resolved = getResolvedMechanicalFeature(barbarian, RAGE_ID);
+    assert.ok(resolved);
+    assert.equal(resolved!.kind, "uses");
+    assert.equal(resolved!.source, "catalog");
+    assert.equal(resolved!.maxValue({ level: 5, data: barbarian }), 2);
+    assert.equal(getMechanicalFeatureCurrent(barbarian, RAGE_ID), 1);
+  });
+
+  it("supports homebrew uses feature from catalog-only class JSON", () => {
+    const homebrewClass: PhbClass = {
+      id: "warlord",
+      name: "Warlord",
+      hitDie: 10,
+      savingThrows: ["str", "con"],
+      skillChoiceCount: 2,
+      skillOptions: ["athletics", "intimidation"],
+      armorProficiencies: ["light armor"],
+      weaponProficiencies: ["simple weapons"],
+      toolProficiencies: [],
+      fixedEquipment: [],
+      equipmentChoices: [],
+      startingGold: { dice: 4, sides: 4, multiplier: 10 },
+      subclassLevel: 3,
+      subclasses: [],
+      features: [
+        {
+          name: "Battle Cry",
+          slug: "battle-cry",
+          description: "Shout to inspire allies. 3 uses per long rest.",
+          mechanics: {
+            kind: "uses",
+            max: 3,
+            restReset: "long",
+            usesAction: true,
+            actionCost: "bonus-action",
+          },
+        },
+      ],
+    };
+    const catalogs = { classes: [homebrewClass] };
+    const data = wizardData({
+      basicInfo: { ...wizardData().basicInfo, classes: ["Warlord"], xp: 6500 },
+      featureUseState: { "granted:class:battle-cry": { current: 2 } },
+    });
+    const granted = deriveGrantedFeatures(data, catalogs);
+    const battleCry = granted.find((f) => f.id === "granted:class:battle-cry") as
+      | GrantedFeature
+      | undefined;
+    assert.ok(battleCry);
+    assert.equal(battleCry!.catalogMechanics?.kind, "uses");
+
+    const enriched = enrichMechanicalFeature(battleCry, data, catalogs);
+    assert.equal(enriched.uses?.max, 3);
+    assert.equal(enriched.uses?.current, 2);
+
+    const actions = deriveMechanicalFeatureActions(data, catalogs);
+    const action = actions.find((a) => a.id === "feature:granted:class:battle-cry");
+    assert.ok(action);
+    assert.equal(action!.cost, "bonus-action");
+    assert.deepEqual(action!.uses, { current: 2, max: 3 });
+  });
+
+  it("supports homebrew hp-pool feature from catalog-only class JSON", () => {
+    const homebrewClass: PhbClass = {
+      id: "blood-knight",
+      name: "Blood Knight",
+      hitDie: 10,
+      savingThrows: ["str", "con"],
+      skillChoiceCount: 2,
+      skillOptions: ["athletics", "intimidation"],
+      armorProficiencies: ["light armor"],
+      weaponProficiencies: ["simple weapons"],
+      toolProficiencies: [],
+      fixedEquipment: [],
+      equipmentChoices: [],
+      startingGold: { dice: 4, sides: 4, multiplier: 10 },
+      subclassLevel: 3,
+      subclasses: [],
+      features: [
+        {
+          name: "Sanguine Gift",
+          slug: "sanguine-gift",
+          description: "Touch an ally to restore HP from a pool.",
+          mechanics: {
+            kind: "hp-pool",
+            restReset: "long",
+            maxFormula: "level",
+            usesAction: true,
+            actionCost: "action",
+            heal: { touchRangeFt: 5, targets: "allies-and-self" },
+          },
+        },
+      ],
+    };
+    const catalogs = { classes: [homebrewClass] };
+    const data = wizardData({
+      basicInfo: { ...wizardData().basicInfo, classes: ["Blood Knight"], xp: 6500 },
+      featureUseState: { "granted:class:sanguine-gift": { current: 3 } },
+    });
+    const featureId = "granted:class:sanguine-gift";
+    const resolved = getResolvedMechanicalFeature(data, featureId, catalogs);
+    assert.ok(resolved);
+    assert.equal(resolved!.kind, "hp-pool");
+    assert.equal(resolved!.source, "catalog");
+    assert.equal(resolved!.maxValue({ level: 5, data }), 5);
+
+    const actions = deriveMechanicalFeatureActions(data, catalogs);
+    const action = actions.find((a) => a.id === `feature:${featureId}`);
+    assert.ok(action);
+    assert.deepEqual(action!.uses, { current: 3, max: 5 });
   });
 });

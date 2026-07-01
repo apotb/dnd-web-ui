@@ -1,4 +1,5 @@
 import type { AbilityKey, SkillKey } from "@/lib/schemas/character";
+import type { CatalogFeatureEntry } from "@/lib/dnd/catalog-feature-mechanics";
 
 export type RacialAbilityBonus =
   | { kind: "fixed"; bonuses: Partial<Record<AbilityKey, number>> }
@@ -23,7 +24,7 @@ export interface PhbSpecies {
   toolProficiencies?: string[];
   weaponProficiencies?: string[];
   armorProficiencies?: string[];
-  traits: { name: string; description: string }[];
+  traits: CatalogFeatureEntry[];
   /** Pick N weapons from the items catalog (defaults to martial). */
   weaponChoices?: {
     count: number;
@@ -90,7 +91,7 @@ export interface PhbBackground {
 export interface PhbSubclass {
   id: string;
   name: string;
-  features: { name: string; description: string }[];
+  features: CatalogFeatureEntry[];
 }
 
 export interface EquipmentOption {
@@ -128,7 +129,7 @@ export interface PhbClass {
     ritual?: boolean;
     spellListId: string;
   };
-  features: { name: string; description: string }[];
+  features: CatalogFeatureEntry[];
 }
 
 export interface PhbSpell {

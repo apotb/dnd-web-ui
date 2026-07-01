@@ -8,10 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { CatalogFeaturesEditor } from "@/components/admin/catalog-features-editor";
 import {
   upsertSpeciesEntry,
   deleteSpeciesEntry,
 } from "@/lib/content/catalog";
+import type { CatalogFeatureEntry } from "@/lib/dnd/catalog-feature-mechanics";
 
 interface SpeciesRow {
   slug: string;
@@ -31,27 +33,45 @@ export function SpeciesManager({ entries }: { entries: SpeciesRow[] }) {
   const [filter, setFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editRow, setEditRow] = useState<SpeciesRow | null>(null);
-  const [form, setForm] = useState({ slug: "", name: "", source: "PHB", jsonData: "{}" });
+  const [form, setForm] = useState({
+    slug: "",
+    name: "",
+    source: "PHB",
+    jsonData: "{}",
+    traits: [] as CatalogFeatureEntry[],
+  });
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function openCreate() {
     setEditRow(null);
-    setForm({ slug: "", name: "", source: "PHB", jsonData: "{}" });
+    setForm({ slug: "", name: "", source: "PHB", jsonData: "{}", traits: [] });
     setFormError(null);
     setDialogOpen(true);
   }
 
   function openEdit(row: SpeciesRow) {
     setEditRow(row);
-    setForm({ slug: row.slug, name: row.name, source: row.source, jsonData: JSON.stringify(row.extra, null, 2) });
+    const { traits, ...rest } = row.extra;
+    setForm({
+      slug: row.slug,
+      name: row.name,
+      source: row.source,
+      jsonData: JSON.stringify(rest, null, 2),
+      traits: Array.isArray(traits) ? (traits as CatalogFeatureEntry[]) : [],
+    });
     setFormError(null);
     setDialogOpen(true);
   }
 
   function handleSave() {
     let data: unknown;
-    try { data = JSON.parse(form.jsonData || "{}"); } catch { setFormError("Invalid JSON in data field."); return; }
+    try {
+      data = { ...JSON.parse(form.jsonData || "{}"), traits: form.traits };
+    } catch {
+      setFormError("Invalid JSON in data field.");
+      return;
+    }
     startTransition(async () => {
       const slug = form.slug || slugify(form.name);
       const result = await upsertSpeciesEntry(slug, form.name.trim(), form.source.trim() || "Custom", data);
@@ -94,7 +114,7 @@ export function SpeciesManager({ entries }: { entries: SpeciesRow[] }) {
           <span className="pr-4">Source</span>
           <span />
         </div>
-        {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No species found. Click "Seed from PHB" to populate.</p>}
+        {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No species found.</p>}
         {filtered.map((row, idx) => (
           <div key={row.slug} className={`grid grid-cols-[1fr_80px_160px] items-center gap-0 px-4 py-2.5 ${idx !== filtered.length - 1 ? "border-b" : ""}`}>
             <div className="min-w-0">
@@ -130,9 +150,14 @@ export function SpeciesManager({ entries }: { entries: SpeciesRow[] }) {
               <Label>Source</Label>
               <Input value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))} placeholder="PHB, Custom…" />
             </div>
+            <CatalogFeaturesEditor
+              label="Species traits"
+              features={form.traits}
+              onChange={(traits) => setForm((f) => ({ ...f, traits }))}
+            />
             <div className="space-y-1.5">
-              <Label>Data (JSON — PhbSpecies shape)</Label>
-              <p className="text-xs text-muted-foreground">{`{ "size": "Medium", "speed": 30, "abilityBonus": { "kind": "fixed", "bonuses": { "str": 2 } }, "languages": ["Common"], "traits": [...] }`}</p>
+              <Label>Other data (JSON — PhbSpecies without traits)</Label>
+              <p className="text-xs text-muted-foreground">{`{ "size": "Medium", "speed": 30, "abilityBonus": { "kind": "fixed", "bonuses": { "str": 2 } }, "languages": ["Common"] }`}</p>
               <Textarea rows={10} className="font-mono text-xs" value={form.jsonData} onChange={(e) => setForm((f) => ({ ...f, jsonData: e.target.value }))} />
             </div>
             {formError && <p className="text-sm text-destructive">{formError}</p>}

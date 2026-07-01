@@ -17,6 +17,10 @@ import type {
 import { ALL_SPECIES, normalizePhbSpecies } from "@/lib/dnd/phb/species";
 import { ALL_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
+import {
+  mergeClassesWithPhb,
+  mergeSpeciesListWithPhb,
+} from "@/lib/content/catalog-merge";
 import { ALL_SPELLS, SPELL_LISTS } from "@/lib/dnd/phb/spells";
 import { PHB_FEATS } from "@/lib/dnd/phb/feats";
 import { ALL_LANGUAGES } from "@/lib/dnd/phb/languages";
@@ -171,14 +175,16 @@ export async function fetchCatalogSpecies(): Promise<PhbSpecies[]> {
   const supabase = await createServerClient();
   const { data } = await supabase.from("species").select("*").order("name");
   const rows = (data ?? []).map(rowToSpecies).filter(Boolean) as PhbSpecies[];
-  return rows.length > 0 ? rows : ALL_SPECIES;
+  if (rows.length === 0) return ALL_SPECIES;
+  return mergeSpeciesListWithPhb(rows, ALL_SPECIES);
 }
 
 export async function fetchCatalogClasses(): Promise<PhbClass[]> {
   const supabase = await createServerClient();
   const { data } = await supabase.from("classes").select("*").order("name");
   const rows = (data ?? []).map(rowToClass).filter(Boolean) as PhbClass[];
-  return rows.length > 0 ? rows : PHB_CLASSES;
+  if (rows.length === 0) return PHB_CLASSES;
+  return mergeClassesWithPhb(rows, PHB_CLASSES);
 }
 
 export async function fetchCatalogBackgrounds(): Promise<PhbBackground[]> {

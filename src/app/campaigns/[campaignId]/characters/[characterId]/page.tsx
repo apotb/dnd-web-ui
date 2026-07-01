@@ -34,7 +34,7 @@ export default async function CharacterDetailPage({
     parseCharacterRow(row as Character, access.isDm)
   );
   const combatState = parseCombatState(campaign?.combat_state ?? {});
-  const layOnHandsCombatPreferred = combatState.tokens.some(
+  const hpPoolCombatPreferred = combatState.tokens.some(
     (token) =>
       token.kind === "party" &&
       token.placed &&
@@ -65,7 +65,7 @@ export default async function CharacterDetailPage({
             initialWorldData={initialWorldData}
             ownedCharacterId={access.ownedCharacter?.id ?? null}
             initialPartyCharacters={initialPartyCharacters}
-            layOnHandsCombatPreferred={layOnHandsCombatPreferred}
+            hpPoolCombatPreferred={hpPoolCombatPreferred}
           />
         </section>
       </>

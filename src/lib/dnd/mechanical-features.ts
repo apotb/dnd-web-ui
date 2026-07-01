@@ -4,7 +4,13 @@ import {
   syncCombatDerivedStats,
 } from "@/lib/character/combat-derivation";
 import type { GrantedFeature } from "@/lib/character/feature-derivation";
+import { deriveGrantedFeatures } from "@/lib/character/feature-derivation";
 import type { FeatureCatalogs } from "@/lib/character/feature-choices";
+import {
+  featureActionId,
+  resolveMechanicsFromCatalog,
+  type ResolvedMechanicalFeature,
+} from "@/lib/dnd/catalog-feature-mechanics";
 import { findSubclassByName } from "@/lib/content/catalog-tooltip";
 import { abilityModifier } from "@/lib/dnd/calculations";
 import { removeConditionSlugs } from "@/lib/dnd/conditions";
@@ -206,6 +212,98 @@ export function getMechanicalFeatureDef(
   return MECHANICAL_FEATURES[featureId];
 }
 
+export function buildMechanicalFeatureContext(
+  data: CharacterData,
+  catalogs: FeatureCatalogs = {}
+): MechanicalFeatureContext {
+  return buildContext(data, catalogs);
+}
+
+export function codeDefToResolved(def: MechanicalFeatureDef): ResolvedMechanicalFeature {
+  return {
+    id: def.id,
+    kind: def.kind,
+    restReset: def.restReset,
+    maxValue: (ctx) => def.maxValue(ctx as MechanicalFeatureContext),
+    usesAction: def.usesAction ?? false,
+    actionCost: def.actionCost ?? "action",
+    actionName: def.actionName ?? "Feature",
+    actionDescription: def.actionDescription ?? "",
+    hpPool:
+      def.kind === "hp-pool"
+        ? {
+            cureCost: LAY_ON_HANDS_CURE_COST,
+            cureConditions: ["poisoned"],
+            touchRangeFt: 5,
+          }
+        : undefined,
+    source: "code",
+  };
+}
+
+export function resolveFeatureMechanics(
+  granted: GrantedFeature,
+  ctx: MechanicalFeatureContext
+): ResolvedMechanicalFeature | null {
+  if (granted.catalogMechanics) {
+    return resolveMechanicsFromCatalog(
+      granted.id,
+      {
+        name: granted.name,
+        description: granted.description,
+        mechanics: granted.catalogMechanics,
+      },
+      granted.catalogMechanics
+    );
+  }
+
+  const codeDef = MECHANICAL_FEATURES[granted.id];
+  if (codeDef && codeDef.qualifies(ctx)) {
+    return codeDefToResolved(codeDef);
+  }
+
+  return null;
+}
+
+export function listResolvedMechanicalFeatures(
+  data: CharacterData,
+  catalogs?: FeatureCatalogs
+): ResolvedMechanicalFeature[] {
+  const ctx = buildContext(data, catalogs);
+  const granted = deriveGrantedFeatures(data, catalogs);
+  const seen = new Set<string>();
+  const result: ResolvedMechanicalFeature[] = [];
+
+  for (const feature of granted) {
+    if (!feature.locked) continue;
+    const resolved = resolveFeatureMechanics(feature, ctx);
+    if (!resolved) continue;
+    if (seen.has(resolved.id)) continue;
+    seen.add(resolved.id);
+    result.push(resolved);
+  }
+
+  for (const def of Object.values(MECHANICAL_FEATURES)) {
+    if (seen.has(def.id)) continue;
+    if (!def.qualifies(ctx)) continue;
+    seen.add(def.id);
+    result.push(codeDefToResolved(def));
+  }
+
+  return result;
+}
+
+export function getResolvedMechanicalFeature(
+  data: CharacterData,
+  featureId: string,
+  catalogs?: FeatureCatalogs
+): ResolvedMechanicalFeature | null {
+  return (
+    listResolvedMechanicalFeatures(data, catalogs).find((entry) => entry.id === featureId) ??
+    null
+  );
+}
+
 export function listQualifiedMechanicalFeatures(
   data: CharacterData,
   catalogs?: FeatureCatalogs
@@ -219,9 +317,7 @@ export function mechanicalFeatureQualifies(
   featureId: string,
   catalogs?: FeatureCatalogs
 ): boolean {
-  const def = getMechanicalFeatureDef(featureId);
-  if (!def) return false;
-  return def.qualifies(buildContext(data, catalogs));
+  return getResolvedMechanicalFeature(data, featureId, catalogs) != null;
 }
 
 export function getEffectiveMaxHp(
@@ -248,6 +344,15 @@ export function canUseSecondWind(
   return data.combat.currentHp < getEffectiveMaxHp(data, catalogs);
 }
 
+export function getMechanicalFeatureMaxForResolved(
+  resolved: ResolvedMechanicalFeature,
+  data: CharacterData,
+  catalogs?: FeatureCatalogs
+): number {
+  const ctx = buildContext(data, catalogs);
+  return resolved.maxValue(ctx);
+}
+
 export function getMechanicalFeatureMax(
   def: MechanicalFeatureDef,
   data: CharacterData,
@@ -263,11 +368,13 @@ export function getMechanicalFeatureCurrent(
   featureId: string,
   catalogs?: FeatureCatalogs
 ): number {
-  const def = getMechanicalFeatureDef(featureId);
-  if (!def) return 0;
+  const resolved = getResolvedMechanicalFeature(data, featureId, catalogs);
+  if (!resolved) return 0;
   const ctx = buildContext(data, catalogs);
-  if (!def.qualifies(ctx)) return 0;
-  const max = def.maxValue(ctx);
+  const max = resolved.maxValue(ctx);
+  if (max <= 0 && resolved.kind !== "hp-pool" && resolved.kind !== "uses") {
+    return 0;
+  }
   const stored = data.featureUseState?.[featureId]?.current;
   return stored !== undefined ? Math.min(stored, max) : max;
 }
@@ -278,9 +385,9 @@ function setMechanicalFeatureCurrent(
   current: number,
   catalogs?: FeatureCatalogs
 ): CharacterData {
-  const def = getMechanicalFeatureDef(featureId);
-  if (!def) return data;
-  const max = getMechanicalFeatureMax(def, data, catalogs);
+  const resolved = getResolvedMechanicalFeature(data, featureId, catalogs);
+  if (!resolved) return data;
+  const max = getMechanicalFeatureMaxForResolved(resolved, data, catalogs);
   const clamped = Math.max(0, Math.min(max, current));
   return {
     ...data,
@@ -296,16 +403,27 @@ export function enrichMechanicalFeature(
   data: CharacterData,
   catalogs?: FeatureCatalogs
 ): GrantedFeature {
-  const def = getMechanicalFeatureDef(feature.id);
-  if (!def) return feature;
   const ctx = buildContext(data, catalogs);
-  if (!def.qualifies(ctx)) return feature;
+  const resolved = resolveFeatureMechanics(feature, ctx);
+  if (!resolved) return feature;
+  if (resolved.kind !== "uses" && resolved.kind !== "hp-pool") {
+    if (resolved.kind === "short-rest-slots" || resolved.kind === "short-rest-heal") {
+      const max = resolved.maxValue(ctx);
+      const current = getMechanicalFeatureCurrent(data, feature.id, catalogs);
+      return {
+        ...feature,
+        restReset: resolved.restReset,
+        uses: { max, current },
+      };
+    }
+    return feature;
+  }
 
-  const max = def.maxValue(ctx);
+  const max = resolved.maxValue(ctx);
   const current = getMechanicalFeatureCurrent(data, feature.id, catalogs);
   return {
     ...feature,
-    restReset: def.restReset,
+    restReset: resolved.restReset,
     uses: { max, current },
   };
 }
@@ -316,10 +434,8 @@ export function adjustMechanicalFeatureUse(
   delta: number,
   catalogs?: FeatureCatalogs
 ): CharacterData {
-  const def = getMechanicalFeatureDef(featureId);
-  if (!def || delta === 0) return data;
-  const ctx = buildContext(data, catalogs);
-  if (!def.qualifies(ctx)) return data;
+  if (delta === 0) return data;
+  if (!getResolvedMechanicalFeature(data, featureId, catalogs)) return data;
 
   const current = getMechanicalFeatureCurrent(data, featureId, catalogs);
   return setMechanicalFeatureCurrent(
@@ -338,18 +454,17 @@ export function resetMechanicalFeatureUses(
   const ctx = buildContext(data, catalogs);
   let next = data;
 
-  for (const def of Object.values(MECHANICAL_FEATURES)) {
-    if (!def.qualifies(ctx)) continue;
-    if (restKind === "short" && def.restReset !== "short") continue;
+  for (const resolved of listResolvedMechanicalFeatures(data, catalogs)) {
+    if (restKind === "short" && resolved.restReset !== "short") continue;
     if (
       restKind === "long" &&
-      def.restReset !== "short" &&
-      def.restReset !== "long"
+      resolved.restReset !== "short" &&
+      resolved.restReset !== "long"
     ) {
       continue;
     }
-    const max = def.maxValue(ctx);
-    next = setMechanicalFeatureCurrent(next, def.id, max, catalogs);
+    const max = resolved.maxValue(ctx);
+    next = setMechanicalFeatureCurrent(next, resolved.id, max, catalogs);
   }
 
   return next;
@@ -524,11 +639,43 @@ export function applySecondWind(
   return withUse;
 }
 
+export function getHpPoolRemaining(
+  data: CharacterData,
+  featureId: string,
+  catalogs?: FeatureCatalogs
+): number {
+  const resolved = getResolvedMechanicalFeature(data, featureId, catalogs);
+  if (!resolved || resolved.kind !== "hp-pool") return 0;
+  return getMechanicalFeatureCurrent(data, featureId, catalogs);
+}
+
 export function getLayOnHandsPoolRemaining(
   data: CharacterData,
   catalogs?: FeatureCatalogs
 ): number {
-  return getMechanicalFeatureCurrent(data, LAY_ON_HANDS_ID, catalogs);
+  return getHpPoolRemaining(data, LAY_ON_HANDS_ID, catalogs);
+}
+
+export function spendHpPool(
+  actorData: CharacterData,
+  featureId: string,
+  amount: number,
+  catalogs?: FeatureCatalogs
+): CharacterData {
+  if (amount <= 0) return actorData;
+  const resolved = getResolvedMechanicalFeature(actorData, featureId, catalogs);
+  if (!resolved || resolved.kind !== "hp-pool") return actorData;
+
+  const current = getMechanicalFeatureCurrent(actorData, featureId, catalogs);
+  const spend = Math.min(current, Math.trunc(amount));
+  if (spend <= 0) return actorData;
+
+  return setMechanicalFeatureCurrent(
+    actorData,
+    featureId,
+    current - spend,
+    catalogs
+  );
 }
 
 export function spendLayOnHandsPool(
@@ -536,22 +683,7 @@ export function spendLayOnHandsPool(
   amount: number,
   catalogs?: FeatureCatalogs
 ): CharacterData {
-  const def = getMechanicalFeatureDef(LAY_ON_HANDS_ID);
-  if (!def || amount <= 0) return paladinData;
-
-  const ctx = buildContext(paladinData, catalogs);
-  if (!def.qualifies(ctx)) return paladinData;
-
-  const current = getMechanicalFeatureCurrent(paladinData, LAY_ON_HANDS_ID, catalogs);
-  const spend = Math.min(current, Math.trunc(amount));
-  if (spend <= 0) return paladinData;
-
-  return setMechanicalFeatureCurrent(
-    paladinData,
-    LAY_ON_HANDS_ID,
-    current - spend,
-    catalogs
-  );
+  return spendHpPool(paladinData, LAY_ON_HANDS_ID, amount, catalogs);
 }
 
 export function applyHealingToCharacter(
@@ -570,11 +702,11 @@ export function applyHealingToCharacter(
   };
 }
 
-function targetHasPoisonedCondition(data: CharacterData): boolean {
-  return (data.combat.conditions ?? []).includes("poisoned");
+function targetHasCondition(data: CharacterData, slug: string): boolean {
+  return (data.combat.conditions ?? []).includes(slug);
 }
 
-export function canLayOnHandsHealTarget(
+export function canHpPoolHealTarget(
   targetData: CharacterData,
   amount: number,
   catalogs?: FeatureCatalogs
@@ -584,11 +716,58 @@ export function canLayOnHandsHealTarget(
   return targetData.combat.currentHp < maxHp;
 }
 
+export function canLayOnHandsHealTarget(
+  targetData: CharacterData,
+  amount: number,
+  catalogs?: FeatureCatalogs
+): boolean {
+  return canHpPoolHealTarget(targetData, amount, catalogs);
+}
+
+export function canHpPoolCureTarget(
+  targetData: CharacterData,
+  poolRemaining: number,
+  resolved: ResolvedMechanicalFeature
+): boolean {
+  const cureCost = resolved.hpPool?.cureCost ?? 0;
+  const conditions = resolved.hpPool?.cureConditions ?? [];
+  if (cureCost <= 0 || conditions.length === 0) return false;
+  if (poolRemaining < cureCost) return false;
+  return conditions.some((slug) => targetHasCondition(targetData, slug));
+}
+
 export function canLayOnHandsCureTarget(
   targetData: CharacterData,
   poolRemaining: number
 ): boolean {
-  return poolRemaining >= LAY_ON_HANDS_CURE_COST && targetHasPoisonedCondition(targetData);
+  return (
+    poolRemaining >= LAY_ON_HANDS_CURE_COST && targetHasCondition(targetData, "poisoned")
+  );
+}
+
+export function applyHpPoolCure(
+  actorData: CharacterData,
+  targetData: CharacterData,
+  featureId: string,
+  catalogs?: FeatureCatalogs
+): { actorData: CharacterData; targetData: CharacterData } | null {
+  const resolved = getResolvedMechanicalFeature(actorData, featureId, catalogs);
+  if (!resolved || resolved.kind !== "hp-pool") return null;
+
+  const pool = getHpPoolRemaining(actorData, featureId, catalogs);
+  if (!canHpPoolCureTarget(targetData, pool, resolved)) return null;
+
+  const cureCost = resolved.hpPool?.cureCost ?? 0;
+  const conditions = resolved.hpPool?.cureConditions ?? [];
+  const withPool = spendHpPool(actorData, featureId, cureCost, catalogs);
+  const cured: CharacterData = {
+    ...targetData,
+    combat: {
+      ...targetData.combat,
+      conditions: removeConditionSlugs(targetData.combat.conditions ?? [], conditions),
+    },
+  };
+  return { actorData: withPool, targetData: cured };
 }
 
 export function applyLayOnHandsCure(
@@ -596,36 +775,25 @@ export function applyLayOnHandsCure(
   targetData: CharacterData,
   catalogs?: FeatureCatalogs
 ): { paladinData: CharacterData; targetData: CharacterData } | null {
-  const pool = getLayOnHandsPoolRemaining(paladinData, catalogs);
-  if (!canLayOnHandsCureTarget(targetData, pool)) return null;
-
-  const withPool = spendLayOnHandsPool(
-    paladinData,
-    LAY_ON_HANDS_CURE_COST,
-    catalogs
-  );
-  const cured: CharacterData = {
-    ...targetData,
-    combat: {
-      ...targetData.combat,
-      conditions: removeConditionSlugs(targetData.combat.conditions ?? [], [
-        "poisoned",
-      ]),
-    },
-  };
-  return { paladinData: withPool, targetData: cured };
+  const result = applyHpPoolCure(paladinData, targetData, LAY_ON_HANDS_ID, catalogs);
+  if (!result) return null;
+  return { paladinData: result.actorData, targetData: result.targetData };
 }
 
-export type LayOnHandsMode = "heal" | "cure";
+export type HpPoolMode = "heal" | "cure";
 
-export function applyLayOnHandsHeal(
-  paladinData: CharacterData,
+export function applyHpPoolHeal(
+  actorData: CharacterData,
   targetData: CharacterData,
+  featureId: string,
   amount: number,
   catalogs?: FeatureCatalogs
-): { paladinData: CharacterData; targetData: CharacterData; healed: number } | null {
-  const pool = getLayOnHandsPoolRemaining(paladinData, catalogs);
-  if (!canLayOnHandsHealTarget(targetData, amount, catalogs)) return null;
+): { actorData: CharacterData; targetData: CharacterData; healed: number } | null {
+  const resolved = getResolvedMechanicalFeature(actorData, featureId, catalogs);
+  if (!resolved || resolved.kind !== "hp-pool") return null;
+
+  const pool = getHpPoolRemaining(actorData, featureId, catalogs);
+  if (!canHpPoolHealTarget(targetData, amount, catalogs)) return null;
 
   const spend = Math.min(pool, Math.trunc(amount));
   if (spend <= 0) return null;
@@ -635,9 +803,70 @@ export function applyLayOnHandsHeal(
   const effectiveHeal = Math.min(spend, needed);
   if (effectiveHeal <= 0) return null;
 
-  const withPool = spendLayOnHandsPool(paladinData, effectiveHeal, catalogs);
+  const withPool = spendHpPool(actorData, featureId, effectiveHeal, catalogs);
   const healedTarget = applyHealingToCharacter(targetData, effectiveHeal, catalogs);
-  return { paladinData: withPool, targetData: healedTarget, healed: effectiveHeal };
+  return { actorData: withPool, targetData: healedTarget, healed: effectiveHeal };
+}
+
+export function applyLayOnHandsHeal(
+  paladinData: CharacterData,
+  targetData: CharacterData,
+  amount: number,
+  catalogs?: FeatureCatalogs
+): { paladinData: CharacterData; targetData: CharacterData; healed: number } | null {
+  const result = applyHpPoolHeal(paladinData, targetData, LAY_ON_HANDS_ID, amount, catalogs);
+  if (!result) return null;
+  return {
+    paladinData: result.actorData,
+    targetData: result.targetData,
+    healed: result.healed,
+  };
+}
+
+export type LayOnHandsMode = HpPoolMode;
+
+export function applyHpPoolFeature(
+  actorData: CharacterData,
+  targetData: CharacterData,
+  featureId: string,
+  mode: HpPoolMode,
+  healAmount: number,
+  catalogs?: FeatureCatalogs,
+  options?: { selfTarget?: boolean }
+):
+  | { actorData: CharacterData; targetData: CharacterData; poolSpent: number; healed: number }
+  | null {
+  if (mode === "cure") {
+    const result = applyHpPoolCure(actorData, targetData, featureId, catalogs);
+    if (!result) return null;
+    const resolved = getResolvedMechanicalFeature(actorData, featureId, catalogs);
+    const cureCost = resolved?.hpPool?.cureCost ?? 0;
+    const finalized = finalizeHpPoolSelfTarget(
+      result.actorData,
+      result.targetData,
+      options?.selfTarget ?? false
+    );
+    return {
+      actorData: finalized.actorData,
+      targetData: finalized.targetData,
+      poolSpent: cureCost,
+      healed: 0,
+    };
+  }
+
+  const result = applyHpPoolHeal(actorData, targetData, featureId, healAmount, catalogs);
+  if (!result) return null;
+  const finalized = finalizeHpPoolSelfTarget(
+    result.actorData,
+    result.targetData,
+    options?.selfTarget ?? false
+  );
+  return {
+    actorData: finalized.actorData,
+    targetData: finalized.targetData,
+    poolSpent: result.healed,
+    healed: result.healed,
+  };
 }
 
 export function applyLayOnHands(
@@ -650,56 +879,43 @@ export function applyLayOnHands(
 ):
   | { paladinData: CharacterData; targetData: CharacterData; poolSpent: number; healed: number }
   | null {
-  if (mode === "cure") {
-    const result = applyLayOnHandsCure(paladinData, targetData, catalogs);
-    if (!result) return null;
-    const finalized = finalizeLayOnHandsResult(
-      result.paladinData,
-      result.targetData,
-      options?.selfTarget ?? false
-    );
-    return {
-      paladinData: finalized.paladinData,
-      targetData: finalized.targetData,
-      poolSpent: LAY_ON_HANDS_CURE_COST,
-      healed: 0,
-    };
-  }
-
-  const result = applyLayOnHandsHeal(paladinData, targetData, healAmount, catalogs);
-  if (!result) return null;
-  const finalized = finalizeLayOnHandsResult(
-    result.paladinData,
-    result.targetData,
-    options?.selfTarget ?? false
+  const result = applyHpPoolFeature(
+    paladinData,
+    targetData,
+    LAY_ON_HANDS_ID,
+    mode,
+    healAmount,
+    catalogs,
+    options
   );
+  if (!result) return null;
   return {
-    paladinData: finalized.paladinData,
-    targetData: finalized.targetData,
-    poolSpent: result.healed,
+    paladinData: result.actorData,
+    targetData: result.targetData,
+    poolSpent: result.poolSpent,
     healed: result.healed,
   };
 }
 
-function finalizeLayOnHandsResult(
-  paladinData: CharacterData,
+function finalizeHpPoolSelfTarget(
+  actorData: CharacterData,
   targetData: CharacterData,
   selfTarget: boolean
-): { paladinData: CharacterData; targetData: CharacterData } {
+): { actorData: CharacterData; targetData: CharacterData } {
   if (!selfTarget) {
-    return { paladinData, targetData };
+    return { actorData, targetData };
   }
 
   const merged: CharacterData = {
-    ...paladinData,
+    ...actorData,
     combat: {
-      ...paladinData.combat,
+      ...actorData.combat,
       currentHp: targetData.combat.currentHp,
-      conditions: targetData.combat.conditions ?? paladinData.combat.conditions,
+      conditions: targetData.combat.conditions ?? actorData.combat.conditions,
     },
   };
 
-  return { paladinData: merged, targetData: merged };
+  return { actorData: merged, targetData: merged };
 }
 
 function mechanicalFeatureActionSourceLabel(featureId: string): string {
@@ -715,27 +931,27 @@ export function deriveMechanicalFeatureActions(
   data: CharacterData,
   catalogs?: FeatureCatalogs
 ): CharacterActionEntry[] {
+  const ctx = buildContext(data, catalogs);
   const actions: CharacterActionEntry[] = [];
 
-  for (const def of Object.values(MECHANICAL_FEATURES)) {
-    if (!def.usesAction) continue;
-    if (!mechanicalFeatureQualifies(data, def.id, catalogs)) continue;
+  for (const resolved of listResolvedMechanicalFeatures(data, catalogs)) {
+    if (!resolved.usesAction) continue;
 
-    const max = getMechanicalFeatureMax(def, data, catalogs);
-    const current = getMechanicalFeatureCurrent(data, def.id, catalogs);
+    const max = resolved.maxValue(ctx);
+    const current = getMechanicalFeatureCurrent(data, resolved.id, catalogs);
 
     actions.push({
-      id: `feature:${def.id}`,
-      name: def.actionName ?? "Feature",
-      cost: def.actionCost ?? "action",
-      description: def.actionDescription ?? "",
+      id: featureActionId(resolved.id),
+      name: resolved.actionName,
+      cost: resolved.actionCost,
+      description: resolved.actionDescription,
       source: "feature",
-      sourceLabel: mechanicalFeatureActionSourceLabel(def.id),
+      sourceLabel: mechanicalFeatureActionSourceLabel(resolved.id),
       uses:
-        def.kind === "uses" || def.kind === "hp-pool"
+        resolved.kind === "uses" || resolved.kind === "hp-pool"
           ? { current, max }
           : undefined,
-      restReset: def.restReset,
+      restReset: resolved.restReset,
     });
   }
 

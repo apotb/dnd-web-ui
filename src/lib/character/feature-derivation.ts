@@ -1,6 +1,12 @@
 import type { CharacterData, Feature } from "@/lib/schemas/character";
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import {
+  catalogFeatureId,
+  parseCatalogFeatureEntry,
+  type CatalogFeatureEntry,
+  type CatalogFeatureMechanics,
+} from "@/lib/dnd/catalog-feature-mechanics";
+import {
   findBackgroundByName,
   findSpeciesByDisplayName,
   findSubclassByName,
@@ -31,6 +37,7 @@ export { enrichMechanicalFeature } from "@/lib/dnd/mechanical-features";
 export interface GrantedFeature extends Feature {
   source: FeatureSource;
   locked: true;
+  catalogMechanics?: CatalogFeatureMechanics;
 }
 
 export type DerivedFeature = GrantedFeature | ConfigurableGrantedFeature;
@@ -54,18 +61,29 @@ export function isOverriddenClassFeature(
 
 function makeGrantedFeature(
   source: FeatureSource,
-  name: string,
-  description: string,
+  entry: CatalogFeatureEntry | { name: string; description: string },
   restReset: Feature["restReset"] = "none"
 ): GrantedFeature {
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const parsed = parseCatalogFeatureEntry(entry) ?? {
+    name: entry.name,
+    description: entry.description,
+  };
+  const mechanics = parsed.mechanics;
   return {
-    id: `granted:${source}:${slug}`,
-    name,
-    description,
-    usesAction: false,
-    actionCost: "action",
-    restReset,
+    id: catalogFeatureId(source, parsed),
+    name: parsed.name,
+    description: parsed.description,
+    usesAction:
+      mechanics?.kind === "action-only" || (mechanics?.usesAction ?? false),
+    actionCost:
+      mechanics?.kind === "action-only"
+        ? mechanics.actionCost
+        : mechanics?.actionCost ?? "action",
+    restReset:
+      mechanics?.kind === "uses" || mechanics?.kind === "hp-pool"
+        ? mechanics.restReset
+        : restReset,
+    catalogMechanics: mechanics,
     source,
     locked: true,
   };
@@ -108,49 +126,41 @@ export function deriveGrantedFeatures(
 
   species?.traits.forEach((t) => {
     if (species.id === "warforged" && t.name === "Integrated Protection") return;
-    features.push(makeGrantedFeature("species", t.name, t.description));
+    features.push(makeGrantedFeature("species", t));
   });
 
   subspecies?.extras?.forEach((text, index) => {
     features.push(
-      makeGrantedFeature(
-        "species",
-        subspeciesExtraFeatureName(text, subspecies.name, index),
-        text
-      )
+      makeGrantedFeature("species", {
+        name: subspeciesExtraFeatureName(text, subspecies.name, index),
+        description: text,
+      })
     );
   });
 
   if (species?.id === "warforged") {
     features.push(
-      makeGrantedFeature(
-        "species",
-        "Integrated Protection",
-        "+1 bonus to Armor Class (included in your AC)."
-      )
+      makeGrantedFeature("species", {
+        name: "Integrated Protection",
+        description: "+1 bonus to Armor Class (included in your AC).",
+      })
     );
   }
 
   cls?.features.forEach((f) => {
     if (isOverriddenClassFeature(cls.id, f.name)) return;
-    features.push(makeGrantedFeature("class", f.name, f.description, "long"));
+    features.push(makeGrantedFeature("class", f, "long"));
   });
 
   features.push(...deriveConfigurableFeatures(data, catalogs));
   features.push(...deriveGrantConfigurableFeatures(data, catalogs));
 
   sub?.features.forEach((f) => {
-    features.push(makeGrantedFeature("subclass", f.name, f.description, "long"));
+    features.push(makeGrantedFeature("subclass", f, "long"));
   });
 
   if (background) {
-    features.push(
-      makeGrantedFeature(
-        "background",
-        background.feature.name,
-        background.feature.description
-      )
-    );
+    features.push(makeGrantedFeature("background", background.feature));
   }
 
   const grantFeatures = features.filter(

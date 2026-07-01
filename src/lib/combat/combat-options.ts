@@ -31,13 +31,17 @@ import { getWeaponProperties, type Item } from "@/lib/schemas/item";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { canUseHelpAction, isTokenEngaged } from "@/lib/combat/engagement";
 import { isBattleOver, isTokenOnMapEdge } from "@/lib/combat/battle-over";
-import { getLayOnHandsPoolRemaining, LAY_ON_HANDS_ACTION_ID } from "@/lib/dnd/mechanical-features";
+import { featureIdFromActionId } from "@/lib/dnd/catalog-feature-mechanics";
 import {
-  canShowLayOnHandsOption,
-  formatLayOnHandsCombatSubtitle,
-  formatLayOnHandsCombatTooltip,
-  hasLayOnHandsValidTarget,
-  isLayOnHandsOption,
+  getHpPoolRemaining,
+  getResolvedMechanicalFeature,
+} from "@/lib/dnd/mechanical-features";
+import {
+  canShowHpPoolOption,
+  formatHpPoolCombatSubtitle,
+  formatHpPoolCombatTooltip,
+  hasHpPoolValidTarget,
+  isHpPoolCombatOption,
 } from "@/lib/combat/combat-mechanical-actions";
 import { parseAttackRangeSpec } from "@/lib/combat/targeting";
 import {
@@ -51,7 +55,9 @@ import {
   isTokenRestrictedByEffects,
 } from "@/lib/combat/feature-effects";
 
-export { isLayOnHandsOption } from "@/lib/combat/combat-mechanical-actions";
+export { isHpPoolCombatOption, isLayOnHandsOption } from "@/lib/combat/combat-mechanical-actions";
+
+export type CombatMechanicalKind = "hp-pool";
 
 export type CombatOptionKind =
   | "attack"
@@ -71,6 +77,10 @@ export interface CombatOption {
   attack?: DerivedAttack;
   action?: CharacterActionEntry;
   enemyAction?: EnemyNamedBlock;
+  /** Set for catalog-driven mechanical combat flows (e.g. hp-pool heal). */
+  mechanicalKind?: CombatMechanicalKind;
+  /** Granted feature id for mechanical combat options. */
+  mechanicalFeatureId?: string;
 }
 
 function actionSubtitle(action: CharacterActionEntry): string {
@@ -367,7 +377,8 @@ export function isEmergeFromShellOption(option: CombatOption): boolean {
   return option.action?.id === EMERGE_FROM_SHELL_ACTION_ID;
 }
 
-function buildLayOnHandsOption(
+function buildHpPoolOption(
+  featureId: string,
   character: ParsedCharacter,
   action: CharacterActionEntry,
   token: CombatToken,
@@ -377,9 +388,10 @@ function buildLayOnHandsOption(
   featureCatalogs: FeatureCatalogs,
   battleOver = false
 ): CombatOption | null {
-  if (!canShowLayOnHandsOption(token, turn, battleOver)) return null;
+  if (!canShowHpPoolOption(token, turn, battleOver)) return null;
   if (
-    !hasLayOnHandsValidTarget(
+    !hasHpPoolValidTarget(
+      featureId,
       token,
       character,
       combatState,
@@ -390,15 +402,17 @@ function buildLayOnHandsOption(
     return null;
   }
 
-  const poolRemaining = getLayOnHandsPoolRemaining(character.data, featureCatalogs);
+  const poolRemaining = getHpPoolRemaining(character.data, featureId, featureCatalogs);
 
   return {
     id: `action:${action.id}`,
     name: action.name,
-    subtitle: formatLayOnHandsCombatSubtitle(poolRemaining),
-    tooltip: formatLayOnHandsCombatTooltip(action, poolRemaining),
+    subtitle: formatHpPoolCombatSubtitle(action.cost, poolRemaining),
+    tooltip: formatHpPoolCombatTooltip(action, poolRemaining),
     kind: "action",
     action,
+    mechanicalKind: "hp-pool",
+    mechanicalFeatureId: featureId,
   };
 }
 
@@ -415,24 +429,36 @@ function buildRegisteredFeatureActionOptions(
   if (battleOver || turn.actionUsed || isTokenInShellDefense(token)) return [];
 
   const options: CombatOption[] = [];
+  const seenHpPool = new Set<string>();
 
   for (const action of characterActions) {
-    if (!isRegisteredFeatureEnterAction(action.id)) continue;
-
-    if (action.id === LAY_ON_HANDS_ACTION_ID) {
-      const layOnHands = buildLayOnHandsOption(
-        character,
-        action,
-        token,
-        combatState,
-        partyCharacters,
-        turn,
-        featureCatalogs,
-        battleOver
+    const featureId = featureIdFromActionId(action.id);
+    if (featureId) {
+      const resolved = getResolvedMechanicalFeature(
+        character.data,
+        featureId,
+        featureCatalogs
       );
-      if (layOnHands) options.push(layOnHands);
-      continue;
+      if (resolved?.kind === "hp-pool" && resolved.usesAction) {
+        if (seenHpPool.has(featureId)) continue;
+        seenHpPool.add(featureId);
+        const hpPool = buildHpPoolOption(
+          featureId,
+          character,
+          action,
+          token,
+          combatState,
+          partyCharacters,
+          turn,
+          featureCatalogs,
+          battleOver
+        );
+        if (hpPool) options.push(hpPool);
+        continue;
+      }
     }
+
+    if (!isRegisteredFeatureEnterAction(action.id)) continue;
 
     options.push({
       id: `action:${action.id}`,
@@ -789,6 +815,10 @@ export function isAttackTargetingOption(option: CombatOption): boolean {
   );
 }
 
+export function isHpPoolCombatOptionKind(option: CombatOption): boolean {
+  return option.mechanicalKind === "hp-pool";
+}
+
 export function isImplementedCombatOption(option: CombatOption): boolean {
   return (
     isAttackTargetingOption(option) ||
@@ -800,7 +830,7 @@ export function isImplementedCombatOption(option: CombatOption): boolean {
     isLeaveAreaOption(option) ||
     isShellDefenseEnterOption(option) ||
     isEmergeFromShellOption(option) ||
-    isLayOnHandsOption(option) ||
+    isHpPoolCombatOptionKind(option) ||
     (option.action != null && isRegisteredCombatFeatureAction(option.action.id))
   );
 }

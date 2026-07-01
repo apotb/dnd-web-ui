@@ -6,7 +6,7 @@ import { CharacterDeleteButton } from "@/components/character/character-delete-b
 import { CharacterSheet } from "@/components/character/character-sheet";
 import { JsonImportExport } from "@/components/character/json-import-export";
 import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
-import { LayOnHandsModal } from "@/components/character/lay-on-hands-modal";
+import { HpPoolModal } from "@/components/character/hp-pool-modal";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import { syncCharacterTopLevelFields } from "@/lib/character/utils";
 import type { ParsedCharacter } from "@/lib/character/utils";
@@ -31,7 +31,7 @@ interface CharacterSheetViewerProps {
   initialPartyCharacters?: ParsedCharacter[];
   /** Live party list from a parent that already subscribes to character updates. */
   partyCharacters?: ParsedCharacter[];
-  layOnHandsCombatPreferred?: boolean;
+  hpPoolCombatPreferred?: boolean;
 }
 
 export function CharacterSheetViewer({
@@ -45,7 +45,7 @@ export function CharacterSheetViewer({
   ownedCharacterId = null,
   initialPartyCharacters = [],
   partyCharacters: partyCharactersFromParent,
-  layOnHandsCombatPreferred = false,
+  hpPoolCombatPreferred = false,
 }: CharacterSheetViewerProps) {
   const worldData = useRealtimeWorldData(campaignId, initialWorldData);
   const subscribedPartyCharacters = useRealtimeCharacters(
@@ -68,7 +68,7 @@ export function CharacterSheetViewer({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [layOnHandsOpen, setLayOnHandsOpen] = useState(false);
+  const [hpPoolFeatureId, setHpPoolFeatureId] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataRef = useRef(data);
   const saveInFlightRef = useRef(false);
@@ -199,12 +199,12 @@ export function CharacterSheetViewer({
     await persistNow(next);
   }
 
-  async function handleLayOnHandsApply(result: {
-    paladinData: CharacterData;
+  async function handleHpPoolApply(result: {
+    actorData: CharacterData;
     targetId: string;
     targetData: CharacterData;
   }) {
-    await persistNow(result.paladinData);
+    await persistNow(result.actorData);
     if (result.targetId !== character.id) {
       const target = partyCharacters.find((entry) => entry.id === result.targetId);
       if (target) {
@@ -313,19 +313,18 @@ export function CharacterSheetViewer({
         onPersistPortrait={canEdit ? persistPortrait : undefined}
         campaignDate={campaignDate}
         canRest={canEdit}
-        layOnHandsCombatPreferred={layOnHandsCombatPreferred}
-        onUseLayOnHands={
-          canEdit ? () => setLayOnHandsOpen(true) : undefined
-        }
+        hpPoolCombatPreferred={hpPoolCombatPreferred}
+        onUseHpPool={canEdit ? (featureId) => setHpPoolFeatureId(featureId) : undefined}
       />
-      {mounted && layOnHandsOpen
+      {mounted && hpPoolFeatureId
         ? createPortal(
-            <LayOnHandsModal
-              paladin={{ ...character, data }}
+            <HpPoolModal
+              featureId={hpPoolFeatureId}
+              actor={{ ...character, data }}
               partyCharacters={partyCharacters}
               featureCatalogs={featureCatalogs}
-              onApply={handleLayOnHandsApply}
-              onClose={() => setLayOnHandsOpen(false)}
+              onApply={handleHpPoolApply}
+              onClose={() => setHpPoolFeatureId(null)}
             />,
             document.body
           )

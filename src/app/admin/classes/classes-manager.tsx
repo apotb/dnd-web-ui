@@ -8,7 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { CatalogFeaturesEditor } from "@/components/admin/catalog-features-editor";
 import { upsertClassEntry, deleteClassEntry } from "@/lib/content/catalog";
+import type { CatalogFeatureEntry } from "@/lib/dnd/catalog-feature-mechanics";
 import type { ContentEntry } from "../content-manager";
 
 function slugify(name: string) {
@@ -20,13 +22,20 @@ export function ClassesManager({ entries }: { entries: ContentEntry[] }) {
   const [filter, setFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editRow, setEditRow] = useState<ContentEntry | null>(null);
-  const [form, setForm] = useState({ slug: "", name: "", source: "PHB", hitDie: 8, jsonData: "{}" });
+  const [form, setForm] = useState({
+    slug: "",
+    name: "",
+    source: "PHB",
+    hitDie: 8,
+    jsonData: "{}",
+    features: [] as CatalogFeatureEntry[],
+  });
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function openCreate() {
     setEditRow(null);
-    setForm({ slug: "", name: "", source: "PHB", hitDie: 8, jsonData: "{}" });
+    setForm({ slug: "", name: "", source: "PHB", hitDie: 8, jsonData: "{}", features: [] });
     setFormError(null);
     setDialogOpen(true);
   }
@@ -34,15 +43,27 @@ export function ClassesManager({ entries }: { entries: ContentEntry[] }) {
   function openEdit(row: ContentEntry) {
     setEditRow(row);
     const hitDie = (row.extra?.hitDie as number) ?? 8;
-    const { hitDie: _hd, ...rest } = row.extra ?? {};
-    setForm({ slug: row.slug, name: row.name, source: row.source, hitDie, jsonData: JSON.stringify(rest, null, 2) });
+    const { hitDie: _hd, features, ...rest } = row.extra ?? {};
+    setForm({
+      slug: row.slug,
+      name: row.name,
+      source: row.source,
+      hitDie,
+      jsonData: JSON.stringify(rest, null, 2),
+      features: Array.isArray(features) ? (features as CatalogFeatureEntry[]) : [],
+    });
     setFormError(null);
     setDialogOpen(true);
   }
 
   function handleSave() {
     let data: unknown;
-    try { data = JSON.parse(form.jsonData || "{}"); } catch { setFormError("Invalid JSON."); return; }
+    try {
+      data = { ...JSON.parse(form.jsonData || "{}"), features: form.features };
+    } catch {
+      setFormError("Invalid JSON.");
+      return;
+    }
     startTransition(async () => {
       const slug = form.slug || slugify(form.name);
       const result = await upsertClassEntry(slug, form.name.trim(), form.hitDie, form.source.trim() || "Custom", data);
@@ -86,7 +107,7 @@ export function ClassesManager({ entries }: { entries: ContentEntry[] }) {
           <span className="pr-4">Source</span>
           <span />
         </div>
-        {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No classes found. Click "Seed from PHB" to populate.</p>}
+        {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No classes found.</p>}
         {filtered.map((row, idx) => (
           <div key={row.slug} className={`grid grid-cols-[1fr_80px_80px_160px] items-center gap-0 px-4 py-2.5 ${idx !== filtered.length - 1 ? "border-b" : ""}`}>
             <div className="min-w-0">
@@ -129,9 +150,14 @@ export function ClassesManager({ entries }: { entries: ContentEntry[] }) {
                 <Input value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))} placeholder="PHB, Custom…" />
               </div>
             </div>
+            <CatalogFeaturesEditor
+              label="Class features"
+              features={form.features}
+              onChange={(features) => setForm((f) => ({ ...f, features }))}
+            />
             <div className="space-y-1.5">
-              <Label>Data (JSON — PhbClass shape)</Label>
-              <p className="text-xs text-muted-foreground">{`{ "savingThrows": ["str","con"], "skillChoiceCount": 2, "skillOptions": [...], "fixedEquipment": [...], "equipmentChoices": [...], "subclasses": [...], "features": [...] }`}</p>
+              <Label>Other data (JSON — PhbClass without features)</Label>
+              <p className="text-xs text-muted-foreground">{`{ "savingThrows": ["str","con"], "skillChoiceCount": 2, "skillOptions": [...], "fixedEquipment": [...], "equipmentChoices": [...], "subclasses": [...] }`}</p>
               <Textarea rows={10} className="font-mono text-xs" value={form.jsonData} onChange={(e) => setForm((f) => ({ ...f, jsonData: e.target.value }))} />
             </div>
             {formError && <p className="text-sm text-destructive">{formError}</p>}

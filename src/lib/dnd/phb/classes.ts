@@ -49,7 +49,17 @@ export const PHB_CLASSES: PhbClass[] = [
       },
     ],
     features: [
-      { name: "Rage", description: "2 rages per long rest. +2 damage, advantage on Str checks/saves, resistance to bludgeoning/piercing/slashing." },
+      {
+        name: "Rage",
+        slug: "rage",
+        description:
+          "2 rages per long rest. +2 damage, advantage on Str checks/saves, resistance to bludgeoning/piercing/slashing.",
+        mechanics: {
+          kind: "uses",
+          max: 2,
+          restReset: "long",
+        },
+      },
       { name: "Unarmored Defense", description: "AC = 10 + Dex + Con when not wearing armor." },
     ],
   },
@@ -129,7 +139,16 @@ export const PHB_CLASSES: PhbClass[] = [
       spellListId: "bard",
     },
     features: [
-      { name: "Bardic Inspiration", description: "d6 die, number of uses = Cha mod (min 1), recharge on long rest." },
+      {
+        name: "Bardic Inspiration",
+        slug: "bardic-inspiration",
+        description: "d6 die, number of uses = Cha mod (min 1), recharge on long rest.",
+        mechanics: {
+          kind: "uses",
+          max: "chaMod",
+          restReset: "long",
+        },
+      },
       { name: "Spellcasting", description: "Charisma-based spellcasting." },
     ],
   },
@@ -408,8 +427,18 @@ export const PHB_CLASSES: PhbClass[] = [
       { name: "Divine Sense", description: "Detect celestials, fiends, and undead within 60 ft." },
       {
         name: "Lay on Hands",
+        slug: "lay-on-hands",
         description:
           "As an action, touch a creature to restore HP from a pool of 5 × paladin level, or spend 5 pool HP to cure one poison or disease.",
+        mechanics: {
+          kind: "hp-pool",
+          restReset: "long",
+          maxFormula: "5 * level",
+          usesAction: true,
+          actionCost: "action",
+          heal: { touchRangeFt: 5, targets: "allies-and-self" },
+          cure: { cost: 5, conditions: ["poisoned"] },
+        },
       },
     ],
   },
@@ -580,7 +609,7 @@ export const PHB_CLASSES: PhbClass[] = [
     subclassLevel: 1,
     subclasses: [
       { id: "draconic", name: "Draconic Bloodline", features: [{ name: "Dragon Ancestor", description: "Choose dragon type; draconic resilience and elemental affinity." }] },
-      { id: "wild-magic", name: "Wild Magic", features: [{ name: "Wild Magic Surge", description: "Roll on Wild Magic table after casting a sorcerer spell." }, { name: "Tides of Chaos", description: "Gain advantage once per long rest; DM may trigger surge." }] },
+      { id: "wild-magic", name: "Wild Magic", features: [{ name: "Wild Magic Surge", description: "Roll on Wild Magic table after casting a sorcerer spell." }, { name: "Tides of Chaos", slug: "tides-of-chaos", description: "Gain advantage once per long rest; DM may trigger surge.", mechanics: { kind: "uses", max: 1, restReset: "long" } }] },
     ],
     spellcasting: {
       ability: "cha",

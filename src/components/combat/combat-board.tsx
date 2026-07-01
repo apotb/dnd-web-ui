@@ -47,11 +47,11 @@ import { getCharacterPortraitUrl } from "@/lib/character/portrait-storage";
 import { preloadImageUrls } from "@/lib/image-preload";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import {
-  applyLayOnHands,
+  applyHpPoolFeature,
   getEffectiveMaxHp,
-  type LayOnHandsMode,
+  type HpPoolMode,
 } from "@/lib/dnd/mechanical-features";
-import type { LayOnHandsCombatTarget } from "@/lib/combat/combat-mechanical-actions";
+import type { HpPoolCombatTarget } from "@/lib/combat/combat-mechanical-actions";
 import { speciesSubtitleLabel } from "@/lib/content/catalog-tooltip";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import {
@@ -92,7 +92,7 @@ import { CombatCollisionOverlay } from "@/components/combat/combat-collision-ove
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
 import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
 import { CombatShellDefenseConfirmModal } from "@/components/combat/combat-shell-defense-confirm-modal";
-import { CombatLayOnHandsModal } from "@/components/combat/combat-lay-on-hands-modal";
+import { CombatHpPoolModal } from "@/components/combat/combat-hp-pool-modal";
 import { CombatOtherActionsModal } from "@/components/combat/combat-other-actions-modal";
 import { CombatOpportunityAttackModal } from "@/components/combat/combat-opportunity-attack-modal";
 import { CombatOpportunityAttackPanel } from "@/components/combat/combat-opportunity-attack-panel";
@@ -117,8 +117,8 @@ import {
   isDisengageActionOption,
   isEmergeFromShellOption,
   isHelpActionOption,
+  isHpPoolCombatOptionKind,
   isImplementedCombatOption,
-  isLayOnHandsOption,
   isShellDefenseEnterOption,
   isUseObjectActionOption,
   COMBAT_USE_OBJECT_OPTION_ID,
@@ -573,7 +573,7 @@ export function CombatBoard({
     useState<ReachableDestination | null>(null);
   const [pendingDashActionConfirm, setPendingDashActionConfirm] = useState(false);
   const [pendingShellDefenseConfirm, setPendingShellDefenseConfirm] = useState(false);
-  const [pendingLayOnHands, setPendingLayOnHands] = useState(false);
+  const [pendingHpPoolFeatureId, setPendingHpPoolFeatureId] = useState<string | null>(null);
   const [pendingOtherActionsConfirm, setPendingOtherActionsConfirm] = useState(false);
   const [pendingOpportunityAttackMove, setPendingOpportunityAttackMove] = useState<{
     destination: ReachableDestination;
@@ -1463,9 +1463,9 @@ export function CombatBoard({
       return;
     }
 
-    if (isLayOnHandsOption(option)) {
+    if (isHpPoolCombatOptionKind(option)) {
       if (!actingToken || !actingTokenCharacter || battleOver || actionUsed) return;
-      setPendingLayOnHands(true);
+      setPendingHpPoolFeatureId(option.mechanicalFeatureId ?? null);
       return;
     }
 
@@ -2165,26 +2165,27 @@ export function CombatBoard({
     }
   }
 
-  async function handleConfirmLayOnHands(input: {
-    target: LayOnHandsCombatTarget;
-    mode: LayOnHandsMode;
+  async function handleConfirmHpPool(input: {
+    target: HpPoolCombatTarget;
+    mode: HpPoolMode;
     healAmount: number;
   }) {
-    if (!actingToken || !actingTokenCharacter) return;
+    if (!actingToken || !actingTokenCharacter || !pendingHpPoolFeatureId) return;
 
     const targetToken = input.target.token;
     const targetCharacter = input.target.character;
 
-    const result = applyLayOnHands(
+    const result = applyHpPoolFeature(
       actingTokenCharacter.data,
       targetCharacter.data,
+      pendingHpPoolFeatureId,
       input.mode,
       input.healAmount,
       featureCatalogs,
       { selfTarget: targetCharacter.id === actingTokenCharacter.id }
     );
     if (!result) {
-      showAlert("Lay on Hands could not be applied.");
+      showAlert("Healing pool could not be applied.");
       return;
     }
 
@@ -2206,14 +2207,14 @@ export function CombatBoard({
       return;
     }
 
-    const paladinSave = await saveCharacterData(
+    const actorSave = await saveCharacterData(
       actingTokenCharacter.id,
-      result.paladinData,
+      result.actorData,
       undefined,
       { isDm, originalData: actingTokenCharacter.data }
     );
-    if (paladinSave.error) {
-      showAlert(paladinSave.error);
+    if (actorSave.error) {
+      showAlert(actorSave.error);
       return;
     }
 
@@ -2233,7 +2234,7 @@ export function CombatBoard({
     setLocalCharacters((current) =>
       current.map((entry) => {
         if (entry.id === actingTokenCharacter.id) {
-          return { ...entry, data: result.paladinData };
+          return { ...entry, data: result.actorData };
         }
         if (entry.id === targetCharacter.id) {
           return { ...entry, data: result.targetData };
@@ -2245,6 +2246,8 @@ export function CombatBoard({
     if (isDm) {
       setDraft(next);
     }
+
+    setPendingHpPoolFeatureId(null);
   }
 
   async function handleConfirmOtherActions() {
@@ -4092,15 +4095,16 @@ export function CombatBoard({
           onCancel={() => setPendingShellDefenseConfirm(false)}
         />
       ) : null}
-      {pendingLayOnHands && actingToken && actingTokenCharacter ? (
-        <CombatLayOnHandsModal
+      {pendingHpPoolFeatureId && actingToken && actingTokenCharacter ? (
+        <CombatHpPoolModal
+          featureId={pendingHpPoolFeatureId}
           actorToken={actingToken}
           actorCharacter={actingTokenCharacter}
           combatState={combatState}
           partyCharacters={localCharacters}
           featureCatalogs={featureCatalogs}
-          onConfirm={handleConfirmLayOnHands}
-          onClose={() => setPendingLayOnHands(false)}
+          onConfirm={handleConfirmHpPool}
+          onClose={() => setPendingHpPoolFeatureId(null)}
         />
       ) : null}
       {pendingOtherActionsConfirm ? (

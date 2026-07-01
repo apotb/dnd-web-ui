@@ -1,23 +1,35 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchCatalogSpecies } from "@/lib/content/catalog";
 import { SpeciesManager } from "./species-manager";
 
 export default async function SpeciesPage() {
-  const supabase = await createClient();
-  const { data } = await supabase.from("species").select("slug, name, source, data").order("name");
+  const species = await fetchCatalogSpecies();
 
-  const entries = (data ?? []).map((row) => ({
-    slug: row.slug as string,
-    name: row.name as string,
-    source: row.source as string,
-    extra: row.data as Record<string, unknown>,
-  }));
+  const supabase = await createClient();
+  const { data: sources } = await supabase
+    .from("species")
+    .select("slug, source")
+    .order("name");
+  const sourceBySlug = new Map(
+    (sources ?? []).map((row) => [row.slug as string, row.source as string])
+  );
+
+  const entries = species.map((row) => {
+    const { id, name, ...rest } = row;
+    return {
+      slug: id,
+      name,
+      source: sourceBySlug.get(id) ?? "PHB",
+      extra: rest as Record<string, unknown>,
+    };
+  });
 
   return (
     <div>
       <h2 className="page-title">Species Catalog</h2>
       <p className="retro-note" style={{ marginTop: "12px" }}>
-        Species available in the character creator. The JSON data matches the{" "}
-        <code>PhbSpecies</code> shape (id, name, size, speed, abilityBonus, traits, …).
+        Species available in the character creator. Built-in PHB slugs and mechanics are merged
+        into saved rows automatically.
       </p>
       <SpeciesManager entries={entries} />
     </div>

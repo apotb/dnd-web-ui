@@ -148,7 +148,6 @@ import {
 import {
   adjustMechanicalFeatureUse,
   getMechanicalFeatureDef,
-  LAY_ON_HANDS_ID,
 } from "@/lib/dnd/mechanical-features";
 import { optionLabel } from "@/lib/ui/select-display";
 import { GrantFeatureRow } from "@/components/character/grant-feature-row";
@@ -229,27 +228,30 @@ interface CharacterSheetProps {
   campaignDate?: HarptosDate;
   /** Show short/long rest controls (owner or DM). */
   canRest?: boolean;
-  /** Prefer combat board Lay on Hands while on an active encounter token. */
-  layOnHandsCombatPreferred?: boolean;
-  onUseLayOnHands?: () => void;
+  /** Prefer combat board HP pool features while on an active encounter token. */
+  hpPoolCombatPreferred?: boolean;
+  onUseHpPool?: (featureId: string) => void;
 }
 
 function GrantedFeatureRow({
   feature,
   canAdjust,
   onAdjustUse,
-  onUseLayOnHands,
-  layOnHandsCombatPreferred,
+  onUseHpPool,
+  hpPoolCombatPreferred,
   pendingShortRest,
 }: {
   feature: GrantedFeature;
   canAdjust?: boolean;
   onAdjustUse?: (featureId: string, delta: number) => void;
-  onUseLayOnHands?: () => void;
-  layOnHandsCombatPreferred?: boolean;
+  onUseHpPool?: (featureId: string) => void;
+  hpPoolCombatPreferred?: boolean;
   pendingShortRest?: boolean;
 }) {
-  const mechanical = getMechanicalFeatureDef(feature.id);
+  const codeMechanical = getMechanicalFeatureDef(feature.id);
+  const mechanicsKind = feature.catalogMechanics?.kind ?? codeMechanical?.kind;
+  const isHpPoolFeature = mechanicsKind === "hp-pool";
+  const isUsesFeature = mechanicsKind === "uses";
 
   return (
     <div className="rounded-md border border-dashed bg-muted/30 p-3 space-y-1.5">
@@ -258,7 +260,7 @@ function GrantedFeatureRow({
         <Badge variant="outline" className="text-xs shrink-0">
           {featureSourceLabel(feature.source)}
         </Badge>
-        {mechanical?.kind === "short-rest-slots" && feature.uses ? (
+        {codeMechanical?.kind === "short-rest-slots" && feature.uses ? (
           <Badge
             variant={feature.uses.current > 0 ? "default" : "secondary"}
             className="text-xs shrink-0"
@@ -270,7 +272,7 @@ function GrantedFeatureRow({
               : "Used until long rest"}
           </Badge>
         ) : null}
-        {mechanical?.kind === "short-rest-heal" && feature.uses ? (
+        {codeMechanical?.kind === "short-rest-heal" && feature.uses ? (
           <Badge
             variant={feature.uses.current > 0 ? "default" : "secondary"}
             className="text-xs shrink-0"
@@ -284,7 +286,7 @@ function GrantedFeatureRow({
       <p className="text-sm text-muted-foreground whitespace-pre-wrap">
         {feature.description}
       </p>
-      {feature.uses && mechanical?.kind === "uses" ? (
+      {feature.uses && isUsesFeature ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span>
             Uses: {feature.uses.current}/{feature.uses.max} ({feature.restReset}{" "}
@@ -318,36 +320,36 @@ function GrantedFeatureRow({
           ) : null}
         </div>
       ) : null}
-      {feature.uses && mechanical?.kind === "hp-pool" ? (
+      {feature.uses && isHpPoolFeature ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span>
             Pool: {feature.uses.current}/{feature.uses.max} HP ({feature.restReset}{" "}
             rest)
           </span>
-          {canAdjust && onUseLayOnHands && feature.id === LAY_ON_HANDS_ID ? (
+          {canAdjust && onUseHpPool && isHpPoolFeature ? (
             <Button
               type="button"
               size="sm"
               variant="outline"
               className="h-7 text-xs"
-              disabled={feature.uses.current <= 0 || layOnHandsCombatPreferred}
-              onClick={onUseLayOnHands}
+              disabled={feature.uses.current <= 0 || hpPoolCombatPreferred}
+              onClick={() => onUseHpPool(feature.id)}
               title={
-                layOnHandsCombatPreferred
-                  ? "Use Lay on Hands from the combat board during an encounter."
+                hpPoolCombatPreferred
+                  ? "Use this healing pool from the combat board during an encounter."
                   : undefined
               }
             >
-              Use Lay on Hands
+              Use {feature.name}
             </Button>
           ) : null}
         </div>
       ) : null}
       {feature.uses &&
-      mechanical?.kind !== "uses" &&
-      mechanical?.kind !== "hp-pool" &&
-      mechanical?.kind !== "short-rest-slots" &&
-      mechanical?.kind !== "short-rest-heal" ? (
+      !isUsesFeature &&
+      !isHpPoolFeature &&
+      codeMechanical?.kind !== "short-rest-slots" &&
+      codeMechanical?.kind !== "short-rest-heal" ? (
         <p className="text-xs">
           Uses: {feature.uses.current}/{feature.uses.max} ({feature.restReset}{" "}
           rest)
@@ -579,8 +581,8 @@ export function CharacterSheet({
   onPersistPortrait,
   campaignDate,
   canRest = false,
-  layOnHandsCombatPreferred = false,
-  onUseLayOnHands,
+  hpPoolCombatPreferred = false,
+  onUseHpPool,
 }: CharacterSheetProps) {
   const canMutate = editable || canToggleEquipment;
   const canEditAbilities = editable && isDm;
@@ -3244,8 +3246,8 @@ export function CharacterSheet({
                     feature={feature}
                     canAdjust={canAdjustMechanical}
                     onAdjustUse={handleAdjustMechanicalUse}
-                    onUseLayOnHands={onUseLayOnHands}
-                    layOnHandsCombatPreferred={layOnHandsCombatPreferred}
+                    onUseHpPool={onUseHpPool}
+                    hpPoolCombatPreferred={hpPoolCombatPreferred}
                     pendingShortRest={data.combat.pendingShortRest}
                   />
                 )

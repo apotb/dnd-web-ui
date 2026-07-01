@@ -1,6 +1,5 @@
 import type { CharacterActionEntry } from "@/lib/dnd/character-actions";
 import { ACTION_COST_LABELS } from "@/lib/dnd/character-actions";
-import { LAY_ON_HANDS_ACTION_ID } from "@/lib/dnd/mechanical-features";
 import type { AbilityKey } from "@/lib/schemas/character";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { getConditionDisplayName } from "@/lib/dnd/conditions";
@@ -43,9 +42,6 @@ const COMBAT_FEATURE_EFFECTS: Record<string, CombatFeatureEffectDef> = {
   [SHELL_DEFENSE_EFFECT_ID]: SHELL_DEFENSE,
 };
 
-/** Enter actions backed by mechanical features rather than combat token effects. */
-const REGISTERED_MECHANICAL_ENTER_ACTION_IDS = [LAY_ON_HANDS_ACTION_ID] as const;
-
 const EMERGE_FROM_SHELL_ACTION: CharacterActionEntry = {
   id: EMERGE_FROM_SHELL_ACTION_ID,
   name: "Emerge from Shell",
@@ -61,12 +57,9 @@ export function getCombatFeatureEffectDef(effectId: string): CombatFeatureEffect
 }
 
 export function getRegisteredFeatureEnterActionIds(): string[] {
-  return [
-    ...Object.values(COMBAT_FEATURE_EFFECTS)
-      .map((def) => def.enterActionId)
-      .filter((id): id is string => Boolean(id)),
-    ...REGISTERED_MECHANICAL_ENTER_ACTION_IDS,
-  ];
+  return Object.values(COMBAT_FEATURE_EFFECTS)
+    .map((def) => def.enterActionId)
+    .filter((id): id is string => Boolean(id));
 }
 
 export function getRegisteredFeatureExitActionIds(): string[] {
