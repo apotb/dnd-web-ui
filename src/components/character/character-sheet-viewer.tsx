@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CharacterDeleteButton } from "@/components/character/character-delete-button";
 import { CharacterSheet } from "@/components/character/character-sheet";
+import { CreationChoiceEditProvider } from "@/components/character/creation-choice-edit-context";
+import { CreationChoiceUnsavedGuard } from "@/components/character/creation-choice-unsaved-guard";
 import { JsonImportExport } from "@/components/character/json-import-export";
 import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
 import { HpPoolModal } from "@/components/character/hp-pool-modal";
@@ -299,23 +301,26 @@ export function CharacterSheetViewer({
             document.body
           )
         : null}
-      <CharacterSheet
-        data={data}
-        isDm={isDm}
-        editable={canEdit}
-        canToggleEquipment={canEdit}
-        onChange={canEdit ? handleChange : undefined}
-        headerActions={headerActions}
-        classes={classes}
-        campaignId={campaignId}
-        characterId={character.id}
-        canEditPortrait={canEdit}
-        onPersistPortrait={canEdit ? persistPortrait : undefined}
-        campaignDate={campaignDate}
-        canRest={canEdit}
-        hpPoolCombatPreferred={hpPoolCombatPreferred}
-        onUseHpPool={canEdit ? (featureId) => setHpPoolFeatureId(featureId) : undefined}
-      />
+      <CreationChoiceEditProvider>
+        {canEdit ? <CreationChoiceUnsavedGuard /> : null}
+        <CharacterSheet
+          data={data}
+          isDm={isDm}
+          editable={canEdit}
+          canToggleEquipment={canEdit}
+          onChange={canEdit ? handleChange : undefined}
+          headerActions={headerActions}
+          classes={classes}
+          campaignId={campaignId}
+          characterId={character.id}
+          canEditPortrait={canEdit}
+          onPersistPortrait={canEdit ? persistPortrait : undefined}
+          campaignDate={campaignDate}
+          canRest={canEdit}
+          hpPoolCombatPreferred={hpPoolCombatPreferred}
+          onUseHpPool={canEdit ? (featureId) => setHpPoolFeatureId(featureId) : undefined}
+        />
+      </CreationChoiceEditProvider>
       {mounted && hpPoolFeatureId
         ? createPortal(
             <HpPoolModal

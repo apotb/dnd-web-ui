@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,9 +13,14 @@ import {
 import { CatalogItemPicker } from "@/components/character-creator/catalog-item-picker";
 import { EquipmentSubPicker } from "@/components/character-creator/equipment-sub-picker";
 import { SkillPicker } from "@/components/character-creator/skill-picker";
+import { useGatedFeatureEdit } from "@/components/character/use-gated-feature-edit";
 import { SpellPicker } from "@/components/spells/spell-picker";
 import type { CatalogSpellRow } from "@/lib/content/catalog-client";
 import { choicePlaceholder } from "@/lib/character/feature-choices";
+import {
+  buildGrantFeatureCommitPatch,
+  isGrantFeatureDraftDirty,
+} from "@/lib/character/creation-choice-draft";
 import { featureSourceLabel } from "@/lib/character/feature-derivation";
 import type { GrantConfigurableFeature } from "@/lib/character/feature-grant-features";
 import type {
@@ -76,10 +81,37 @@ export function GrantFeatureRow({
     "magic-cantrip-0" | "magic-cantrip-1" | "magic-spell" | null
   >(null);
 
+  const handleCommit = useCallback(
+    (draft: CharacterData) => {
+      onApply(buildGrantFeatureCommitPatch(feature, data, draft));
+    },
+    [data, feature, onApply]
+  );
+
+  const {
+    gated,
+    isEditing,
+    workingData,
+    startEdit,
+    save,
+    cancel,
+    draftApply,
+    canSave,
+  } = useGatedFeatureEdit({
+    featureId: feature.id,
+    editable,
+    savedData: data,
+    isDraftDirty: (saved, draft) => isGrantFeatureDraftDirty(feature, saved, draft),
+    onCommit: handleCommit,
+  });
+
   const editor = feature.grantEditor;
-  const magicClass = data.featureChoices?.magicInitiateClass ?? "";
-  const magicCantrips = data.featureChoices?.magicInitiateCantripIds ?? [];
-  const magicSpellId = data.featureChoices?.magicInitiateSpellId ?? "";
+  const showEditors = gated ? isEditing : !!editable;
+
+  const magicClass = workingData.featureChoices?.magicInitiateClass ?? "";
+  const magicCantrips = workingData.featureChoices?.magicInitiateCantripIds ?? [];
+  const magicSpellId = workingData.featureChoices?.magicInitiateSpellId ?? "";
+  const skillOrToolChoice = workingData.speciesChoices?.speciesSkillOrTool ?? "";
 
   const cantripOptions = useMemo(() => {
     if (editor.kind === "cantrip" && editor.spellListId) {
@@ -88,8 +120,16 @@ export function GrantFeatureRow({
     return [];
   }, [editor]);
 
+  function applyPatch(patch: Partial<CharacterData>) {
+    if (gated && isEditing) {
+      draftApply(patch);
+      return;
+    }
+    onApply(patch);
+  }
+
   function applyStorage(value: string | string[]) {
-    onApply(patchStorage(data, editor.storage, value));
+    applyPatch(patchStorage(workingData, editor.storage, value));
   }
 
   function applyMagicInitiate(
@@ -97,9 +137,9 @@ export function GrantFeatureRow({
       Pick<FeatureChoices, "magicInitiateClass" | "magicInitiateCantripIds" | "magicInitiateSpellId">
     >
   ) {
-    onApply({
+    applyPatch({
       featureChoices: {
-        ...(data.featureChoices ?? {}),
+        ...(workingData.featureChoices ?? {}),
         ...patch,
       },
     });
@@ -121,24 +161,46 @@ export function GrantFeatureRow({
     setSpellPickerTarget(null);
   }
 
+  const cantripValue =
+    editor.kind === "cantrip" && editor.storage.area === "featureChoices"
+      ? String(workingData.featureChoices?.bonusDruidCantripId ?? "")
+      : workingData.speciesChoices?.speciesCantripId ?? "";
+
   return (
     <div className="rounded-md border border-dashed bg-muted/30 p-3 space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="font-medium">{feature.name}</p>
-        <Badge variant="outline" className="text-xs shrink-0">
-          {featureSourceLabel(feature.source)}
-        </Badge>
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-medium">{feature.name}</p>
+          <Badge variant="outline" className="text-xs shrink-0">
+            {featureSourceLabel(feature.source)}
+          </Badge>
+        </div>
+        {editable && gated && !isEditing ? (
+          <Button type="button" size="sm" variant="outline" onClick={startEdit}>
+            Edit
+          </Button>
+        ) : null}
+        {editable && gated && isEditing ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={cancel}>
+              Cancel
+            </Button>
+            <Button type="button" size="sm" onClick={save} disabled={!canSave}>
+              Save
+            </Button>
+          </div>
+        ) : null}
       </div>
 
-      {editable ? (
+      {showEditors ? (
         <div className="space-y-2">
           {editor.kind === "skill-or-tool" ? (
             <Select
-              value={feature.choiceValue || undefined}
+              value={skillOrToolChoice || undefined}
               onValueChange={(value) => {
-                onApply({
+                applyPatch({
                   speciesChoices: {
-                    ...(data.speciesChoices ?? {}),
+                    ...(workingData.speciesChoices ?? {}),
                     speciesSkillOrTool: (value ?? "") as SpeciesChoices["speciesSkillOrTool"],
                     ...(value === "skill" ? { speciesToolChoice: "" } : { speciesSkillChoices: [] }),
                   },
@@ -147,7 +209,7 @@ export function GrantFeatureRow({
             >
               <SelectTrigger className="h-9">
                 <SelectValue placeholder={choicePlaceholder(feature.choiceKey)}>
-                  {optionLabel(feature.choiceOptions, feature.choiceValue)}
+                  {optionLabel(feature.choiceOptions, skillOrToolChoice)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -164,8 +226,8 @@ export function GrantFeatureRow({
             <SkillPicker
               selected={
                 editor.storage.area === "backgroundChoices"
-                  ? (data.backgroundChoices?.backgroundSkillChoices ?? [])
-                  : (data.speciesChoices?.speciesSkillChoices ?? [])
+                  ? (workingData.backgroundChoices?.backgroundSkillChoices ?? [])
+                  : (workingData.speciesChoices?.speciesSkillChoices ?? [])
               }
               max={editor.max ?? 1}
               options={editor.skillOptions}
@@ -176,8 +238,8 @@ export function GrantFeatureRow({
           {editor.kind === "skill" ? (
             <SkillPicker
               selected={
-                data.speciesChoices?.variantHumanSkill
-                  ? [data.speciesChoices.variantHumanSkill]
+                workingData.speciesChoices?.variantHumanSkill
+                  ? [workingData.speciesChoices.variantHumanSkill]
                   : []
               }
               max={1}
@@ -185,15 +247,14 @@ export function GrantFeatureRow({
             />
           ) : null}
 
-          {editor.kind === "skill-or-tool" &&
-          data.speciesChoices?.speciesSkillOrTool === "skill" ? (
+          {editor.kind === "skill-or-tool" && skillOrToolChoice === "skill" ? (
             <SkillPicker
-              selected={data.speciesChoices?.speciesSkillChoices ?? []}
+              selected={workingData.speciesChoices?.speciesSkillChoices ?? []}
               max={1}
               onChange={(skills) =>
-                onApply({
+                applyPatch({
                   speciesChoices: {
-                    ...(data.speciesChoices ?? {}),
+                    ...(workingData.speciesChoices ?? {}),
                     speciesSkillChoices: skills,
                   },
                 })
@@ -201,15 +262,14 @@ export function GrantFeatureRow({
             />
           ) : null}
 
-          {editor.kind === "skill-or-tool" &&
-          data.speciesChoices?.speciesSkillOrTool === "tool" ? (
+          {editor.kind === "skill-or-tool" && skillOrToolChoice === "tool" ? (
             <EquipmentSubPicker
               filter={{ kind: "creator_tools" }}
-              value={data.speciesChoices?.speciesToolChoice || null}
+              value={workingData.speciesChoices?.speciesToolChoice || null}
               onSelect={(tool) =>
-                onApply({
+                applyPatch({
                   speciesChoices: {
-                    ...(data.speciesChoices ?? {}),
+                    ...(workingData.speciesChoices ?? {}),
                     speciesToolChoice: tool,
                   },
                 })
@@ -220,7 +280,7 @@ export function GrantFeatureRow({
           {editor.kind === "weapons" && editor.weaponChoiceFilter ? (
             <CatalogItemPicker
               filter={weaponChoicesToFilter(editor.weaponChoiceFilter)}
-              selected={data.speciesChoices?.speciesWeaponChoices ?? []}
+              selected={workingData.speciesChoices?.speciesWeaponChoices ?? []}
               max={editor.max ?? 1}
               placeholder="Search weapons…"
               onChange={(names) => applyStorage(names)}
@@ -230,7 +290,7 @@ export function GrantFeatureRow({
           {editor.kind === "tool-pick" ? (
             <>
               <Select
-                value={data.backgroundChoices?.backgroundToolPick || undefined}
+                value={workingData.backgroundChoices?.backgroundToolPick || undefined}
                 onValueChange={(value) => applyStorage(value ?? "")}
               >
                 <SelectTrigger className="h-9">
@@ -240,7 +300,7 @@ export function GrantFeatureRow({
                         value: opt,
                         label: opt,
                       })),
-                      data.backgroundChoices?.backgroundToolPick
+                      workingData.backgroundChoices?.backgroundToolPick
                     )}
                   </SelectValue>
                 </SelectTrigger>
@@ -252,42 +312,42 @@ export function GrantFeatureRow({
                   ))}
                 </SelectContent>
               </Select>
-              {data.backgroundChoices?.backgroundToolPick === "artisan's tools" ? (
+              {workingData.backgroundChoices?.backgroundToolPick === "artisan's tools" ? (
                 <EquipmentSubPicker
                   filter={{ kind: "subcategory", subcategory: "artisans_tools" }}
-                  value={data.backgroundChoices?.backgroundArtisanTool || null}
+                  value={workingData.backgroundChoices?.backgroundArtisanTool || null}
                   onSelect={(tool) =>
-                    onApply({
+                    applyPatch({
                       backgroundChoices: {
-                        ...(data.backgroundChoices ?? {}),
+                        ...(workingData.backgroundChoices ?? {}),
                         backgroundArtisanTool: tool,
                       },
                     })
                   }
                 />
               ) : null}
-              {data.backgroundChoices?.backgroundToolPick === "gaming set" ? (
+              {workingData.backgroundChoices?.backgroundToolPick === "gaming set" ? (
                 <EquipmentSubPicker
                   filter={{ kind: "subcategory", subcategory: "gaming_set" }}
-                  value={data.backgroundChoices?.backgroundGamingSet || null}
+                  value={workingData.backgroundChoices?.backgroundGamingSet || null}
                   onSelect={(tool) =>
-                    onApply({
+                    applyPatch({
                       backgroundChoices: {
-                        ...(data.backgroundChoices ?? {}),
+                        ...(workingData.backgroundChoices ?? {}),
                         backgroundGamingSet: tool,
                       },
                     })
                   }
                 />
               ) : null}
-              {data.backgroundChoices?.backgroundToolPick === "musical instrument" ? (
+              {workingData.backgroundChoices?.backgroundToolPick === "musical instrument" ? (
                 <EquipmentSubPicker
                   filter={{ kind: "subcategory", subcategory: "musical_instrument" }}
-                  value={data.backgroundChoices?.backgroundMusicalInstrument || null}
+                  value={workingData.backgroundChoices?.backgroundMusicalInstrument || null}
                   onSelect={(tool) =>
-                    onApply({
+                    applyPatch({
                       backgroundChoices: {
-                        ...(data.backgroundChoices ?? {}),
+                        ...(workingData.backgroundChoices ?? {}),
                         backgroundMusicalInstrument: tool,
                       },
                     })
@@ -301,7 +361,7 @@ export function GrantFeatureRow({
             <div className="flex flex-wrap gap-2">
               {(editor.toolPickOptions ?? []).map((opt) => {
                 const toolOpt = opt as BackgroundChoices["backgroundToolMulti"][number];
-                const selected = data.backgroundChoices?.backgroundToolMulti ?? [];
+                const selected = workingData.backgroundChoices?.backgroundToolMulti ?? [];
                 const active = selected.includes(toolOpt);
                 return (
                   <Button
@@ -328,15 +388,12 @@ export function GrantFeatureRow({
 
           {editor.kind === "cantrip" ? (
             <Select
-              value={data.speciesChoices?.speciesCantripId || undefined}
+              value={cantripValue || undefined}
               onValueChange={(value) => applyStorage(value ?? "")}
             >
               <SelectTrigger className="h-9">
                 <SelectValue placeholder="Select cantrip">
-                  {data.speciesChoices?.speciesCantripId
-                    ? getSpell(data.speciesChoices.speciesCantripId)?.name ??
-                      data.speciesChoices.speciesCantripId
-                    : ""}
+                  {cantripValue ? getSpell(cantripValue)?.name ?? cantripValue : ""}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -423,7 +480,7 @@ export function GrantFeatureRow({
         {feature.description}
       </p>
 
-      {editable && editor.kind === "magic-initiate" && magicClass ? (
+      {showEditors && editor.kind === "magic-initiate" && magicClass ? (
         <SpellPicker
           open={spellPickerOpen}
           onClose={() => {

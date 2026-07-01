@@ -1,6 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { useCallback, useState, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { useGatedFeatureEdit } from "@/components/character/use-gated-feature-edit";
+import {
+  buildConfigurableFeatureCommitPatch,
+  isConfigurableFeatureDraftDirty,
+} from "@/lib/character/creation-choice-draft";
 import { createPortal } from "react-dom";
 import { ConditionsEditor } from "@/components/character/conditions-editor";
 import { DeathSaveRollModal } from "@/components/character/death-save-roll-modal";
@@ -22,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { CharacterData, AbilityKey, SkillKey, ActionCost, InventoryItem } from "@/lib/schemas/character";
-import { choicePlaceholder, type FeatureChoiceKey } from "@/lib/character/feature-choices";
+import { choicePlaceholder } from "@/lib/character/feature-choices";
 import {
   appendExhaustionSheetNote,
   applyExhaustionToSpeed,
@@ -361,34 +366,100 @@ function GrantedFeatureRow({
 
 function ConfigurableFeatureRow({
   feature,
+  data,
   editable,
-  onChoiceChange,
-  favoredHumanoidSpecies,
-  onFavoredHumanoidSpeciesChange,
+  onApply,
 }: {
   feature: ConfigurableGrantedFeature;
+  data: CharacterData;
   editable?: boolean;
-  onChoiceChange?: (key: FeatureChoiceKey, value: string) => void;
-  favoredHumanoidSpecies?: string[];
-  onFavoredHumanoidSpeciesChange?: (ids: string[]) => void;
+  onApply: (patch: Partial<CharacterData>) => void;
 }) {
+  const handleCommit = useCallback(
+    (draft: CharacterData) => {
+      onApply(buildConfigurableFeatureCommitPatch(feature, data, draft));
+    },
+    [data, feature, onApply]
+  );
+
+  const {
+    gated,
+    isEditing,
+    workingData,
+    startEdit,
+    save,
+    cancel,
+    draftApply,
+    canSave,
+  } = useGatedFeatureEdit({
+    featureId: feature.id,
+    editable,
+    savedData: data,
+    isDraftDirty: (saved, draft) =>
+      isConfigurableFeatureDraftDirty(feature, saved, draft),
+    onCommit: handleCommit,
+  });
+
+  const showEditors = gated ? isEditing : !!editable;
+  const choiceValue = String(workingData.featureChoices?.[feature.choiceKey] ?? "");
+  const favoredHumanoidSpecies = workingData.featureChoices?.favoredHumanoidSpecies ?? [];
+
+  function applyChoiceChange(value: string) {
+    let nextChoices = {
+      ...(workingData.featureChoices ?? {}),
+      [feature.choiceKey]: value,
+    };
+    if (feature.choiceKey === "favoredEnemy" && value !== TWO_HUMANOID_SPECIES_OPTION) {
+      nextChoices = { ...nextChoices, favoredHumanoidSpecies: [] };
+    }
+    if (feature.choiceKey === "variantHumanFeat") {
+      nextChoices = clearMagicInitiateChoices(nextChoices);
+    }
+    applyChoicePatch({ featureChoices: nextChoices });
+  }
+
+  function applyChoicePatch(patch: Partial<CharacterData>) {
+    if (gated && isEditing) {
+      draftApply(patch);
+      return;
+    }
+    onApply(patch);
+  }
+
   return (
     <div className="rounded-md border border-dashed bg-muted/30 p-3 space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="font-medium">{feature.name}</p>
-        <Badge variant="outline" className="text-xs shrink-0">
-          {featureSourceLabel(feature.source)}
-        </Badge>
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-medium">{feature.name}</p>
+          <Badge variant="outline" className="text-xs shrink-0">
+            {featureSourceLabel(feature.source)}
+          </Badge>
+        </div>
+        {editable && gated && !isEditing ? (
+          <Button type="button" size="sm" variant="outline" onClick={startEdit}>
+            Edit
+          </Button>
+        ) : null}
+        {editable && gated && isEditing ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={cancel}>
+              Cancel
+            </Button>
+            <Button type="button" size="sm" onClick={save} disabled={!canSave}>
+              Save
+            </Button>
+          </div>
+        ) : null}
       </div>
-      {editable && onChoiceChange ? (
+      {showEditors ? (
         <div className="space-y-2">
           <Select
-            value={feature.choiceValue || undefined}
-            onValueChange={(value) => onChoiceChange(feature.choiceKey, value ?? "")}
+            value={choiceValue || undefined}
+            onValueChange={(value) => applyChoiceChange(value ?? "")}
           >
             <SelectTrigger className="h-9">
               <SelectValue placeholder={choicePlaceholder(feature.choiceKey)}>
-                {optionLabel(feature.choiceOptions, feature.choiceValue)}
+                {optionLabel(feature.choiceOptions, choiceValue)}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -400,11 +471,17 @@ function ConfigurableFeatureRow({
             </SelectContent>
           </Select>
           {feature.choiceKey === "favoredEnemy" &&
-          feature.choiceValue === TWO_HUMANOID_SPECIES_OPTION &&
-          onFavoredHumanoidSpeciesChange ? (
+          choiceValue === TWO_HUMANOID_SPECIES_OPTION ? (
             <HumanoidSpeciesPicker
-              selected={favoredHumanoidSpecies ?? []}
-              onChange={onFavoredHumanoidSpeciesChange}
+              selected={favoredHumanoidSpecies}
+              onChange={(ids) =>
+                applyChoicePatch({
+                  featureChoices: {
+                    ...(workingData.featureChoices ?? {}),
+                    favoredHumanoidSpecies: ids,
+                  },
+                })
+              }
               variant="sheet"
             />
           ) : null}
@@ -1111,31 +1188,6 @@ export function CharacterSheet({
     if (!editable || !onChange) return;
     const merged = { ...data, ...patch };
     onChange(syncFeatureGrants(merged, featureCatalogs));
-  };
-
-  const updateFeatureChoice = (key: FeatureChoiceKey, value: string) => {
-    if (!editable || !onChange) return;
-    let nextChoices = {
-      ...(data.featureChoices ?? {}),
-      [key]: value,
-    };
-    if (key === "favoredEnemy" && value !== TWO_HUMANOID_SPECIES_OPTION) {
-      nextChoices = { ...nextChoices, favoredHumanoidSpecies: [] };
-    }
-    if (key === "variantHumanFeat") {
-      nextChoices = clearMagicInitiateChoices(nextChoices);
-    }
-    applyGrantUpdate({ featureChoices: nextChoices });
-  };
-
-  const updateFavoredHumanoidSpecies = (ids: string[]) => {
-    if (!editable || !onChange) return;
-    applyGrantUpdate({
-      featureChoices: {
-        ...(data.featureChoices ?? {}),
-        favoredHumanoidSpecies: ids,
-      },
-    });
   };
 
   const customFeatures = data.features;
@@ -3235,10 +3287,9 @@ export function CharacterSheet({
                   <ConfigurableFeatureRow
                     key={feature.id}
                     feature={feature}
+                    data={data}
                     editable={editable}
-                    onChoiceChange={updateFeatureChoice}
-                    favoredHumanoidSpecies={data.featureChoices?.favoredHumanoidSpecies ?? []}
-                    onFavoredHumanoidSpeciesChange={updateFavoredHumanoidSpecies}
+                    onApply={applyGrantUpdate}
                   />
                 ) : (
                   <GrantedFeatureRow
