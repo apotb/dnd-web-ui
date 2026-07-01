@@ -635,7 +635,8 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       magicInitiateClass: "",
       magicInitiateCantripIds: [],
       magicInitiateSpellId: "",
-      bonusDruidCantripId: "",
+      bonusDruidCantripId: state.bonusDruidCantripId,
+      acolyteOfNatureSkill: state.acolyteOfNatureSkill,
     },
     speciesChoices: {
       halfElfAbilityBonuses: state.halfElfAbilityBonuses,
@@ -784,6 +785,15 @@ export function validateCreatorState(state: CharacterCreatorState, catalog?: Cre
       errors.push("Choose exactly two humanoid species for favored enemy.");
     }
     if (!state.favoredTerrain) errors.push("Favored terrain is required.");
+  }
+
+  if (state.classId === "cleric" && state.subclassId === "nature") {
+    if (!state.bonusDruidCantripId) {
+      errors.push("Nature Domain requires a druid cantrip (Acolyte of Nature).");
+    }
+    if (!state.acolyteOfNatureSkill) {
+      errors.push("Nature Domain requires a skill proficiency (Acolyte of Nature).");
+    }
   }
 
   if (!isValidPointBuy(state.baseScores)) {

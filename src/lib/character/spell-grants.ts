@@ -344,6 +344,19 @@ function resolveSubclassSpells(
     );
   }
 
+  if (
+    match.cls.id === "cleric" &&
+    match.subclass.id === "nature" &&
+    bonusCantripId &&
+    isSpellInCatalog(bonusCantripId)
+  ) {
+    grants.push(
+      subclassGrant("grant:subclass:acolyte-of-nature-cantrip", bonusCantripId, 0, {
+        sourceLabel: "Acolyte of Nature",
+      })
+    );
+  }
+
   return grants;
 }
 

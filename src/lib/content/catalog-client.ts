@@ -58,6 +58,50 @@ function phbSpellToRow(spell: PhbSpell): CatalogSpellRow {
 }
 
 const PHB_SPELL_ROWS = ALL_SPELLS.map(phbSpellToRow);
+const PHB_SPELL_BY_SLUG = new Map(PHB_SPELL_ROWS.map((spell) => [spell.slug, spell]));
+
+function enrichSpellRowFromPhb(row: CatalogSpellRow): CatalogSpellRow {
+  const phb = PHB_SPELL_BY_SLUG.get(row.slug);
+  if (!phb) return row;
+  return {
+    ...row,
+    school: row.school || phb.school,
+    castingTime: row.castingTime || phb.castingTime,
+    range: row.range || phb.range,
+    components: row.components || phb.components,
+    duration: row.duration || phb.duration,
+    description: row.description || phb.description,
+    ritual: row.ritual || phb.ritual,
+    concentration: row.concentration || phb.concentration,
+    classes: row.classes.length > 0 ? row.classes : phb.classes,
+  };
+}
+
+function mergeSpellSearchResults(
+  phbRows: CatalogSpellRow[],
+  dbRows: CatalogSpellRow[],
+  limit: number
+): CatalogSpellRow[] {
+  const bySlug = new Map(phbRows.map((spell) => [spell.slug, spell]));
+  for (const row of dbRows) {
+    const enriched = enrichSpellRowFromPhb(row);
+    const existing = bySlug.get(enriched.slug);
+    bySlug.set(
+      enriched.slug,
+      existing
+        ? {
+            ...existing,
+            ...enriched,
+            classes:
+              enriched.classes.length > 0 ? enriched.classes : existing.classes,
+          }
+        : enriched
+    );
+  }
+  return [...bySlug.values()]
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
 
 function mapSpellRow(row: Record<string, unknown>): CatalogSpellRow | null {
   if (typeof row.slug !== "string" || typeof row.name !== "string") return null;
@@ -130,13 +174,11 @@ export async function searchSpellsClient(
   const { data } = await q;
   const dbRows = (data ?? [])
     .map((row) => mapSpellRow(row as Record<string, unknown>))
-    .filter((s): s is CatalogSpellRow => s !== null);
+    .filter((s): s is CatalogSpellRow => s !== null)
+    .map(enrichSpellRowFromPhb);
 
-  if (dbRows.length > 0) {
-    return dbRows;
-  }
-
-  return filterSpellRows(PHB_SPELL_ROWS, query, options);
+  const phbRows = filterSpellRows(PHB_SPELL_ROWS, query, options);
+  return mergeSpellSearchResults(phbRows, dbRows, limit);
 }
 
 /** Fetch spells by catalog slugs. */
@@ -149,7 +191,7 @@ export async function getSpellsBySlugsClient(
   const map: Record<string, CatalogSpellRow> = {};
   for (const row of data ?? []) {
     const spell = mapSpellRow(row as Record<string, unknown>);
-    if (spell) map[spell.slug] = spell;
+    if (spell) map[spell.slug] = enrichSpellRowFromPhb(spell);
   }
 
   for (const slug of slugs) {

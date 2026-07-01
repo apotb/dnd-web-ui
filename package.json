@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npx tsx --test src/lib/combat/feature-effects.test.ts src/lib/dnd/catalog-feature-mechanics.test.ts src/lib/content/catalog-merge.test.ts src/lib/dnd/conditions.test.ts src/lib/dnd/mechanical-features.test.ts src/lib/character/spell-grants.test.ts src/lib/character/spell-grant-uses.test.ts",
+    "test": "npx tsx --test src/lib/combat/feature-effects.test.ts src/lib/dnd/catalog-feature-mechanics.test.ts src/lib/content/catalog-merge.test.ts src/lib/dnd/conditions.test.ts src/lib/dnd/mechanical-features.test.ts src/lib/dnd/phb/spells.test.ts src/lib/dnd/spell-display.test.ts src/lib/character/spell-grants.test.ts src/lib/character/spell-grant-uses.test.ts src/lib/character/acolyte-of-nature.test.ts",
     "sync:catalog-mechanics": "npx tsx scripts/sync-catalog-mechanics.ts",
     "db:push": "npx supabase db push",
     "db:push:dry": "npx supabase db push --dry-run",

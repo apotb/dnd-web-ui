@@ -77,11 +77,11 @@ export function availableSpellLevels(maxCastableLevel: number): number[] {
   return levels;
 }
 
-/** Human-readable label for a class spell list id (e.g. wizard → Wizard list). */
+/** Human-readable label for a class spell list id (e.g. wizard → Wizard). */
 export function spellListLabel(listId: string): string {
   const cls = PHB_CLASSES.find((c) => c.spellcasting?.spellListId === listId);
-  if (cls) return `${cls.name} list`;
-  return `${listId.charAt(0).toUpperCase()}${listId.slice(1)} list`;
+  if (cls) return cls.name;
+  return `${listId.charAt(0).toUpperCase()}${listId.slice(1)}`;
 }
 
 /** Display label for spell picker level filter value. */
@@ -100,5 +100,48 @@ export function spellClassFilterLabel(
 ): string {
   if (filter === "all") return "All spells";
   if (filter === "class" && classListId) return spellListLabel(classListId);
-  return "Class list";
+  return "Class";
+}
+
+/** Hover tooltip text for catalog spell rows in pickers. */
+export function formatSpellPickerTooltip(spell: {
+  name: string;
+  school?: string;
+  castingTime?: string;
+  range?: string;
+  components?: string;
+  duration?: string;
+  description?: string;
+  ritual?: boolean;
+  concentration?: boolean;
+}): string {
+  const lines: string[] = [];
+
+  const typeAndComponents: string[] = [];
+  if (spell.school) typeAndComponents.push(spell.school);
+  if (spell.components) typeAndComponents.push(spell.components);
+  if (typeAndComponents.length > 0) {
+    lines.push(typeAndComponents.join(" · "));
+  }
+
+  const castingAndRange: string[] = [];
+  if (spell.castingTime) castingAndRange.push(spell.castingTime);
+  if (spell.range) castingAndRange.push(spell.range);
+  if (castingAndRange.length > 0) {
+    lines.push(castingAndRange.join(" · "));
+  }
+
+  const duration = spell.duration?.trim();
+  if (duration) {
+    lines.push(duration);
+  }
+
+  const description = spell.description?.trim();
+  if (description) {
+    if (lines.length > 0) lines.push("");
+    lines.push(description);
+  }
+
+  if (lines.length === 0) return spell.name;
+  return lines.join("\n");
 }

@@ -11,6 +11,7 @@ import { resolveFeatureCatalogs } from "@/lib/character/feature-choices";
 import {
   findBackgroundByName,
   findSpeciesByDisplayName,
+  findSubclassByName,
 } from "@/lib/content/catalog-tooltip";
 import { getFeat } from "@/lib/dnd/phb/feats";
 import {
@@ -199,6 +200,24 @@ export function resolveAllSkillGrants(
     });
   }
 
+  const subclassMatch = findSubclassByName(
+    data.basicInfo.class ?? "",
+    data.basicInfo.subclass ?? "",
+    classes
+  );
+  const acolyteSkill = data.featureChoices?.acolyteOfNatureSkill;
+  if (
+    subclassMatch?.cls.id === "cleric" &&
+    subclassMatch.subclass.id === "nature" &&
+    acolyteSkill
+  ) {
+    grants.push({
+      grantKey: "grant:subclass:acolyte-of-nature-skill",
+      skills: [acolyteSkill],
+      source: "Nature Domain",
+    });
+  }
+
   return grants;
 }
 
@@ -306,6 +325,8 @@ function creatorStateFromCharacter(
     favoredHumanoidSpecies: data.featureChoices?.favoredHumanoidSpecies ?? [],
     favoredTerrain: data.featureChoices?.favoredTerrain ?? "",
     monkTool: "",
+    bonusDruidCantripId: data.featureChoices?.bonusDruidCantripId ?? "",
+    acolyteOfNatureSkill: data.featureChoices?.acolyteOfNatureSkill ?? "",
     useStartingGold: false,
     rolledGold: 0,
   };

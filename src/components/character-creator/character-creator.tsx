@@ -46,6 +46,7 @@ import { IntroContent } from "./creator-intro-modal";
 import { LanguagePicker } from "./language-picker";
 import { HumanoidSpeciesPicker } from "./humanoid-species-picker";
 import { SkillPicker } from "./skill-picker";
+import { CantripPickerField } from "@/components/spells/cantrip-picker-field";
 import { weaponChoicesToFilter } from "@/lib/items/catalog-picker-filter";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -237,6 +238,14 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
           if (!state.favoredTerrain) return "Choose a favored terrain.";
         }
         if (state.classId === "monk" && !state.monkTool) return "Choose a monk tool proficiency.";
+        if (state.classId === "cleric" && state.subclassId === "nature") {
+          if (!state.bonusDruidCantripId) {
+            return "Choose a druid cantrip for Acolyte of Nature.";
+          }
+          if (!state.acolyteOfNatureSkill) {
+            return "Choose a skill proficiency for Acolyte of Nature.";
+          }
+        }
         return null;
       }
       case "abilities":
@@ -996,6 +1005,8 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                 favoredEnemy: "",
                 favoredHumanoidSpecies: [],
                 favoredTerrain: "",
+                bonusDruidCantripId: "",
+                acolyteOfNatureSkill: "",
               })
             }
           >
@@ -1022,7 +1033,18 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                   <select
                     className="candy-input"
                     value={state.subclassId}
-                    onChange={(e) => update({ subclassId: e.target.value })}
+                    onChange={(e) => {
+                      const subclassId = e.target.value;
+                      update({
+                        subclassId,
+                        ...(subclassId === "nature" && state.classId === "cleric"
+                          ? {}
+                          : {
+                              bonusDruidCantripId: "",
+                              acolyteOfNatureSkill: "",
+                            }),
+                      });
+                    }}
                   >
                     <option value="">— choose —</option>
                     {selectedClass.subclasses.map((s) => (
@@ -1121,6 +1143,33 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                       </>
                     );
                   })()}
+                </>
+              ) : null}
+
+              {state.classId === "cleric" && state.subclassId === "nature" ? (
+                <>
+                  <label className="candy-label">Acolyte of Nature — skill</label>
+                  <p className="retro-muted text-sm">
+                    Proficiency in one of Animal Handling, Nature, or Survival.
+                  </p>
+                  <SkillPicker
+                    selected={
+                      state.acolyteOfNatureSkill ? [state.acolyteOfNatureSkill] : []
+                    }
+                    max={1}
+                    options={["animalHandling", "nature", "survival"]}
+                    onChange={(skills) =>
+                      update({ acolyteOfNatureSkill: skills[0] ?? "" })
+                    }
+                  />
+                  <label className="candy-label">Acolyte of Nature — druid cantrip</label>
+                  <CantripPickerField
+                    value={state.bonusDruidCantripId}
+                    onChange={(spellId) => update({ bonusDruidCantripId: spellId })}
+                    classListId="druid"
+                    placeholder="Choose druid cantrip"
+                    variant="creator"
+                  />
                 </>
               ) : null}
 

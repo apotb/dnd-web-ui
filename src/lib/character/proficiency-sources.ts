@@ -102,6 +102,8 @@ function creatorStateFromCharacter(
     favoredHumanoidSpecies: data.featureChoices?.favoredHumanoidSpecies ?? [],
     favoredTerrain: data.featureChoices?.favoredTerrain ?? "",
     monkTool: "",
+    bonusDruidCantripId: data.featureChoices?.bonusDruidCantripId ?? "",
+    acolyteOfNatureSkill: data.featureChoices?.acolyteOfNatureSkill ?? "",
     useStartingGold: false,
     rolledGold: 0,
   };

@@ -8,6 +8,7 @@ interface AlertModalProps {
   title?: string;
   message: string;
   confirmLabel?: string;
+  confirmDisabled?: boolean;
   onClose: () => void;
 }
 
@@ -16,6 +17,7 @@ export function AlertModal({
   title = "Notice",
   message,
   confirmLabel = "OK",
+  confirmDisabled = false,
   onClose,
 }: AlertModalProps) {
   const [mounted, setMounted] = useState(false);
@@ -27,7 +29,11 @@ export function AlertModal({
   if (!open || !mounted) return null;
 
   return createPortal(
-    <div className="supply-picker-overlay" role="presentation" onClick={onClose}>
+    <div
+      className="supply-picker-overlay"
+      role="presentation"
+      onClick={confirmDisabled ? undefined : onClose}
+    >
       <div
         className="supply-picker-modal retro-box"
         role="alertdialog"
@@ -41,7 +47,12 @@ export function AlertModal({
         <p className="retro-muted">{message}</p>
         <div className="supply-picker-actions combat-roll-actions">
           <div className="combat-roll-right-actions" style={{ width: "100%", justifyContent: "flex-end" }}>
-            <button type="button" className="candy-btn" onClick={onClose}>
+            <button
+              type="button"
+              className="candy-btn"
+              onClick={onClose}
+              disabled={confirmDisabled}
+            >
               {confirmLabel}
             </button>
           </div>

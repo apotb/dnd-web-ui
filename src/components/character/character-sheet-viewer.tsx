@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { CharacterDeleteButton } from "@/components/character/character-delete-button";
 import { CharacterSheet } from "@/components/character/character-sheet";
 import { CreationChoiceEditProvider } from "@/components/character/creation-choice-edit-context";
@@ -9,6 +18,7 @@ import { CreationChoiceUnsavedGuard } from "@/components/character/creation-choi
 import { JsonImportExport } from "@/components/character/json-import-export";
 import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
 import { HpPoolModal } from "@/components/character/hp-pool-modal";
+import { AlertModal } from "@/components/ui/alert-modal";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import { syncCharacterTopLevelFields } from "@/lib/character/utils";
 import type { ParsedCharacter } from "@/lib/character/utils";
@@ -20,6 +30,13 @@ import type { PhbBackground, PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 
 /** Wait for rapid edits (e.g. equip toggles) to settle before persisting. */
 const SAVE_DEBOUNCE_MS = 900;
+
+const NAV_WAIT_MESSAGE =
+  "You haven't saved yet. Please wait a moment for autosave.";
+
+export interface CharacterSheetViewerHandle {
+  beforeNavigate: (action: () => void) => void;
+}
 
 interface CharacterSheetViewerProps {
   character: ParsedCharacter;
@@ -36,19 +53,26 @@ interface CharacterSheetViewerProps {
   hpPoolCombatPreferred?: boolean;
 }
 
-export function CharacterSheetViewer({
-  character,
-  campaignId,
-  classes,
-  isDm,
-  canEdit,
-  canDelete = false,
-  initialWorldData,
-  ownedCharacterId = null,
-  initialPartyCharacters = [],
-  partyCharacters: partyCharactersFromParent,
-  hpPoolCombatPreferred = false,
-}: CharacterSheetViewerProps) {
+export const CharacterSheetViewer = forwardRef<
+  CharacterSheetViewerHandle,
+  CharacterSheetViewerProps
+>(function CharacterSheetViewer(
+  {
+    character,
+    campaignId,
+    classes,
+    isDm,
+    canEdit,
+    canDelete = false,
+    initialWorldData,
+    ownedCharacterId = null,
+    initialPartyCharacters = [],
+    partyCharacters: partyCharactersFromParent,
+    hpPoolCombatPreferred = false,
+  },
+  ref
+) {
+  const router = useRouter();
   const worldData = useRealtimeWorldData(campaignId, initialWorldData);
   const subscribedPartyCharacters = useRealtimeCharacters(
     campaignId,
@@ -71,11 +95,25 @@ export function CharacterSheetViewer({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [hpPoolFeatureId, setHpPoolFeatureId] = useState<string | null>(null);
+  const [navWaitOpen, setNavWaitOpen] = useState(false);
+  const [navSaveComplete, setNavSaveComplete] = useState(false);
+  const [navWaitError, setNavWaitError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataRef = useRef(data);
   const saveInFlightRef = useRef(false);
   const localRevisionRef = useRef(0);
   const lastSyncedRevisionRef = useRef(0);
+  const pendingNavActionRef = useRef<(() => void) | null>(null);
+  const pendingNavigationHrefRef = useRef<string | null>(null);
+  const flushSaveNowRef = useRef<() => Promise<void>>(async () => {});
+
+  function isPendingSaveNow() {
+    return (
+      localRevisionRef.current !== lastSyncedRevisionRef.current ||
+      saveTimer.current !== null ||
+      saveInFlightRef.current
+    );
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -94,6 +132,9 @@ export function CharacterSheetViewer({
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
+    setNavWaitOpen(false);
+    pendingNavActionRef.current = null;
+    pendingNavigationHrefRef.current = null;
   }, [character.id]);
 
   useEffect(() => {
@@ -122,8 +163,12 @@ export function CharacterSheetViewer({
     }
   }
 
-  async function flushSave() {
-    if (!canEdit || saveInFlightRef.current) return;
+  async function flushSave(): Promise<string | null> {
+    if (!canEdit || saveInFlightRef.current) return null;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
 
     const revisionAtSave = localRevisionRef.current;
     const toSave = dataRef.current;
@@ -145,6 +190,8 @@ export function CharacterSheetViewer({
     if (localRevisionRef.current !== revisionAtSave) {
       scheduleSave();
     }
+
+    return error ?? null;
   }
 
   async function persistNow(next: CharacterData) {
@@ -185,6 +232,134 @@ export function CharacterSheetViewer({
       void flushSave();
     }, SAVE_DEBOUNCE_MS);
   }
+
+  const flushSaveNow = useCallback(async () => {
+    if (!canEdit) return;
+
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+
+    for (;;) {
+      if (
+        localRevisionRef.current === lastSyncedRevisionRef.current &&
+        !saveInFlightRef.current
+      ) {
+        return;
+      }
+
+      if (saveInFlightRef.current) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        continue;
+      }
+
+      const error = await flushSave();
+      if (error) throw new Error(error);
+    }
+  }, [canEdit, character.data, character.id, classes, isDm]);
+
+  flushSaveNowRef.current = flushSaveNow;
+
+  const startNavWait = useCallback(
+    (action: (() => void) | null, href: string | null) => {
+      pendingNavActionRef.current = action;
+      pendingNavigationHrefRef.current = href;
+      setNavSaveComplete(false);
+      setNavWaitError(null);
+      setNavWaitOpen(true);
+
+      void flushSaveNow()
+        .then(() => setNavSaveComplete(true))
+        .catch((error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : "Save failed.";
+          setNavWaitError(message);
+          setNavSaveComplete(true);
+        });
+    },
+    [flushSaveNow]
+  );
+ 
+  const beforeNavigate = useCallback(
+    (action: () => void) => {
+      if (!isPendingSaveNow()) {
+        action();
+        return;
+      }
+      startNavWait(action, null);
+    },
+    [startNavWait]
+  );
+
+  useImperativeHandle(ref, () => ({ beforeNavigate }), [beforeNavigate]);
+
+  const handleNavWaitClose = useCallback(() => {
+    if (!navSaveComplete) return;
+
+    const href = pendingNavigationHrefRef.current;
+    const action = pendingNavActionRef.current;
+    const hadError = navWaitError !== null;
+
+    pendingNavigationHrefRef.current = null;
+    pendingNavActionRef.current = null;
+    setNavWaitOpen(false);
+    setNavWaitError(null);
+
+    if (hadError) return;
+
+    if (href) {
+      router.push(href);
+    } else if (action) {
+      action();
+    }
+  }, [navSaveComplete, navWaitError, router]);
+
+  useEffect(() => {
+    if (!canEdit) return;
+
+    function handleDocumentClick(event: MouseEvent) {
+      if (!isPendingSaveNow()) return;
+
+      const anchor = (event.target as Element | null)?.closest("a");
+      if (!anchor) return;
+
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#")) return;
+
+      let url: URL;
+      try {
+        url = new URL(href, window.location.origin);
+        if (url.origin !== window.location.origin) return;
+        if (url.pathname === window.location.pathname) return;
+      } catch {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const target = `${url.pathname}${url.search}${url.hash}`;
+      startNavWait(null, target);
+    }
+
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => document.removeEventListener("click", handleDocumentClick, true);
+  }, [canEdit, startNavWait]);
+
+  useEffect(() => {
+    if (!canEdit) return;
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!isPendingSaveNow()) return;
+      event.preventDefault();
+      event.returnValue = "";
+      void flushSaveNowRef.current();
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [canEdit]);
 
   function handleChange(next: CharacterData) {
     const pendingShortRestChanged =
@@ -287,6 +462,8 @@ export function CharacterSheetViewer({
     data.combat.pendingShortRest &&
     character.id !== ownedCharacterId;
 
+  const navWaitMessage = navWaitError ?? NAV_WAIT_MESSAGE;
+
   return (
     <>
       {mounted && canEdit && (saving || saveError)
@@ -301,6 +478,15 @@ export function CharacterSheetViewer({
             document.body
           )
         : null}
+      {mounted && canEdit ? (
+        <AlertModal
+          open={navWaitOpen}
+          title="Saving changes"
+          message={navWaitMessage}
+          confirmDisabled={!navSaveComplete}
+          onClose={handleNavWaitClose}
+        />
+      ) : null}
       <CreationChoiceEditProvider>
         {canEdit ? <CreationChoiceUnsavedGuard /> : null}
         <CharacterSheet
@@ -346,4 +532,4 @@ export function CharacterSheetViewer({
         : null}
     </>
   );
-}
+});

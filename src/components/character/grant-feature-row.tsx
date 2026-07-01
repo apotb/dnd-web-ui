@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import { CatalogItemPicker } from "@/components/character-creator/catalog-item-p
 import { EquipmentSubPicker } from "@/components/character-creator/equipment-sub-picker";
 import { SkillPicker } from "@/components/character-creator/skill-picker";
 import { useGatedFeatureEdit } from "@/components/character/use-gated-feature-edit";
+import { CantripPickerField } from "@/components/spells/cantrip-picker-field";
 import { SpellPicker } from "@/components/spells/spell-picker";
 import type { CatalogSpellRow } from "@/lib/content/catalog-client";
 import { choicePlaceholder } from "@/lib/character/feature-choices";
@@ -31,7 +32,7 @@ import type {
   SpeciesChoices,
 } from "@/lib/schemas/character";
 import { optionLabel } from "@/lib/ui/select-display";
-import { getCantripsForList, getSpell } from "@/lib/dnd/phb/spells";
+import { getSpell } from "@/lib/dnd/phb/spells";
 import { weaponChoicesToFilter } from "@/lib/items/catalog-picker-filter";
 
 interface GrantFeatureRowProps {
@@ -113,13 +114,6 @@ export function GrantFeatureRow({
   const magicSpellId = workingData.featureChoices?.magicInitiateSpellId ?? "";
   const skillOrToolChoice = workingData.speciesChoices?.speciesSkillOrTool ?? "";
 
-  const cantripOptions = useMemo(() => {
-    if (editor.kind === "cantrip" && editor.spellListId) {
-      return getCantripsForList(editor.spellListId);
-    }
-    return [];
-  }, [editor]);
-
   function applyPatch(patch: Partial<CharacterData>) {
     if (gated && isEditing) {
       draftApply(patch);
@@ -161,10 +155,27 @@ export function GrantFeatureRow({
     setSpellPickerTarget(null);
   }
 
-  const cantripValue =
+  const cantripFeatureKey =
     editor.kind === "cantrip" && editor.storage.area === "featureChoices"
-      ? String(workingData.featureChoices?.bonusDruidCantripId ?? "")
+      ? (editor.storage.key as keyof FeatureChoices)
+      : null;
+  const cantripValue =
+    cantripFeatureKey != null
+      ? String(workingData.featureChoices?.[cantripFeatureKey] ?? "")
       : workingData.speciesChoices?.speciesCantripId ?? "";
+
+  function readSkillSelection(): SkillKey[] {
+    if (editor.kind !== "skill") return [];
+    if (editor.storage.area === "featureChoices") {
+      const key = editor.storage.key as keyof FeatureChoices;
+      const value = workingData.featureChoices?.[key];
+      return typeof value === "string" && value ? [value as SkillKey] : [];
+    }
+    if (workingData.speciesChoices?.variantHumanSkill) {
+      return [workingData.speciesChoices.variantHumanSkill];
+    }
+    return [];
+  }
 
   return (
     <div className="rounded-md border border-dashed bg-muted/30 p-3 space-y-2">
@@ -237,12 +248,9 @@ export function GrantFeatureRow({
 
           {editor.kind === "skill" ? (
             <SkillPicker
-              selected={
-                workingData.speciesChoices?.variantHumanSkill
-                  ? [workingData.speciesChoices.variantHumanSkill]
-                  : []
-              }
+              selected={readSkillSelection()}
               max={1}
+              options={editor.skillOptions}
               onChange={(skills) => applyStorage(skills[0] ?? "")}
             />
           ) : null}
@@ -386,24 +394,12 @@ export function GrantFeatureRow({
             </div>
           ) : null}
 
-          {editor.kind === "cantrip" ? (
-            <Select
-              value={cantripValue || undefined}
-              onValueChange={(value) => applyStorage(value ?? "")}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Select cantrip">
-                  {cantripValue ? getSpell(cantripValue)?.name ?? cantripValue : ""}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {cantripOptions.map((spell) => (
-                  <SelectItem key={spell.id} value={spell.id}>
-                    {spell.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {editor.kind === "cantrip" && editor.spellListId ? (
+            <CantripPickerField
+              value={cantripValue}
+              onChange={(spellId) => applyStorage(spellId)}
+              classListId={editor.spellListId}
+            />
           ) : null}
 
           {editor.kind === "magic-initiate" ? (
@@ -480,7 +476,7 @@ export function GrantFeatureRow({
         {feature.description}
       </p>
 
-      {showEditors && editor.kind === "magic-initiate" && magicClass ? (
+      {showEditors && editor.kind === "magic-initiate" && magicClass && spellPickerOpen ? (
         <SpellPicker
           open={spellPickerOpen}
           onClose={() => {

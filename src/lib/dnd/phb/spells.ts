@@ -1015,6 +1015,27 @@ export const PHB_SPELLS: PhbSpell[] = [
   },
 ];
 
+/** Class lists for PHB spells not present in the SRD generated catalog. */
+export const PHB_ONLY_SPELL_CLASSES: Record<string, string[]> = {
+  "armor-of-agathys": ["warlock"],
+  "arms-of-hadar": ["warlock"],
+  "blade-ward": ["bard", "sorcerer", "warlock", "wizard"],
+  "chromatic-orb": ["sorcerer", "wizard"],
+  friends: ["bard", "sorcerer", "warlock", "wizard"],
+  "guiding-hand": ["cleric"],
+  hex: ["warlock"],
+  "ray-of-sickness": ["sorcerer", "wizard"],
+  "tensers-floating-disk": ["wizard"],
+  "thorn-whip": ["druid"],
+  "witch-bolt": ["sorcerer", "warlock", "wizard"],
+};
+
+function resolveSpellClasses(spell: PhbSpell, srd?: GeneratedSpell): string[] {
+  if (srd?.classes?.length) return srd.classes;
+  if (spell.classes?.length) return spell.classes;
+  return PHB_ONLY_SPELL_CLASSES[spell.id] ?? [];
+}
+
 /** Merge hand-written PHB entries with full SRD catalog; PHB text wins on slug overlap. */
 function mergeSpellCatalogs(): GeneratedSpell[] {
   const byId = new Map<string, GeneratedSpell>();
@@ -1026,7 +1047,7 @@ function mergeSpellCatalogs(): GeneratedSpell[] {
     byId.set(spell.id, {
       ...(srd ?? { classes: [] }),
       ...spell,
-      classes: srd?.classes ?? [],
+      classes: resolveSpellClasses(spell, srd),
     });
   }
   return [...byId.values()].sort(

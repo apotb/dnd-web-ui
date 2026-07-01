@@ -1733,6 +1733,7 @@ export function CharacterSheet({
                         <Checkbox
                           checked={proficient}
                           disabled={granted}
+                          aria-label={`${SKILL_LABELS[skill]} proficiency`}
                           onCheckedChange={(checked) => {
                             if (granted) return;
                             update({
@@ -1748,7 +1749,10 @@ export function CharacterSheet({
                         />
                         <Checkbox
                           checked={skillData.expertise}
-                          onCheckedChange={(checked) =>
+                          disabled={!proficient}
+                          aria-label={`${SKILL_LABELS[skill]} expertise`}
+                          onCheckedChange={(checked) => {
+                            if (!proficient) return;
                             update({
                               skills: {
                                 ...data.skills,
@@ -1757,8 +1761,8 @@ export function CharacterSheet({
                                   expertise: !!checked,
                                 },
                               },
-                            })
-                          }
+                            });
+                          }}
                         />
                       </>
                     )}
@@ -1780,7 +1784,7 @@ export function CharacterSheet({
               </div>
               {canEditAbilities && (
                 <p className="text-xs text-muted-foreground">
-                  Dot = proficiency status (hover for source) · First checkbox = proficient, second = expertise · Feature-granted skills are locked on
+                  Dot = proficiency status (hover for source) · First checkbox = proficient, second = expertise · Gray checkboxes are locked (inherent or unavailable)
                 </p>
               )}
             </CardContent>
@@ -2678,7 +2682,7 @@ export function CharacterSheet({
             </CardContent>
           </Card>
 
-          {editable && resolvedClass?.spellcasting && (
+          {editable && resolvedClass?.spellcasting && spellPickerOpen ? (
           <SpellPicker
             open={spellPickerOpen}
             onClose={() => {
@@ -2697,7 +2701,7 @@ export function CharacterSheet({
                 : knownSpellSlugs
             }
           />
-          )}
+          ) : null}
         </TabsContent>
 
         <TabsContent value="inventory" className="space-y-4">

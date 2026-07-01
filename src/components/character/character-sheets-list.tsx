@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
-import { CharacterSheetViewer } from "@/components/character/character-sheet-viewer";
+import {
+  CharacterSheetViewer,
+  type CharacterSheetViewerHandle,
+} from "@/components/character/character-sheet-viewer";
 import { CharacterImportButton } from "@/components/character/character-import-button";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { ParsedCharacter } from "@/lib/character/utils";
@@ -70,6 +73,7 @@ export function CharacterSheetsList({
   }, [characters, userId]);
   const [selectedId, setSelectedId] = useState("");
   const [restored, setRestored] = useState(false);
+  const viewerRef = useRef<CharacterSheetViewerHandle>(null);
 
   useEffect(() => {
     setRestored(false);
@@ -108,16 +112,6 @@ export function CharacterSheetsList({
     }
   }, [campaignId, sortedCharacters, selectedId, restored, searchParams]);
 
-  function selectCharacter(id: string) {
-    setSelectedId(id);
-    const key = selectionStorageKey(campaignId);
-    if (id) {
-      localStorage.setItem(key, id);
-    } else {
-      localStorage.removeItem(key);
-    }
-  }
-
   const userOwnedCharacter = useMemo(
     () => (userId ? sortedCharacters.find((c) => c.owner_user_id === userId) : null) ?? null,
     [sortedCharacters, userId]
@@ -135,6 +129,25 @@ export function CharacterSheetsList({
         isDm
       )
     : false;
+
+  function selectCharacter(id: string) {
+    const applySelection = () => {
+      setSelectedId(id);
+      const key = selectionStorageKey(campaignId);
+      if (id) {
+        localStorage.setItem(key, id);
+      } else {
+        localStorage.removeItem(key);
+      }
+    };
+
+    if (selectedCanEdit && viewerRef.current) {
+      viewerRef.current.beforeNavigate(applySelection);
+      return;
+    }
+
+    applySelection();
+  }
 
   return (
     <div>
@@ -154,7 +167,9 @@ export function CharacterSheetsList({
                 key={character.id}
                 className={`candy-btn${character.id === selectedId ? " candy-btn-active" : ""}`}
                 style={{ flex: "0 1 auto", display: "inline-flex", alignItems: "center", gap: "6px" }}
-                onClick={() => selectCharacter(character.id === selectedId ? "" : character.id)}
+                onClick={() =>
+                  selectCharacter(character.id === selectedId ? "" : character.id)
+                }
               >
                 {isUserCharacter ? (
                   <span className="character-owned-star" aria-hidden>
@@ -181,6 +196,7 @@ export function CharacterSheetsList({
               ) : null}
               <section className="retro-box character-sheet-wrap">
                 <CharacterSheetViewer
+                  ref={viewerRef}
                   character={selectedCharacter}
                   campaignId={campaignId}
                   classes={classes}

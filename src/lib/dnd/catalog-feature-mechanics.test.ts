@@ -84,6 +84,7 @@ function baseData(overrides: Partial<CharacterData> = {}): CharacterData {
       magicInitiateCantripIds: [],
       magicInitiateSpellId: "",
       bonusDruidCantripId: "",
+      acolyteOfNatureSkill: "",
     },
     speciesChoices: {
       halfElfAbilityBonuses: [],

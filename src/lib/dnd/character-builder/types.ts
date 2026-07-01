@@ -46,6 +46,8 @@ export interface CharacterCreatorState {
   favoredHumanoidSpecies: string[];
   favoredTerrain: string;
   monkTool: string;
+  bonusDruidCantripId: string;
+  acolyteOfNatureSkill: SkillKey | "";
   baseScores: Record<AbilityKey, number>;
   classSkills: SkillKey[];
   cantripIds: string[];
@@ -90,6 +92,8 @@ export function createInitialCreatorState(): CharacterCreatorState {
     favoredHumanoidSpecies: [],
     favoredTerrain: "",
     monkTool: "",
+    bonusDruidCantripId: "",
+    acolyteOfNatureSkill: "",
     baseScores: defaultPointBuyScores(),
     classSkills: [],
     cantripIds: [],

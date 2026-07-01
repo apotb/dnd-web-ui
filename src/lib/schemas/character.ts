@@ -231,8 +231,10 @@ export const featureChoicesSchema = z.object({
   magicInitiateClass: z.enum(["", "cleric", "druid", "wizard"]).default(""),
   magicInitiateCantripIds: z.array(z.string()).max(2).default([]),
   magicInitiateSpellId: z.string().default(""),
-  /** Bonus druid cantrip from Nature Domain or Circle of the Land. */
+  /** Bonus druid cantrip from Cleric Nature Domain or Circle of the Land. */
   bonusDruidCantripId: z.string().default(""),
+  /** Cleric Nature Domain — one of Animal Handling, Nature, or Survival. */
+  acolyteOfNatureSkill: z.union([skillKeySchema, z.literal("")]).default(""),
 });
 
 /** Species creation choices persisted for edit-time grant sync. */

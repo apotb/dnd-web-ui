@@ -24,6 +24,8 @@ export function useGatedFeatureEdit({
   onCommit,
 }: UseGatedFeatureEditOptions) {
   const editContext = useCreationChoiceEditOptional();
+  const registerDirty = editContext?.registerDirty;
+  const requestEdit = editContext?.requestEdit;
   const gated = editable && editContext != null;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -34,10 +36,10 @@ export function useGatedFeatureEdit({
   const dirty = isEditing && draftData != null && isDraftDirty(savedData, draftData);
 
   useEffect(() => {
-    if (!gated || !editContext) return;
-    editContext.registerDirty(featureId, dirty);
-    return () => editContext.registerDirty(featureId, false);
-  }, [dirty, editContext, featureId, gated]);
+    if (!gated || !registerDirty) return;
+    registerDirty(featureId, dirty);
+    return () => registerDirty(featureId, false);
+  }, [dirty, registerDirty, featureId, gated]);
 
   const draftApply = useCallback(
     (patch: Partial<CharacterData>) => {
@@ -62,12 +64,12 @@ export function useGatedFeatureEdit({
   );
 
   const startEdit = useCallback(() => {
-    if (!gated || !editContext) return;
-    editContext.requestEdit(() => {
+    if (!gated || !requestEdit) return;
+    requestEdit(() => {
       setDraftData(cloneCharacterData(savedData));
       setIsEditing(true);
     });
-  }, [editContext, gated, savedData]);
+  }, [requestEdit, gated, savedData]);
 
   const save = useCallback(() => {
     if (!draftData || !dirty) return;

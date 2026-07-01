@@ -15,6 +15,8 @@ import {
   findSubclassByName,
 } from "@/lib/content/catalog-tooltip";
 import type { PhbBackground, PhbSpecies } from "@/lib/dnd/phb/types";
+import { SKILL_LABELS } from "@/lib/dnd/calculations";
+import { getSpell } from "@/lib/dnd/phb/spells";
 
 export type GrantEditorKind =
   | "select"
@@ -328,12 +330,16 @@ export function deriveGrantConfigurableFeatures(
     const rules = isNature
       ? "You learn one druid cantrip of your choice."
       : "You learn one additional druid cantrip of your choice.";
+    const cantripSelection = featureChoices.bonusDruidCantripId
+      ? getSpell(featureChoices.bonusDruidCantripId)?.name ??
+        featureChoices.bonusDruidCantripId
+      : null;
     features.push(
       makeGrantFeature(
         "subclass",
         isNature ? "Acolyte of Nature Cantrip" : "Bonus Cantrip",
         rules,
-        buildChoiceDescription(rules, featureChoices.bonusDruidCantripId || null),
+        buildChoiceDescription(rules, cantripSelection),
         "fightingStyle",
         featureChoices.bonusDruidCantripId,
         [],
@@ -341,6 +347,56 @@ export function deriveGrantConfigurableFeatures(
           kind: "cantrip",
           storage: { area: "featureChoices", key: "bonusDruidCantripId" },
           spellListId: "druid",
+        }
+      )
+    );
+  }
+
+  if (
+    subclassMatch?.cls.id === "cleric" &&
+    subclassMatch.subclass.id === "nature"
+  ) {
+    const cantripRules = "You learn one druid cantrip of your choice.";
+    const cantripSelection = featureChoices.bonusDruidCantripId
+      ? getSpell(featureChoices.bonusDruidCantripId)?.name ??
+        featureChoices.bonusDruidCantripId
+      : null;
+    features.push(
+      makeGrantFeature(
+        "subclass",
+        "Acolyte of Nature — Cantrip",
+        cantripRules,
+        buildChoiceDescription(cantripRules, cantripSelection),
+        "fightingStyle",
+        featureChoices.bonusDruidCantripId,
+        [],
+        {
+          kind: "cantrip",
+          storage: { area: "featureChoices", key: "bonusDruidCantripId" },
+          spellListId: "druid",
+        }
+      )
+    );
+
+    const skillRules =
+      "You gain proficiency in one of Animal Handling, Nature, or Survival.";
+    const skill = featureChoices.acolyteOfNatureSkill ?? "";
+    features.push(
+      makeGrantFeature(
+        "subclass",
+        "Acolyte of Nature — Skill",
+        skillRules,
+        buildChoiceDescription(
+          skillRules,
+          skill ? SKILL_LABELS[skill as SkillKey] : null
+        ),
+        "fightingStyle",
+        skill,
+        [],
+        {
+          kind: "skill",
+          storage: { area: "featureChoices", key: "acolyteOfNatureSkill" },
+          skillOptions: ["animalHandling", "nature", "survival"],
         }
       )
     );
@@ -366,6 +422,7 @@ export function isReplacedByGrantFeature(
     "Martial Training": ["Martial Training"],
     "Decadent Mastery": ["Decadent Mastery", "Skill or Tool"],
     "Skill Versatility": ["Skill Versatility", "Changeling Instincts (two skills)"],
+    "Acolyte of Nature": ["Acolyte of Nature — Cantrip", "Acolyte of Nature — Skill"],
   };
   const names = replacements[locked.name] ?? [locked.name];
   return grantFeatures.some(
