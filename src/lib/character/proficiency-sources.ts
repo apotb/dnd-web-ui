@@ -9,6 +9,7 @@ import { getEffectiveToolProficiencies } from "@/lib/character/feature-grant-syn
 import {
   findBackgroundByName,
   findSpeciesByDisplayName,
+  findSubclassByName,
 } from "@/lib/content/catalog-tooltip";
 import { resolveBackgroundToolProficiencies } from "@/lib/dnd/character-builder/build-character";
 import type { CharacterCreatorState } from "@/lib/dnd/character-builder/types";
@@ -16,6 +17,7 @@ import { getFeat } from "@/lib/dnd/phb/feats";
 import { hasTavernBrawler } from "@/lib/dnd/unarmed-mechanics";
 import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
+import { CLERIC_DOMAIN_PROFICIENCIES } from "@/lib/dnd/phb/cleric-domain-grants";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import type { CreatorCatalog } from "@/lib/content/catalog";
 import type { PhbBackground } from "@/lib/dnd/phb/types";
@@ -104,6 +106,8 @@ function creatorStateFromCharacter(
     monkTool: "",
     bonusDruidCantripId: data.featureChoices?.bonusDruidCantripId ?? "",
     acolyteOfNatureSkill: data.featureChoices?.acolyteOfNatureSkill ?? "",
+    knowledgeDomainLanguages: data.featureChoices?.knowledgeDomainLanguages ?? [],
+    knowledgeDomainSkills: data.featureChoices?.knowledgeDomainSkills ?? [],
     useStartingGold: false,
     rolledGold: 0,
   };
@@ -143,6 +147,17 @@ export function getWeaponProficienciesWithSources(
     )
   );
   cls?.weaponProficiencies?.forEach((w) => trackSource(tracker, w, classLabel));
+
+  const subclassMatch = findSubclassByName(
+    data.basicInfo.class ?? "",
+    data.basicInfo.subclass ?? "",
+    classes
+  );
+  if (subclassMatch?.cls.id === "cleric") {
+    const domain = CLERIC_DOMAIN_PROFICIENCIES[subclassMatch.subclass.id];
+    const subclassLabel = `Subclass (${subclassMatch.subclass.name})`;
+    domain?.weapons?.forEach((w) => trackSource(tracker, w, subclassLabel));
+  }
 
   if (hasTavernBrawler(data)) {
     trackSource(tracker, "improvised weapons", "Feat (Tavern Brawler)");
@@ -186,6 +201,17 @@ export function getArmorProficienciesWithSources(
   }
 
   cls?.armorProficiencies?.forEach((a) => trackSource(tracker, a, classLabel));
+
+  const subclassMatch = findSubclassByName(
+    data.basicInfo.class ?? "",
+    data.basicInfo.subclass ?? "",
+    classes
+  );
+  if (subclassMatch?.cls.id === "cleric") {
+    const domain = CLERIC_DOMAIN_PROFICIENCIES[subclassMatch.subclass.id];
+    const subclassLabel = `Subclass (${subclassMatch.subclass.name})`;
+    domain?.armor?.forEach((a) => trackSource(tracker, a, subclassLabel));
+  }
 
   return entriesFromTracker(
     tracker,

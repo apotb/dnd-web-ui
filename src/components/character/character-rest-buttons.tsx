@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,9 +19,24 @@ import {
   getShortRestRestorations,
   startPendingShortRest,
 } from "@/lib/dnd/rest";
+import { resolveCharacterClass } from "@/lib/character/class-derivation";
+import { isManagedGrantSpell } from "@/lib/character/spell-sources";
+import type { CatalogSpellRow } from "@/lib/content/catalog-client";
+import { getSpellsBySlugsClient } from "@/lib/content/catalog-client";
+import { formatSpellPickerTooltip, getMaxCastableSpellLevel } from "@/lib/dnd/spell-display";
+import {
+  applyPreparedSelection,
+  canReprepareSpellsOnLongRest,
+  getSpellcastingLimits,
+  isWizard,
+  listPreparedLeveledSpells,
+  syncSpellcastingFromClass,
+} from "@/lib/dnd/spellcasting";
+import { levelFromXp } from "@/lib/dnd/xp";
 import type { HarptosDate } from "@/lib/dnd/harptos-calendar";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
+import { SpellPreparationDialog } from "@/components/spells/spell-preparation-dialog";
 
 interface CharacterRestButtonsProps {
   data: CharacterData;
@@ -42,6 +57,52 @@ export function CharacterRestButtons({
 }: CharacterRestButtonsProps) {
   const [longOpen, setLongOpen] = useState(false);
   const [shortOpen, setShortOpen] = useState(false);
+  const [prepPromptOpen, setPrepPromptOpen] = useState(false);
+  const [prepOpen, setPrepOpen] = useState(false);
+  const [preparedSpellCatalog, setPreparedSpellCatalog] = useState<
+    Record<string, CatalogSpellRow>
+  >({});
+
+  const resolvedClass = useMemo(
+    () => resolveCharacterClass(data, classes),
+    [data, classes]
+  );
+  const characterLevel = levelFromXp(data.basicInfo.xp ?? 0);
+  const spellLimits = useMemo(
+    () =>
+      resolvedClass?.spellcasting
+        ? getSpellcastingLimits(resolvedClass, characterLevel, data.abilityScores)
+        : null,
+    [resolvedClass, characterLevel, data.abilityScores]
+  );
+  const canReprepare = resolvedClass
+    ? canReprepareSpellsOnLongRest(resolvedClass)
+    : false;
+  const classSpellListId = resolvedClass?.spellcasting?.spellListId;
+  const maxCastableSpellLevel = useMemo(
+    () => getMaxCastableSpellLevel(characterLevel, data.spells.slots),
+    [characterLevel, data.spells.slots]
+  );
+  const preparedLeveledSlugs = useMemo(
+    () =>
+      listPreparedLeveledSpells(data.spells.known)
+        .map((spell) => spell.spellId)
+        .filter((slug): slug is string => !!slug),
+    [data.spells.known]
+  );
+  const preparedLeveledSpells = useMemo(
+    () => listPreparedLeveledSpells(data.spells.known),
+    [data.spells.known]
+  );
+  const spellbookSlugs = useMemo(() => {
+    if (!resolvedClass || !isWizard(resolvedClass)) return undefined;
+    return data.spells.known
+      .filter(
+        (spell) =>
+          spell.level > 0 && !isManagedGrantSpell(spell) && !!spell.spellId
+      )
+      .map((spell) => spell.spellId!);
+  }, [data.spells.known, resolvedClass]);
 
   const longAvailability = useMemo(
     () => canTakeLongRest(data, campaignDate, isDm),
@@ -62,10 +123,30 @@ export function CharacterRestButtons({
 
   const pendingShortRest = data.combat.pendingShortRest;
 
-  function handleLongRest() {
-    const next = applyLongRest(data, campaignDate, classes, speciesList);
-    onApply(next);
+  useEffect(() => {
+    if (!prepPromptOpen || preparedLeveledSlugs.length === 0) {
+      setPreparedSpellCatalog({});
+      return;
+    }
+    void getSpellsBySlugsClient(preparedLeveledSlugs).then(setPreparedSpellCatalog);
+  }, [prepPromptOpen, preparedLeveledSlugs]);
+
+  function handleLongRestConfirm() {
+    const rested = applyLongRest(data, campaignDate, classes, speciesList);
+    onApply(rested);
     setLongOpen(false);
+    if (canReprepare) {
+      setPrepPromptOpen(true);
+    }
+  }
+
+  function handleKeepCurrentPrep() {
+    setPrepPromptOpen(false);
+  }
+
+  function handleOpenPrepDialog() {
+    setPrepPromptOpen(false);
+    setPrepOpen(true);
   }
 
   function beginShortRestHeal() {
@@ -73,8 +154,42 @@ export function CharacterRestButtons({
     setShortOpen(false);
   }
 
+  function handleConfirmPreparedSpells(selected: CatalogSpellRow[]) {
+    if (!resolvedClass || !spellLimits?.preparedSpells) {
+      setPrepOpen(false);
+      return;
+    }
+
+    const known = applyPreparedSelection(
+      data.spells.known,
+      selected.map((spell) => ({
+        slug: spell.slug,
+        name: spell.name,
+        level: spell.level,
+        school: spell.school,
+      })),
+      spellLimits.preparedSpells,
+      { wizardSpellbook: isWizard(resolvedClass) }
+    );
+    const next = {
+      ...data,
+      spells: syncSpellcastingFromClass(
+        { ...data, spells: { ...data.spells, known } },
+        resolvedClass,
+        characterLevel
+      ),
+    };
+    onApply(next);
+    setPrepOpen(false);
+  }
+
   const longDisabled = !longAvailability.ok;
   const longDisabledReason = longAvailability.ok ? null : longAvailability.reason;
+  const canOpenReprepare =
+    canReprepare &&
+    spellLimits?.preparedSpells != null &&
+    classSpellListId &&
+    (!isWizard(resolvedClass!) || (spellbookSlugs?.length ?? 0) > 0);
 
   return (
     <>
@@ -120,18 +235,18 @@ export function CharacterRestButtons({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Take a long rest?</DialogTitle>
-            {longRestEffects.length > 0 || longRestRestorations.length > 0 ? (
-              <DialogDescription>
-                A long rest will apply the following:
-              </DialogDescription>
-            ) : null}
           </DialogHeader>
           {longRestEffects.length > 0 ? (
-            <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
-              {longRestEffects.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">
+                A long rest will apply the following:
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+                {longRestEffects.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
           ) : null}
           {longRestRestorations.length > 0 ? (
             <div className="space-y-1">
@@ -154,12 +269,98 @@ export function CharacterRestButtons({
             <Button type="button" variant="outline" onClick={() => setLongOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleLongRest}>
+            <Button type="button" onClick={handleLongRestConfirm}>
               Long Rest
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={prepPromptOpen} onOpenChange={setPrepPromptOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Prepared spells</DialogTitle>
+            <DialogDescription>
+              After a long rest, you may change which spells you have prepared.
+            </DialogDescription>
+          </DialogHeader>
+          {preparedLeveledSpells.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Currently prepared:{" "}
+              {preparedLeveledSpells.map((spell, index) => {
+                const catalogSpell = spell.spellId
+                  ? preparedSpellCatalog[spell.spellId]
+                  : undefined;
+                const displayName =
+                  catalogSpell?.name ?? (spell.name || "Unknown spell");
+                const tooltip = formatSpellPickerTooltip(
+                  catalogSpell ?? { name: displayName }
+                );
+                return (
+                  <span key={spell.id}>
+                    {index > 0 ? ", " : null}
+                    <Tooltip content={tooltip}>
+                      <span className="cursor-default">{displayName}</span>
+                    </Tooltip>
+                  </span>
+                );
+              })}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No leveled spells prepared.
+            </p>
+          )}
+          {canReprepare && isWizard(resolvedClass!) && !canOpenReprepare ? (
+            <p className="text-xs text-muted-foreground">
+              Add spells to your spellbook before you can prepare them.
+            </p>
+          ) : null}
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
+            <Button
+              type="button"
+              className="w-full"
+              disabled={!canOpenReprepare}
+              onClick={handleOpenPrepDialog}
+            >
+              {isWizard(resolvedClass!)
+                ? "Change prepared spells from spellbook"
+                : "Change prepared spells"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleKeepCurrentPrep}
+            >
+              Keep current preparation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {canReprepare &&
+      spellLimits?.preparedSpells != null &&
+      classSpellListId ? (
+        <SpellPreparationDialog
+          open={prepOpen}
+          onClose={() => setPrepOpen(false)}
+          onConfirm={handleConfirmPreparedSpells}
+          classListId={classSpellListId}
+          maxSpellLevel={maxCastableSpellLevel}
+          prepareLimit={spellLimits.preparedSpells}
+          currentlyPreparedSlugs={preparedLeveledSlugs}
+          spellbookSlugs={
+            isWizard(resolvedClass!) ? spellbookSlugs : undefined
+          }
+          title={
+            isWizard(resolvedClass!)
+              ? "Prepare spells from spellbook"
+              : "Prepare spells"
+          }
+          confirmLabel="Confirm preparation"
+        />
+      ) : null}
 
       <Dialog open={shortOpen} onOpenChange={setShortOpen}>
         <DialogContent className="sm:max-w-md">

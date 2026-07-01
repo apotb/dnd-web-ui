@@ -17,6 +17,11 @@ import {
 import type { PhbBackground, PhbSpecies } from "@/lib/dnd/phb/types";
 import { SKILL_LABELS } from "@/lib/dnd/calculations";
 import { getSpell } from "@/lib/dnd/phb/spells";
+import { KNOWLEDGE_DOMAIN_SKILL_OPTIONS } from "@/lib/dnd/phb/cleric-domain-grants";
+import {
+  defaultLanguageLookup,
+  resolveLanguageName,
+} from "@/lib/languages/resolve";
 
 export type GrantEditorKind =
   | "select"
@@ -29,7 +34,8 @@ export type GrantEditorKind =
   | "magic-initiate"
   | "tool-pick"
   | "tool-multi"
-  | "humanoid-species";
+  | "humanoid-species"
+  | "languages";
 
 export interface GrantEditorConfig {
   kind: GrantEditorKind;
@@ -402,6 +408,57 @@ export function deriveGrantConfigurableFeatures(
     );
   }
 
+  if (
+    subclassMatch?.cls.id === "cleric" &&
+    subclassMatch.subclass.id === "knowledge"
+  ) {
+    const languageRules = "You learn two languages of your choice.";
+    const lookup = defaultLanguageLookup();
+    const languageNames = (featureChoices.knowledgeDomainLanguages ?? []).map((slug) =>
+      resolveLanguageName(slug, lookup)
+    );
+    features.push(
+      makeGrantFeature(
+        "subclass",
+        "Blessings of Knowledge — Languages",
+        languageRules,
+        buildChoiceDescription(
+          languageRules,
+          languageNames.length ? languageNames.join(", ") : null
+        ),
+        "fightingStyle",
+        "",
+        [],
+        {
+          kind: "languages",
+          storage: { area: "featureChoices", key: "knowledgeDomainLanguages" },
+          max: 2,
+        }
+      )
+    );
+
+    const skillRules =
+      "You gain proficiency in two of Arcana, History, Nature, or Religion.";
+    const knowledgeSkills = featureChoices.knowledgeDomainSkills ?? [];
+    features.push(
+      makeGrantFeature(
+        "subclass",
+        "Blessings of Knowledge — Skills",
+        skillRules,
+        summarizeSkills(knowledgeSkills, skillRules),
+        "fightingStyle",
+        "",
+        [],
+        {
+          kind: "skills",
+          storage: { area: "featureChoices", key: "knowledgeDomainSkills" },
+          max: 2,
+          skillOptions: [...KNOWLEDGE_DOMAIN_SKILL_OPTIONS],
+        }
+      )
+    );
+  }
+
   void choicePlaceholder;
   return features;
 }
@@ -423,6 +480,10 @@ export function isReplacedByGrantFeature(
     "Decadent Mastery": ["Decadent Mastery", "Skill or Tool"],
     "Skill Versatility": ["Skill Versatility", "Changeling Instincts (two skills)"],
     "Acolyte of Nature": ["Acolyte of Nature — Cantrip", "Acolyte of Nature — Skill"],
+    "Blessings of Knowledge": [
+      "Blessings of Knowledge — Languages",
+      "Blessings of Knowledge — Skills",
+    ],
   };
   const names = replacements[locked.name] ?? [locked.name];
   return grantFeatures.some(

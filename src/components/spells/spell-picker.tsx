@@ -18,7 +18,7 @@ import {
 } from "@/lib/content/catalog-client";
 import { SpellGlossaryMeta } from "@/components/spells/spell-glossary-meta";
 import { Tooltip } from "@/components/ui/tooltip";
-import { availableSpellLevels, formatSpellPickerTooltip, spellClassFilterLabel, spellLevelFilterLabel, spellLevelLabel } from "@/lib/dnd/spell-display";
+import { availableSpellLevels, formatSpellPickerTooltip, spellClassFilterLabel, spellLevelBadgeLabel, spellLevelFilterLabel, spellLevelLabel } from "@/lib/dnd/spell-display";
 
 interface SpellPickerProps {
   open: boolean;
@@ -46,11 +46,6 @@ function excludeSlugsKey(slugs: readonly string[]): string {
   return slugs.length === 0 ? "" : slugs.join("\0");
 }
 
-function levelLabel(level: number): string {
-  if (level === 0) return "Cantrip";
-  return `Level ${level}`;
-}
-
 function SpellRow({ spell, onSelect }: { spell: CatalogSpellRow; onSelect: () => void }) {
   const tooltip = formatSpellPickerTooltip(spell);
   return (
@@ -64,7 +59,7 @@ function SpellRow({ spell, onSelect }: { spell: CatalogSpellRow; onSelect: () =>
           <div className="flex items-start justify-between gap-2">
             <span className="font-medium text-sm leading-snug">{spell.name}</span>
             <Badge variant="outline" className="text-xs shrink-0">
-              {levelLabel(spell.level)}
+              {spellLevelBadgeLabel(spell.level)}
             </Badge>
           </div>
           <div className="mt-0.5">

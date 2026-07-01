@@ -48,6 +48,8 @@ export interface CharacterCreatorState {
   monkTool: string;
   bonusDruidCantripId: string;
   acolyteOfNatureSkill: SkillKey | "";
+  knowledgeDomainLanguages: string[];
+  knowledgeDomainSkills: SkillKey[];
   baseScores: Record<AbilityKey, number>;
   classSkills: SkillKey[];
   cantripIds: string[];
@@ -94,6 +96,8 @@ export function createInitialCreatorState(): CharacterCreatorState {
     monkTool: "",
     bonusDruidCantripId: "",
     acolyteOfNatureSkill: "",
+    knowledgeDomainLanguages: [],
+    knowledgeDomainSkills: [],
     baseScores: defaultPointBuyScores(),
     classSkills: [],
     cantripIds: [],

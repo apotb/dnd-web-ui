@@ -47,6 +47,7 @@ import { LanguagePicker } from "./language-picker";
 import { HumanoidSpeciesPicker } from "./humanoid-species-picker";
 import { SkillPicker } from "./skill-picker";
 import { CantripPickerField } from "@/components/spells/cantrip-picker-field";
+import { KNOWLEDGE_DOMAIN_SKILL_OPTIONS } from "@/lib/dnd/phb/cleric-domain-grants";
 import { weaponChoicesToFilter } from "@/lib/items/catalog-picker-filter";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -244,6 +245,14 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
           }
           if (!state.acolyteOfNatureSkill) {
             return "Choose a skill proficiency for Acolyte of Nature.";
+          }
+        }
+        if (state.classId === "cleric" && state.subclassId === "knowledge") {
+          if (state.knowledgeDomainLanguages.length !== 2) {
+            return "Choose two bonus languages for Blessings of Knowledge.";
+          }
+          if (state.knowledgeDomainSkills.length !== 2) {
+            return "Choose two skill proficiencies for Blessings of Knowledge.";
           }
         }
         return null;
@@ -1007,6 +1016,8 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                 favoredTerrain: "",
                 bonusDruidCantripId: "",
                 acolyteOfNatureSkill: "",
+                knowledgeDomainLanguages: [],
+                knowledgeDomainSkills: [],
               })
             }
           >
@@ -1042,6 +1053,12 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                           : {
                               bonusDruidCantripId: "",
                               acolyteOfNatureSkill: "",
+                            }),
+                        ...(subclassId === "knowledge" && state.classId === "cleric"
+                          ? {}
+                          : {
+                              knowledgeDomainLanguages: [],
+                              knowledgeDomainSkills: [],
                             }),
                       });
                     }}
@@ -1169,6 +1186,31 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                     classListId="druid"
                     placeholder="Choose druid cantrip"
                     variant="creator"
+                  />
+                </>
+              ) : null}
+
+              {state.classId === "cleric" && state.subclassId === "knowledge" ? (
+                <>
+                  <label className="candy-label">Blessings of Knowledge — languages</label>
+                  <p className="retro-muted text-sm">
+                    Learn two languages of your choice.
+                  </p>
+                  <LanguagePicker
+                    selected={state.knowledgeDomainLanguages}
+                    max={2}
+                    catalog={catalog.languages}
+                    onChange={(slugs) => update({ knowledgeDomainLanguages: slugs })}
+                  />
+                  <label className="candy-label">Blessings of Knowledge — skills</label>
+                  <p className="retro-muted text-sm">
+                    Proficiency in two of Arcana, History, Nature, or Religion.
+                  </p>
+                  <SkillPicker
+                    selected={state.knowledgeDomainSkills}
+                    max={2}
+                    options={[...KNOWLEDGE_DOMAIN_SKILL_OPTIONS]}
+                    onChange={(skills) => update({ knowledgeDomainSkills: skills })}
                   />
                 </>
               ) : null}

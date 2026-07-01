@@ -150,7 +150,7 @@ const MECHANICAL_FEATURES: Record<string, MechanicalFeatureDef> = {
     id: ARCANE_RECOVERY_ID,
     kind: "short-rest-slots",
     restReset: "long",
-    qualifies: (ctx) => ctx.cls?.id === "wizard",
+    qualifies: (ctx) => ctx.cls?.id === "wizard" && ctx.level >= 2,
     maxValue: () => 1,
     maxRecoverableSlotLevel: 5,
   },

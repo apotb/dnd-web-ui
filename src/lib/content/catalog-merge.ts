@@ -13,8 +13,9 @@ export function mergeCatalogFeatureEntries(
   phbEntries: CatalogFeatureEntry[]
 ): CatalogFeatureEntry[] {
   const phbByKey = new Map(phbEntries.map((entry) => [featureKey(entry), entry]));
+  const dbKeys = new Set(dbEntries.map((entry) => featureKey(entry)));
 
-  return dbEntries.map((entry) => {
+  const merged = dbEntries.map((entry) => {
     const phb = phbByKey.get(featureKey(entry));
     if (!phb) return entry;
 
@@ -22,8 +23,17 @@ export function mergeCatalogFeatureEntries(
       ...entry,
       slug: entry.slug?.trim() ? entry.slug : phb.slug,
       mechanics: entry.mechanics ?? phb.mechanics,
+      minLevel: entry.minLevel ?? phb.minLevel,
     };
   });
+
+  for (const phb of phbEntries) {
+    if (!dbKeys.has(featureKey(phb))) {
+      merged.push(phb);
+    }
+  }
+
+  return merged;
 }
 
 export function mergeClassWithPhb(dbClass: PhbClass, phbClass: PhbClass | undefined): PhbClass {

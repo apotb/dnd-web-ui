@@ -10,6 +10,15 @@ export function spellLevelLabel(level: number): string {
   return `${level}th Level`;
 }
 
+/** Compact level label for spell row badges (e.g. "1st", "2nd"). */
+export function spellLevelBadgeLabel(level: number): string {
+  if (level === 0) return "Cantrip";
+  if (level === 1) return "1st";
+  if (level === 2) return "2nd";
+  if (level === 3) return "3rd";
+  return `${level}th`;
+}
+
 /** Highest leveled spell slot the character has (falls back to full-caster progression). */
 export function getMaxCastableSpellLevel(
   characterLevel: number,

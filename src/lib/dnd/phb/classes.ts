@@ -150,6 +150,12 @@ export const PHB_CLASSES: PhbClass[] = [
         },
       },
       { name: "Spellcasting", description: "Charisma-based spellcasting." },
+      {
+        name: "Ritual Casting",
+        slug: "ritual-casting",
+        description:
+          "Cast any bard spell you know with the ritual tag as a ritual (add 10 minutes; no spell slot).",
+      },
     ],
   },
   {
@@ -205,7 +211,15 @@ export const PHB_CLASSES: PhbClass[] = [
       ritual: true,
       spellListId: "cleric",
     },
-    features: [{ name: "Divine Domain", description: "Choose a domain at 1st level." }],
+    features: [
+      { name: "Divine Domain", description: "Choose a domain at 1st level." },
+      {
+        name: "Ritual Casting",
+        slug: "ritual-casting",
+        description:
+          "Cast a prepared cleric spell with the ritual tag as a ritual (add 10 minutes; no spell slot).",
+      },
+    ],
   },
   {
     id: "druid",
@@ -267,7 +281,15 @@ export const PHB_CLASSES: PhbClass[] = [
       ritual: true,
       spellListId: "druid",
     },
-    features: [{ name: "Druidic", description: "Secret language of druids." }],
+    features: [
+      { name: "Druidic", description: "Secret language of druids." },
+      {
+        name: "Ritual Casting",
+        slug: "ritual-casting",
+        description:
+          "Cast a prepared druid spell with the ritual tag as a ritual (add 10 minutes; no spell slot).",
+      },
+    ],
   },
   {
     id: "fighter",
@@ -722,7 +744,20 @@ export const PHB_CLASSES: PhbClass[] = [
       ritual: true,
       spellListId: "wizard",
     },
-    features: [{ name: "Arcane Recovery", description: "Recover spell slots on short rest once per day." }],
+    features: [
+      {
+        name: "Arcane Recovery",
+        slug: "arcane-recovery",
+        minLevel: 2,
+        description: "Recover spell slots on short rest once per day.",
+      },
+      {
+        name: "Ritual Casting",
+        slug: "ritual-casting",
+        description:
+          "Cast a wizard spell from your spellbook with the ritual tag as a ritual, even if not prepared (add 10 minutes; no spell slot).",
+      },
+    ],
   },
 ];
 

@@ -62,6 +62,7 @@ export const catalogFeatureEntrySchema = z.object({
   name: z.string(),
   description: z.string(),
   slug: z.string().optional(),
+  minLevel: z.number().int().min(1).max(20).optional(),
   mechanics: catalogFeatureMechanicsSchema.optional(),
 });
 

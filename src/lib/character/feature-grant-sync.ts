@@ -25,6 +25,17 @@ import {
   resolveBackgroundToolProficiencies,
 } from "@/lib/dnd/character-builder/build-character";
 import type { CharacterCreatorState } from "@/lib/dnd/character-builder/types";
+import {
+  CLERIC_DOMAIN_PROFICIENCIES,
+  KNOWLEDGE_DOMAIN_LANGUAGE_GRANT_KEY,
+  KNOWLEDGE_DOMAIN_SKILL_GRANT_KEY,
+  KNOWLEDGE_DOMAIN_SKILL_OPTIONS,
+} from "@/lib/dnd/phb/cleric-domain-grants";
+import {
+  defaultLanguageLookup,
+  resolveLanguageName,
+  resolveLanguageSlug,
+} from "@/lib/languages/resolve";
 
 export const MANAGED_SPELL_GRANT_PREFIX = "grant:";
 
@@ -34,6 +45,12 @@ export { resolveAllSpellGrants } from "@/lib/character/spell-grants";
 export interface SkillGrantSpec {
   grantKey: string;
   skills: SkillKey[];
+  source: string;
+}
+
+export interface LanguageGrantSpec {
+  grantKey: string;
+  slugs: string[];
   source: string;
 }
 
@@ -218,7 +235,135 @@ export function resolveAllSkillGrants(
     });
   }
 
+  const knowledgeSkills = (data.featureChoices?.knowledgeDomainSkills ?? []).filter(
+    (skill): skill is SkillKey =>
+      KNOWLEDGE_DOMAIN_SKILL_OPTIONS.includes(
+        skill as (typeof KNOWLEDGE_DOMAIN_SKILL_OPTIONS)[number]
+      )
+  );
+  if (
+    subclassMatch?.cls.id === "cleric" &&
+    subclassMatch.subclass.id === "knowledge" &&
+    knowledgeSkills.length
+  ) {
+    grants.push({
+      grantKey: KNOWLEDGE_DOMAIN_SKILL_GRANT_KEY,
+      skills: knowledgeSkills,
+      source: "Knowledge Domain",
+    });
+  }
+
   return grants;
+}
+
+/** Language proficiencies granted by subclass features (e.g. Knowledge Domain). */
+export function resolveAllLanguageGrants(
+  data: CharacterData,
+  catalogs: FeatureCatalogs = {}
+): LanguageGrantSpec[] {
+  const { classes } = resolveCatalogs(catalogs);
+  const grants: LanguageGrantSpec[] = [];
+  const subclassMatch = findSubclassByName(
+    data.basicInfo.class ?? "",
+    data.basicInfo.subclass ?? "",
+    classes
+  );
+  const languageSlugs = data.featureChoices?.knowledgeDomainLanguages ?? [];
+  if (
+    subclassMatch?.cls.id === "cleric" &&
+    subclassMatch.subclass.id === "knowledge" &&
+    languageSlugs.length
+  ) {
+    grants.push({
+      grantKey: KNOWLEDGE_DOMAIN_LANGUAGE_GRANT_KEY,
+      slugs: languageSlugs,
+      source: "Knowledge Domain",
+    });
+  }
+  return grants;
+}
+
+function applyLanguageGrants(
+  data: CharacterData,
+  catalogs: FeatureCatalogs
+): CharacterData {
+  const grants = resolveAllLanguageGrants(data, catalogs);
+  const lookup = defaultLanguageLookup();
+  const previouslyManaged = new Set(
+    Object.entries(data.grantedLanguageSlugs ?? {})
+      .filter(([, grantKey]) => grantKey.startsWith(MANAGED_SPELL_GRANT_PREFIX))
+      .map(([slug]) => slug)
+  );
+  const grantedLanguageSlugs: Record<string, string> = {
+    ...(data.grantedLanguageSlugs ?? {}),
+  };
+
+  const activeSlugs = new Set<string>();
+  for (const grant of grants) {
+    for (const slug of grant.slugs) {
+      const resolved = resolveLanguageSlug(slug, lookup);
+      if (resolved) activeSlugs.add(resolved);
+    }
+  }
+
+  for (const [slug, grantKey] of Object.entries(grantedLanguageSlugs)) {
+    if (!grantKey.startsWith(MANAGED_SPELL_GRANT_PREFIX)) continue;
+    if (!activeSlugs.has(slug)) {
+      delete grantedLanguageSlugs[slug];
+    }
+  }
+
+  for (const grant of grants) {
+    for (const slug of grant.slugs) {
+      const resolved = resolveLanguageSlug(slug, lookup);
+      if (resolved) grantedLanguageSlugs[resolved] = grant.grantKey;
+    }
+  }
+
+  const languages = [...data.languages];
+  const languageKeys = new Set(
+    languages.map((name) => resolveLanguageSlug(name, lookup))
+  );
+
+  for (const [slug, grantKey] of Object.entries(grantedLanguageSlugs)) {
+    if (!grantKey.startsWith(MANAGED_SPELL_GRANT_PREFIX)) continue;
+    if (!languageKeys.has(slug)) {
+      languages.push(resolveLanguageName(slug, lookup));
+      languageKeys.add(slug);
+    }
+  }
+
+  for (let i = languages.length - 1; i >= 0; i--) {
+    const slug = resolveLanguageSlug(languages[i], lookup);
+    if (previouslyManaged.has(slug) && !activeSlugs.has(slug)) {
+      languages.splice(i, 1);
+    }
+  }
+
+  return {
+    ...data,
+    languages,
+    grantedLanguageSlugs:
+      Object.keys(grantedLanguageSlugs).length > 0 ? grantedLanguageSlugs : undefined,
+  };
+}
+
+function resolveClericDomainProficiencies(
+  data: CharacterData,
+  catalogs: FeatureCatalogs
+): { armor: string[]; weapons: string[] } {
+  const { classes } = resolveCatalogs(catalogs);
+  const match = findSubclassByName(
+    data.basicInfo.class ?? "",
+    data.basicInfo.subclass ?? "",
+    classes
+  );
+  if (match?.cls.id !== "cleric") return { armor: [], weapons: [] };
+  const domain = CLERIC_DOMAIN_PROFICIENCIES[match.subclass.id];
+  return {
+    armor: domain?.armor ?? [],
+    weapons: domain?.weapons ?? [],
+  };
 }
 
 function applySkillGrants(
@@ -279,6 +424,9 @@ function resolveStoredWeaponProficiencies(
   sub?.weaponProficiencies?.forEach((w) => weapons.add(w));
   (speciesChoices.speciesWeaponChoices ?? []).forEach((w) => weapons.add(w));
 
+  const domainWeapons = resolveClericDomainProficiencies(data, catalogs).weapons;
+  domainWeapons.forEach((w) => weapons.add(w));
+
   return [...weapons];
 }
 
@@ -327,6 +475,8 @@ function creatorStateFromCharacter(
     monkTool: "",
     bonusDruidCantripId: data.featureChoices?.bonusDruidCantripId ?? "",
     acolyteOfNatureSkill: data.featureChoices?.acolyteOfNatureSkill ?? "",
+    knowledgeDomainLanguages: data.featureChoices?.knowledgeDomainLanguages ?? [],
+    knowledgeDomainSkills: data.featureChoices?.knowledgeDomainSkills ?? [],
     useStartingGold: false,
     rolledGold: 0,
   };
@@ -389,6 +539,9 @@ function resolveStoredArmorProficiencies(
   const cls = resolveCharacterClass(data, catalogs.classes);
   cls?.armorProficiencies?.forEach((a) => armor.add(a));
 
+  const domainArmor = resolveClericDomainProficiencies(data, catalogs).armor;
+  domainArmor.forEach((a) => armor.add(a));
+
   return [...armor];
 }
 
@@ -415,6 +568,7 @@ export function syncFeatureGrants(
   };
 
   next = applySkillGrants(next, catalogs);
+  next = applyLanguageGrants(next, catalogs);
   return next;
 }
 

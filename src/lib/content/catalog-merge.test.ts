@@ -23,4 +23,40 @@ describe("catalog-merge", () => {
     assert.equal(layOnHands!.slug, "lay-on-hands");
     assert.equal(layOnHands!.mechanics?.kind, "hp-pool");
   });
+
+  it("fills missing minLevel from built-in PHB class data", () => {
+    const wizard = PHB_CLASSES.find((entry) => entry.id === "wizard");
+    assert.ok(wizard);
+
+    const staleDbWizard: PhbClass = {
+      ...wizard!,
+      features: wizard!.features.map((feature) => ({
+        name: feature.name,
+        description: feature.description,
+        slug: feature.slug,
+      })),
+    };
+
+    const merged = mergeClassWithPhb(staleDbWizard, wizard);
+    const arcaneRecovery = merged.features.find(
+      (feature) => feature.name === "Arcane Recovery"
+    );
+    assert.ok(arcaneRecovery);
+    assert.equal(arcaneRecovery!.minLevel, 2);
+  });
+
+  it("appends PHB features missing from stale DB class data", () => {
+    const wizard = PHB_CLASSES.find((entry) => entry.id === "wizard");
+    assert.ok(wizard);
+
+    const staleDbWizard: PhbClass = {
+      ...wizard!,
+      features: wizard!.features.filter((feature) => feature.name !== "Ritual Casting"),
+    };
+
+    const merged = mergeClassWithPhb(staleDbWizard, wizard);
+    const ritualCasting = merged.features.find((feature) => feature.name === "Ritual Casting");
+    assert.ok(ritualCasting);
+    assert.equal(ritualCasting!.slug, "ritual-casting");
+  });
 });

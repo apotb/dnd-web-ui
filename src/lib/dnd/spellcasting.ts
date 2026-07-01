@@ -1,6 +1,6 @@
 import type { AbilityKey, CharacterData, Spell } from "@/lib/schemas/character";
 import { isManagedGrantSpell } from "@/lib/character/spell-sources";
-import { abilityModifier } from "@/lib/dnd/calculations";
+import { abilityModifier, ABILITY_FULL_LABELS, formatModifier } from "@/lib/dnd/calculations";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 
 /** Full-caster spell slots by character level (index 0 = level 1). */
@@ -88,6 +88,112 @@ export function isWizard(cls: PhbClass): boolean {
   return cls.id === "wizard" && cls.spellcasting?.preparedCaster === true;
 }
 
+/** Cleric, druid, etc.: full class list access; prepare a subset each rest (not wizard). */
+export function isFullListPreparedCaster(cls: PhbClass): boolean {
+  return isPreparedCaster(cls) && !isWizard(cls);
+}
+
+/** Prepared casters (incl. wizard) may change prepared spells only after a long rest. */
+export function canReprepareSpellsOnLongRest(cls: PhbClass): boolean {
+  return isPreparedCaster(cls) && !isKnownCaster(cls);
+}
+
+/** Features-tab description of how this class casts spells. */
+export function getSpellcastingFeatureDescription(cls: PhbClass): string {
+  const sc = cls.spellcasting;
+  if (!sc) return "";
+
+  const abilityLabel = ABILITY_FULL_LABELS[sc.ability];
+
+  if (cls.id === "warlock") {
+    return `Pact caster — ${abilityLabel} · spell slots recover on short rest`;
+  }
+  if (isWizard(cls)) {
+    return `Full caster — ${abilityLabel} · spellbook (prepare from book on long rest)`;
+  }
+  if (isFullListPreparedCaster(cls)) {
+    return `Full caster — ${abilityLabel} · prepare from class list on long rest`;
+  }
+  if (isKnownCaster(cls)) {
+    return `Full caster — ${abilityLabel} · spells known`;
+  }
+  return `${abilityLabel}-based spellcasting`;
+}
+
+/** Wizard leveled spell in the spellbook (not a managed grant). */
+export function isWizardSpellbookSpell(spell: Spell, cls: PhbClass | undefined): boolean {
+  return !!cls && isWizard(cls) && spell.level > 0 && !isManagedGrantSpell(spell);
+}
+
+/** Leveled spellbook entries for a wizard, sorted by level then name. */
+export function getWizardSpellbookSpells(known: Spell[]): Spell[] {
+  return known
+    .filter((spell) => spell.level > 0 && !isManagedGrantSpell(spell))
+    .sort((a, b) => {
+      if (a.level !== b.level) return a.level - b.level;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+}
+
+/** DM session toggle to add, swap, or remove all wizard spells on the sheet. */
+export function canModifyPlayerSpells(
+  isDm: boolean,
+  dmSpellEditEnabled: boolean,
+  cls: PhbClass | undefined
+): boolean {
+  return isDm && dmSpellEditEnabled && !!cls && isWizard(cls);
+}
+
+/** Whether a non-grant spell row can be swapped or removed on the character sheet. */
+export function canEditSpellOnSheet(
+  spell: Spell,
+  cls: PhbClass | undefined,
+  isDm: boolean,
+  dmSpellEditEnabled: boolean
+): boolean {
+  if (isManagedGrantSpell(spell) || !cls) return false;
+
+  if (isWizard(cls)) {
+    return canModifyPlayerSpells(isDm, dmSpellEditEnabled, cls);
+  }
+
+  if (isPlayerCantrip(spell)) {
+    return canModifyPlayerCantrips(isDm, dmSpellEditEnabled);
+  }
+
+  return !isFullListPreparedCaster(cls);
+}
+
+/** Whether the sheet should show "+ Add Spell" for leveled (or all) spell picks. */
+export function canAddSpellsOnSheet(
+  cls: PhbClass | undefined,
+  isDm: boolean,
+  dmSpellEditEnabled: boolean
+): boolean {
+  if (!cls?.spellcasting) return false;
+  if (isWizard(cls)) {
+    return canModifyPlayerSpells(isDm, dmSpellEditEnabled, cls);
+  }
+  if (isFullListPreparedCaster(cls)) {
+    return false;
+  }
+  return true;
+}
+
+export function listPreparedLeveledSpells(known: Spell[]): Spell[] {
+  return known.filter(
+    (spell) =>
+      spell.level > 0 && spell.prepared && !isManagedGrantSpell(spell)
+  );
+}
+
+export interface PreparedSpellSelection {
+  slug: string;
+  name: string;
+  level: number;
+  school: string;
+}
+
 export function getCantripsKnownLimit(cls: PhbClass, characterLevel: number): number {
   const table = CANTrips_BY_CLASS[cls.id];
   if (table) return tableAt(table, characterLevel);
@@ -116,6 +222,26 @@ export function getPreparedSpellLimit(
   if (!ability) return 0;
   const mod = abilityModifier(abilityScores[ability]);
   return Math.max(1, mod + characterLevel);
+}
+
+export function formatPreparedSpellLimitTooltip(
+  cls: PhbClass,
+  characterLevel: number,
+  abilityScores: CharacterData["abilityScores"]
+): string | null {
+  const ability = cls.spellcasting?.ability;
+  if (!ability || !isPreparedCaster(cls)) return null;
+
+  const mod = abilityModifier(abilityScores[ability]);
+  const raw = mod + characterLevel;
+  const lines = [
+    `Character Level: ${characterLevel}`,
+    `${ABILITY_FULL_LABELS[ability]}: ${formatModifier(mod)}`,
+  ];
+  if (raw < 1) {
+    lines.push("Minimum: 1");
+  }
+  return lines.join("\n");
 }
 
 export function buildSpellSlots(
@@ -176,6 +302,19 @@ export function countPlayerCantrips(known: Spell[]): number {
   return known.filter((s) => s.level === 0 && !isManagedGrantSpell(s)).length;
 }
 
+/** Player-chosen cantrip (not a managed racial/domain/feat grant). */
+export function isPlayerCantrip(spell: Spell): boolean {
+  return spell.level === 0 && !isManagedGrantSpell(spell);
+}
+
+/** DM-only session toggle to add, swap, or remove player cantrips on the sheet. */
+export function canModifyPlayerCantrips(
+  isDm: boolean,
+  dmCantripEditEnabled: boolean
+): boolean {
+  return isDm && dmCantripEditEnabled;
+}
+
 export function countLeveledKnown(known: Spell[]): number {
   return known.filter((s) => s.level > 0).length;
 }
@@ -194,6 +333,12 @@ export function countGrantedLeveled(known: Spell[]): number {
 
 export function countPreparedLeveled(known: Spell[]): number {
   return known.filter((s) => s.level > 0 && s.prepared).length;
+}
+
+export function countPlayerPreparedLeveled(known: Spell[]): number {
+  return known.filter(
+    (s) => s.level > 0 && s.prepared && !isManagedGrantSpell(s)
+  ).length;
 }
 
 /** Per-level header: prepared count at this level vs prepare limit (or cantrip limit at 0). */
@@ -219,7 +364,9 @@ export function formatLevelPreparedSummary(
   }
 
   if (options.usesPreparedList && options.preparedSpellLimit != null) {
-    const prepared = spellsAtLevel.filter((s) => s.prepared).length;
+    const prepared = spellsAtLevel.filter(
+      (s) => s.prepared && !isManagedGrantSpell(s)
+    ).length;
     return `Prepared: ${prepared}/${options.preparedSpellLimit}`;
   }
 
@@ -243,9 +390,9 @@ export function normalizeSpellPreparedFlags(
   });
 }
 
-/** Trim excess prepared leveled spells (keeps grant spells and first N prepared). */
+/** Trim excess prepared leveled spells (keeps grant spells and first N player-prepared). */
 export function enforcePreparedLimit(known: Spell[], limit: number): Spell[] {
-  let preparedCount = countPreparedLeveled(known);
+  let preparedCount = countPlayerPreparedLeveled(known);
   if (preparedCount <= limit) return known;
 
   const result = [...known];
@@ -271,6 +418,13 @@ export function syncSpellcastingFromClass(
   const limits = getSpellcastingLimits(cls, characterLevel, data.abilityScores);
   let known = normalizeSpellPreparedFlags(data.spells.known, cls);
 
+  if (isFullListPreparedCaster(cls)) {
+    known = known.filter(
+      (spell) =>
+        spell.level === 0 || isManagedGrantSpell(spell) || spell.prepared
+    );
+  }
+
   if (limits.preparedSpells !== null) {
     known = enforcePreparedLimit(known, limits.preparedSpells);
   }
@@ -295,17 +449,112 @@ export function canAddLeveledSpell(
   currentKnown: Spell[],
   limits: SpellcastingLimits
 ): boolean {
+  if (limits.usesPreparedList && !limits.isWizard) {
+    return false;
+  }
   if (limits.spellsKnown !== null) {
     return countPlayerLeveledKnown(currentKnown) < limits.spellsKnown;
   }
   return true;
 }
 
+/** Wizard spellbook: leveled spells are added to the book, not prepared from the full list. */
+export function canAddLeveledSpellToSpellbook(limits: SpellcastingLimits): boolean {
+  return limits.isWizard;
+}
+
+/**
+ * Replace player-prepared leveled spells for full-list prepared casters,
+ * or update prepared flags on wizard spellbook entries.
+ */
+export function applyPreparedSelection(
+  known: Spell[],
+  selected: PreparedSpellSelection[],
+  prepareLimit: number,
+  options?: { wizardSpellbook?: boolean }
+): Spell[] {
+  const capped = selected.slice(0, Math.max(0, prepareLimit));
+  const selectedSlugs = new Set(capped.map((selection) => selection.slug));
+
+  if (options?.wizardSpellbook) {
+    let preparedCount = 0;
+    return known.map((spell) => {
+      if (spell.level === 0 || isManagedGrantSpell(spell)) return spell;
+      const inSelection = spell.spellId ? selectedSlugs.has(spell.spellId) : false;
+      if (inSelection && preparedCount < prepareLimit) {
+        preparedCount++;
+        return { ...spell, prepared: true };
+      }
+      if (spell.level > 0 && !isManagedGrantSpell(spell)) {
+        return { ...spell, prepared: false };
+      }
+      return spell;
+    });
+  }
+
+  const retained = known.filter(
+    (spell) => spell.level === 0 || isManagedGrantSpell(spell)
+  );
+
+  const preparedEntries: Spell[] = capped.map((selection) => {
+    const existing = known.find(
+      (spell) =>
+        spell.level > 0 &&
+        !isManagedGrantSpell(spell) &&
+        spell.spellId === selection.slug
+    );
+    return {
+      id: existing?.id ?? crypto.randomUUID(),
+      spellId: selection.slug,
+      name: selection.name,
+      level: selection.level,
+      prepared: true,
+      notes: selection.school,
+    };
+  });
+
+  return [...retained, ...preparedEntries];
+}
+
+/** One-time migration: merge legacy prepared array and drop orphan unprepared leveled spells. */
+export function migrateFullListPreparedCasterSpells(
+  data: CharacterData,
+  cls: PhbClass
+): CharacterData {
+  if (!isFullListPreparedCaster(cls)) return data;
+
+  const known = [...data.spells.known];
+  for (const spell of data.spells.prepared) {
+    if (
+      spell.level > 0 &&
+      !known.some(
+        (entry) => entry.spellId === spell.spellId && entry.level === spell.level
+      )
+    ) {
+      known.push({ ...spell, prepared: true });
+    }
+  }
+
+  const cleaned = known.filter(
+    (spell) =>
+      spell.level === 0 || isManagedGrantSpell(spell) || spell.prepared
+  );
+
+  return {
+    ...data,
+    spells: {
+      ...data.spells,
+      known: cleaned,
+      prepared: cleaned.filter((s) => s.prepared),
+    },
+  };
+}
+
 export function canPrepareAnother(
   currentKnown: Spell[],
   limit: number
 ): boolean {
-  return countPreparedLeveled(currentKnown) < limit;
+  return countPlayerPreparedLeveled(currentKnown) < limit;
 }
 
 export function formatSlotSummary(

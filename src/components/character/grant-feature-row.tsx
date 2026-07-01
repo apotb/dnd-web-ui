@@ -13,6 +13,7 @@ import {
 import { CatalogItemPicker } from "@/components/character-creator/catalog-item-picker";
 import { EquipmentSubPicker } from "@/components/character-creator/equipment-sub-picker";
 import { SkillPicker } from "@/components/character-creator/skill-picker";
+import { LanguagePicker } from "@/components/character-creator/language-picker";
 import { useGatedFeatureEdit } from "@/components/character/use-gated-feature-edit";
 import { CantripPickerField } from "@/components/spells/cantrip-picker-field";
 import { SpellPicker } from "@/components/spells/spell-picker";
@@ -177,6 +178,29 @@ export function GrantFeatureRow({
     return [];
   }
 
+  function readSkillsSelection(): SkillKey[] {
+    if (editor.kind !== "skills") return [];
+    if (editor.storage.area === "featureChoices") {
+      const key = editor.storage.key as keyof FeatureChoices;
+      const value = workingData.featureChoices?.[key];
+      return Array.isArray(value) ? (value as SkillKey[]) : [];
+    }
+    if (editor.storage.area === "backgroundChoices") {
+      return workingData.backgroundChoices?.backgroundSkillChoices ?? [];
+    }
+    return workingData.speciesChoices?.speciesSkillChoices ?? [];
+  }
+
+  function readLanguagesSelection(): string[] {
+    if (editor.kind !== "languages") return [];
+    if (editor.storage.area === "featureChoices") {
+      const key = editor.storage.key as keyof FeatureChoices;
+      const value = workingData.featureChoices?.[key];
+      return Array.isArray(value) ? value : [];
+    }
+    return [];
+  }
+
   return (
     <div className="rounded-md border border-dashed bg-muted/30 p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2 justify-between">
@@ -235,14 +259,18 @@ export function GrantFeatureRow({
 
           {editor.kind === "skills" ? (
             <SkillPicker
-              selected={
-                editor.storage.area === "backgroundChoices"
-                  ? (workingData.backgroundChoices?.backgroundSkillChoices ?? [])
-                  : (workingData.speciesChoices?.speciesSkillChoices ?? [])
-              }
+              selected={readSkillsSelection()}
               max={editor.max ?? 1}
               options={editor.skillOptions}
               onChange={(skills) => applyStorage(skills)}
+            />
+          ) : null}
+
+          {editor.kind === "languages" ? (
+            <LanguagePicker
+              selected={readLanguagesSelection()}
+              max={editor.max ?? 2}
+              onChange={(slugs) => applyStorage(slugs)}
             />
           ) : null}
 

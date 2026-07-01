@@ -155,6 +155,38 @@ describe("mechanical-features", () => {
     assert.equal(getSpellRecoveryBudget(7), 4);
   });
 
+  it("blocks Arcane Recovery for level 1 wizards", () => {
+    const data = wizardData({
+      basicInfo: {
+        ...wizardData().basicInfo,
+        level: 1,
+        xp: 0,
+      },
+    });
+    assert.equal(mechanicalFeatureQualifies(data, ARCANE_RECOVERY_ID), false);
+    assert.equal(getSpellRecoveryOptions(data, ARCANE_RECOVERY_ID), null);
+  });
+
+  it("allows Arcane Recovery for level 2 wizards", () => {
+    const data = wizardData({
+      basicInfo: {
+        ...wizardData().basicInfo,
+        level: 2,
+        xp: 300,
+      },
+      spells: {
+        ...wizardData().spells,
+        slots: {
+          "1": { max: 3, used: 1 },
+        },
+      },
+    });
+    assert.equal(mechanicalFeatureQualifies(data, ARCANE_RECOVERY_ID), true);
+    const options = getSpellRecoveryOptions(data, ARCANE_RECOVERY_ID);
+    assert.ok(options);
+    assert.equal(options!.available, true);
+  });
+
   it("lists recoverable wizard slots excluding 6th+ levels", () => {
     const data = wizardData({
       spells: {

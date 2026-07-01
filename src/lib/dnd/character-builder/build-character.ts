@@ -463,11 +463,13 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
   }
 
   if (cls.spellcasting.preparedCaster) {
+    const known =
+      state.classId === "wizard" ? [...cantrips, ...spellbook] : [...cantrips, ...level1];
     return {
       spellcastingHidden: false,
       spellcastingAbility: ability,
-      known: state.classId === "wizard" ? [...cantrips, ...spellbook] : cantrips,
-      prepared: [...cantrips, ...level1],
+      known,
+      prepared: known.filter((s) => s.prepared),
       slots,
       grantUses: {},
     };
@@ -637,6 +639,8 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       magicInitiateSpellId: "",
       bonusDruidCantripId: state.bonusDruidCantripId,
       acolyteOfNatureSkill: state.acolyteOfNatureSkill,
+      knowledgeDomainLanguages: state.knowledgeDomainLanguages,
+      knowledgeDomainSkills: state.knowledgeDomainSkills,
     },
     speciesChoices: {
       halfElfAbilityBonuses: state.halfElfAbilityBonuses,
@@ -793,6 +797,15 @@ export function validateCreatorState(state: CharacterCreatorState, catalog?: Cre
     }
     if (!state.acolyteOfNatureSkill) {
       errors.push("Nature Domain requires a skill proficiency (Acolyte of Nature).");
+    }
+  }
+
+  if (state.classId === "cleric" && state.subclassId === "knowledge") {
+    if (state.knowledgeDomainLanguages.length !== 2) {
+      errors.push("Knowledge Domain requires two bonus languages.");
+    }
+    if (state.knowledgeDomainSkills.length !== 2) {
+      errors.push("Knowledge Domain requires two skill proficiencies.");
     }
   }
 

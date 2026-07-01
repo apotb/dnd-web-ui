@@ -6,6 +6,7 @@ import {
   findSubclassByName,
 } from "@/lib/content/catalog-tooltip";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
+import { CLERIC_DOMAIN_SPELLS } from "@/lib/dnd/phb/cleric-domain-spells";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import type { PhbSpecies } from "@/lib/dnd/phb/types";
 import { levelFromXp } from "@/lib/dnd/xp";
@@ -63,6 +64,7 @@ function subclassGrant(
   level: number,
   options: {
     sourceLabel?: string;
+    minCharacterLevel?: number;
     notes?: string;
     usage?: SpellGrantUsage;
   } = {}
@@ -355,6 +357,28 @@ function resolveSubclassSpells(
         sourceLabel: "Acolyte of Nature",
       })
     );
+  }
+
+  if (match.cls.id === "cleric") {
+    const domainSpells = CLERIC_DOMAIN_SPELLS[match.subclass.id];
+    const domainLabel = `${match.subclass.name}`;
+    if (domainSpells) {
+      for (const entry of domainSpells) {
+        const catalog = getSpell(entry.spellId);
+        if (!catalog) continue;
+        grants.push(
+          subclassGrant(
+            `grant:subclass:domain-spell:${match.subclass.id}:${entry.spellId}`,
+            entry.spellId,
+            catalog.level,
+            {
+              sourceLabel: domainLabel,
+              minCharacterLevel: entry.minCharacterLevel,
+            }
+          )
+        );
+      }
+    }
   }
 
   return grants;

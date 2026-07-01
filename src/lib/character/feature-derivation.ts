@@ -25,6 +25,8 @@ import {
   isReplacedByGrantFeature,
   type GrantConfigurableFeature,
 } from "@/lib/character/feature-grant-features";
+import { getSpellcastingFeatureDescription } from "@/lib/dnd/spellcasting";
+import { levelFromXp } from "@/lib/dnd/xp";
 
 export type { FeatureCatalogs, FeatureSource, ConfigurableGrantedFeature };
 export { isConfigurableGrantedFeature, isLegacyPersonalizedFeature } from "@/lib/character/feature-choices";
@@ -57,6 +59,16 @@ export function isOverriddenClassFeature(
   return (
     CREATOR_OVERRIDDEN_CLASS_FEATURES[classId]?.includes(featureName) ?? false
   );
+}
+
+export function isFeatureAvailableAtLevel(
+  entry: CatalogFeatureEntry | { name: string; description: string },
+  characterLevel: number
+): boolean {
+  const parsed = parseCatalogFeatureEntry(entry);
+  const minLevel = parsed?.minLevel;
+  if (minLevel == null) return true;
+  return characterLevel >= minLevel;
 }
 
 function makeGrantedFeature(
@@ -123,6 +135,7 @@ export function deriveGrantedFeatures(
   const sub = subclassMatch?.subclass;
 
   const background = findBackgroundByName(data.basicInfo.background, backgrounds);
+  const characterLevel = levelFromXp(data.basicInfo.xp ?? 0);
 
   species?.traits.forEach((t) => {
     if (species.id === "warforged" && t.name === "Integrated Protection") return;
@@ -149,13 +162,38 @@ export function deriveGrantedFeatures(
 
   cls?.features.forEach((f) => {
     if (isOverriddenClassFeature(cls.id, f.name)) return;
+    if (!isFeatureAvailableAtLevel(f, characterLevel)) return;
     features.push(makeGrantedFeature("class", f, "long"));
   });
+
+  if (cls?.spellcasting) {
+    const spellcastingDesc = getSpellcastingFeatureDescription(cls);
+    const existingIdx = features.findIndex(
+      (f) => f.locked && f.source === "class" && f.name === "Spellcasting"
+    );
+    if (existingIdx >= 0) {
+      const existing = features[existingIdx] as GrantedFeature;
+      features[existingIdx] = { ...existing, description: spellcastingDesc };
+    } else {
+      features.push(
+        makeGrantedFeature(
+          "class",
+          {
+            name: "Spellcasting",
+            slug: "spellcasting",
+            description: spellcastingDesc,
+          },
+          "long"
+        )
+      );
+    }
+  }
 
   features.push(...deriveConfigurableFeatures(data, catalogs));
   features.push(...deriveGrantConfigurableFeatures(data, catalogs));
 
   sub?.features.forEach((f) => {
+    if (!isFeatureAvailableAtLevel(f, characterLevel)) return;
     features.push(makeGrantedFeature("subclass", f, "long"));
   });
 

@@ -219,13 +219,11 @@ export function formatSpellSaveDcTooltip(data: CharacterData): string | null {
   const mods = getAbilityModifiers(data.abilityScores);
   const prof = getProficiencyBonus(data);
   const mod = mods[ability];
-  const dc = 8 + prof + mod;
 
   return [
     "Base: 8",
     `Proficiency: ${formatModifier(prof)}`,
     `${ABILITY_FULL_LABELS[ability]}: ${formatModifier(mod)}`,
-    `DC: ${dc}`,
   ].join("\n");
 }
 
@@ -240,12 +238,10 @@ export function formatSpellAttackTooltip(data: CharacterData): string | null {
   const mods = getAbilityModifiers(data.abilityScores);
   const prof = getProficiencyBonus(data);
   const mod = mods[ability];
-  const attack = prof + mod;
 
   return [
     `Proficiency Bonus: ${formatModifier(prof)}`,
     `Spellcasting Ability Modifier: ${formatModifier(mod)}`,
-    `Spell Attack: ${formatModifier(attack)}`,
   ].join("\n");
 }
 

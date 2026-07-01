@@ -21,7 +21,7 @@ const CATEGORIES = [
   { id: "species",     label: "Species" },
   { id: "classes",     label: "Classes" },
   { id: "backgrounds", label: "Backgrounds" },
-  { id: "feats",       label: "Features" },
+  { id: "feats",       label: "Feats" },
   { id: "languages",   label: "Languages" },
   { id: "enemies",     label: "Enemies" },
   { id: "encounters",  label: "Encounters" },

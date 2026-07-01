@@ -6,6 +6,8 @@ import {
 } from "@/lib/content/catalog-tooltip";
 import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
+import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
+import { findSubclassByName } from "@/lib/content/catalog-tooltip";
 import {
   buildLanguageLookup,
   defaultLanguageLookup,
@@ -19,6 +21,7 @@ function resolveCatalogs(catalogs: FeatureCatalogs = {}) {
   return {
     species: catalogs.species?.length ? catalogs.species : PHB_SPECIES,
     backgrounds: catalogs.backgrounds?.length ? catalogs.backgrounds : PHB_BACKGROUNDS,
+    classes: catalogs.classes?.length ? catalogs.classes : PHB_CLASSES,
   };
 }
 
@@ -48,7 +51,7 @@ export function getLanguagesWithSources(
   catalogs: FeatureCatalogs = {},
   lookup: LanguageLookup = defaultLanguageLookup()
 ): ProficiencyEntry[] {
-  const { species: speciesList, backgrounds } = resolveCatalogs(catalogs);
+  const { species: speciesList, backgrounds, classes } = resolveCatalogs(catalogs);
   const tracker: SourceTracker = new Map();
   const match = findSpeciesByDisplayName(data.basicInfo.species, speciesList);
   const species = match?.species;
@@ -74,6 +77,27 @@ export function getLanguagesWithSources(
   (data.backgroundLanguageChoices ?? []).forEach((lang) =>
     trackLanguage(tracker, lang, bgLabel, lookup)
   );
+
+  const subclassMatch = findSubclassByName(
+    data.basicInfo.class ?? "",
+    data.basicInfo.subclass ?? "",
+    classes
+  );
+  if (subclassMatch?.cls.id === "cleric" && subclassMatch.subclass.id === "knowledge") {
+    const source = "Knowledge Domain";
+    (data.featureChoices?.knowledgeDomainLanguages ?? []).forEach((lang) =>
+      trackLanguage(tracker, lang, source, lookup)
+    );
+  }
+
+  for (const [slug, grantKey] of Object.entries(data.grantedLanguageSlugs ?? {})) {
+    if (!grantKey.startsWith("grant:")) continue;
+    const source =
+      grantKey === "grant:subclass:blessings-of-knowledge-languages"
+        ? "Knowledge Domain"
+        : "Feature grant";
+    trackLanguage(tracker, slug, source, lookup);
+  }
 
   return data.languages.map((lang) => {
     const slug = resolveLanguageSlug(lang, lookup);

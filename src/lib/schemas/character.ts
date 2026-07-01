@@ -235,6 +235,10 @@ export const featureChoicesSchema = z.object({
   bonusDruidCantripId: z.string().default(""),
   /** Cleric Nature Domain — one of Animal Handling, Nature, or Survival. */
   acolyteOfNatureSkill: z.union([skillKeySchema, z.literal("")]).default(""),
+  /** Cleric Knowledge Domain — two bonus languages. */
+  knowledgeDomainLanguages: z.array(z.string()).max(2).default([]),
+  /** Cleric Knowledge Domain — two of Arcana, History, Nature, or Religion. */
+  knowledgeDomainSkills: z.array(skillKeySchema).max(2).default([]),
 });
 
 /** Species creation choices persisted for edit-time grant sync. */
@@ -446,6 +450,8 @@ export const characterDataSchema = z.preprocess(
   classSkillChoices: z.array(skillKeySchema).default([]),
   /** Maps skills auto-added from feature grants to their grant key. */
   grantedSkillKeys: z.partialRecord(skillKeySchema, z.string()).optional(),
+  /** Maps language slugs auto-added from feature grants to their grant key. */
+  grantedLanguageSlugs: z.record(z.string(), z.string()).optional(),
   features: z.array(featureSchema).default([]),
   /** Persisted use counters for rules-derived mechanical features (keyed by granted feature id). */
   featureUseState: z

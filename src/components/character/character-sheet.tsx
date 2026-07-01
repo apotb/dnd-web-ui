@@ -66,20 +66,25 @@ import {
 import {
   canAddCantrip,
   canAddLeveledSpell,
-  canPrepareAnother,
-  countCantrips,
+  canAddSpellsOnSheet,
+  canEditSpellOnSheet,
+  canModifyPlayerCantrips,
+  canModifyPlayerSpells,
   countGrantedCantrips,
   countGrantedLeveled,
-  countLeveledKnown,
   countPlayerCantrips,
   countPlayerLeveledKnown,
-  countPreparedLeveled,
+  countPlayerPreparedLeveled,
   formatSlotSummary,
   formatLevelPreparedSummary,
+  formatPreparedSpellLimitTooltip,
   getSpellSlotAtLevel,
   getSpellcastingLimits,
+  getWizardSpellbookSpells,
+  isFullListPreparedCaster,
   isKnownCaster,
-  isPreparedCaster,
+  isPlayerCantrip,
+  isWizard,
   normalizeSpellPreparedFlags,
   syncSpellcastingFromClass,
 } from "@/lib/dnd/spellcasting";
@@ -92,6 +97,7 @@ import {
   type ItemPickerCustomFields,
 } from "@/components/items/item-picker";
 import { SpellPicker } from "@/components/spells/spell-picker";
+import { SpellbookDialog } from "@/components/spells/spellbook-dialog";
 import { SpellGlossaryMeta } from "@/components/spells/spell-glossary-meta";
 import { CharacterPortrait } from "@/components/character/character-portrait";
 import { CharacterRestButtons } from "@/components/character/character-rest-buttons";
@@ -150,9 +156,11 @@ import {
   getGrantUsesRemaining,
   useGrantSpell,
 } from "@/lib/character/spell-grant-uses";
+import { featureIdFromActionId } from "@/lib/dnd/catalog-feature-mechanics";
 import {
   adjustMechanicalFeatureUse,
   getMechanicalFeatureDef,
+  getResolvedMechanicalFeature,
 } from "@/lib/dnd/mechanical-features";
 import { optionLabel } from "@/lib/ui/select-display";
 import { GrantFeatureRow } from "@/components/character/grant-feature-row";
@@ -739,8 +747,12 @@ export function CharacterSheet({
     useState<ItemPickerCustomFields>(EMPTY_ITEM_PICKER_CUSTOM_FIELDS);
   const [itemPickerEditingCustom, setItemPickerEditingCustom] = useState(false);
   const [spellPickerOpen, setSpellPickerOpen] = useState(false);
+  const [spellbookOpen, setSpellbookOpen] = useState(false);
+  const [spellPickerCantripOnly, setSpellPickerCantripOnly] = useState(false);
+  const [dmCantripEditMode, setDmCantripEditMode] = useState(false);
   const [deathSaveRollOpen, setDeathSaveRollOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const canEditPlayerCantrips = canModifyPlayerCantrips(isDm, dmCantripEditMode);
 
   useEffect(() => {
     setMounted(true);
@@ -753,6 +765,12 @@ export function CharacterSheet({
   const profBonus = getProficiencyBonus(data);
   const inspiration = getInspiration(data);
   const resolvedClass = resolveCharacterClass(data, classCatalog);
+  const isWizardClass = resolvedClass ? isWizard(resolvedClass) : false;
+  const canEditWizardSpells = canModifyPlayerSpells(
+    isDm,
+    dmCantripEditMode,
+    resolvedClass
+  );
   const level = levelFromXp(data.basicInfo.xp ?? 0);
   const xp = data.basicInfo.xp ?? 0;
   const xpBar = xpProgress(xp);
@@ -883,6 +901,10 @@ export function CharacterSheet({
         : null,
     [resolvedClass, level, data.abilityScores]
   );
+  const fullListPreparedCaster = useMemo(
+    () => (resolvedClass ? isFullListPreparedCaster(resolvedClass) : false),
+    [resolvedClass]
+  );
   const slotSummary = useMemo(
     () => formatSlotSummary(data.spells.slots),
     [data.spells.slots]
@@ -904,16 +926,24 @@ export function CharacterSheet({
     [data.spells.known]
   );
   const preparedLeveledCount = useMemo(
-    () => countPreparedLeveled(data.spells.known),
+    () => countPlayerPreparedLeveled(data.spells.known),
     [data.spells.known]
+  );
+  const wizardSpellbookSpells = useMemo(
+    () => (isWizardClass ? getWizardSpellbookSpells(data.spells.known) : []),
+    [isWizardClass, data.spells.known]
   );
   const spellAttackBonus = useMemo(() => getSpellAttackBonus(data), [data]);
   const spellSaveDcTooltip = useMemo(() => formatSpellSaveDcTooltip(data), [data]);
   const spellAttackTooltip = useMemo(() => formatSpellAttackTooltip(data), [data]);
-  const canManageSpellPrep = useMemo(() => {
-    if (!canMutate || !resolvedClass?.spellcasting) return false;
-    return isPreparedCaster(resolvedClass) && !isKnownCaster(resolvedClass);
-  }, [canMutate, resolvedClass]);
+  const preparedSpellLimitTooltip = useMemo(() => {
+    if (!resolvedClass || spellLimits?.preparedSpells === null) return null;
+    return formatPreparedSpellLimitTooltip(
+      resolvedClass,
+      level,
+      data.abilityScores
+    );
+  }, [resolvedClass, spellLimits?.preparedSpells, level, data.abilityScores]);
 
   const updateBasicWithSync = (patch: Partial<CharacterData["basicInfo"]>) => {
     const nextBasic = { ...data.basicInfo, ...patch };
@@ -1078,13 +1108,17 @@ export function CharacterSheet({
   function spellFromCatalog(catalogSpell: CatalogSpellRow) {
     const isCantrip = catalogSpell.level === 0;
     const knownCaster = resolvedClass ? isKnownCaster(resolvedClass) : false;
+    const wizardClass = resolvedClass ? isWizard(resolvedClass) : false;
     return {
       id: crypto.randomUUID(),
       spellId: catalogSpell.slug,
       name: catalogSpell.name,
       level: catalogSpell.level,
       prepared: isCantrip || knownCaster,
-      notes: catalogSpell.school,
+      notes:
+        wizardClass && !isCantrip
+          ? `Spellbook · ${catalogSpell.school}`
+          : catalogSpell.school,
     };
   }
 
@@ -1092,6 +1126,21 @@ export function CharacterSheet({
     const swapIndex = swapSpellIndexRef.current;
     swapSpellIndexRef.current = null;
     const entry = spellFromCatalog(catalogSpell);
+
+    if (resolvedClass && isWizard(resolvedClass) && !canEditWizardSpells) {
+      return;
+    }
+
+    if (catalogSpell.level === 0 && !canEditPlayerCantrips) {
+      return;
+    }
+    if (
+      swapIndex !== null &&
+      isPlayerCantrip(data.spells.known[swapIndex]) &&
+      !canEditPlayerCantrips
+    ) {
+      return;
+    }
 
     if (swapIndex === null && spellLimits) {
       if (catalogSpell.level === 0 && !canAddCantrip(data.spells.known, spellLimits.cantripsKnown)) {
@@ -2053,7 +2102,7 @@ export function CharacterSheet({
                     })
                   }
                 >
-                  Add Special Attack
+                  Add Custom Attack
                 </Button>
               )}
             </CardHeader>
@@ -2214,18 +2263,66 @@ export function CharacterSheet({
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
               <CardTitle className="text-base">Spellcasting</CardTitle>
-              {editable && resolvedClass?.spellcasting && spellLimits ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    swapSpellIndexRef.current = null;
-                    setSpellPickerOpen(true);
-                  }}
-                >
-                  + Add Spell
-                </Button>
-              ) : null}
+              <div className="flex flex-wrap items-center gap-3">
+                {isWizardClass ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSpellbookOpen(true)}
+                  >
+                    See spellbook
+                    {wizardSpellbookSpells.length > 0
+                      ? ` (${wizardSpellbookSpells.length})`
+                      : ""}
+                  </Button>
+                ) : null}
+                {isDm && editable ? (
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <Checkbox
+                      checked={dmCantripEditMode}
+                      onCheckedChange={(checked) => setDmCantripEditMode(!!checked)}
+                      aria-label={isWizardClass ? "Edit spells" : "Edit cantrips"}
+                    />
+                    {isWizardClass ? "Edit spells" : "Edit cantrips"}
+                  </label>
+                ) : null}
+                {editable && resolvedClass?.spellcasting && spellLimits ? (
+                  <>
+                    {fullListPreparedCaster ? (
+                      canEditPlayerCantrips &&
+                      canAddCantrip(data.spells.known, spellLimits.cantripsKnown) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            swapSpellIndexRef.current = null;
+                            setSpellPickerCantripOnly(true);
+                            setSpellPickerOpen(true);
+                          }}
+                        >
+                          + Add cantrip
+                        </Button>
+                      ) : null
+                    ) : canAddSpellsOnSheet(
+                        resolvedClass,
+                        isDm,
+                        dmCantripEditMode
+                      ) ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          swapSpellIndexRef.current = null;
+                          setSpellPickerCantripOnly(false);
+                          setSpellPickerOpen(true);
+                        }}
+                      >
+                        + Add Spell
+                      </Button>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {resolvedClass?.spellcasting && spellLimits ? (
@@ -2255,34 +2352,37 @@ export function CharacterSheet({
                 />
               </div>
 
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                <span className={cantripCount > spellLimits.cantripsKnown ? "text-destructive font-medium" : "text-muted-foreground"}>
-                  Cantrips: {cantripCount}/{spellLimits.cantripsKnown}
-                  {grantedCantripCount > 0 ? ` + ${grantedCantripCount} granted` : ""}
-                </span>
-                {spellLimits.spellsKnown !== null ? (
-                  <span className={leveledKnownCount > spellLimits.spellsKnown ? "text-destructive font-medium" : "text-muted-foreground"}>
-                    Spells known: {leveledKnownCount}/{spellLimits.spellsKnown}
-                    {grantedLeveledCount > 0 ? ` + ${grantedLeveledCount} granted` : ""}
+              <div className="space-y-1 text-xs">
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span className={cantripCount > spellLimits.cantripsKnown ? "text-destructive font-medium" : "text-muted-foreground"}>
+                    Cantrips: {cantripCount}/{spellLimits.cantripsKnown}
+                    {grantedCantripCount > 0 ? ` + ${grantedCantripCount}` : ""}
                   </span>
-                ) : null}
-                {spellLimits.preparedSpells !== null ? (
-                  <span
-                    className={
-                      preparedLeveledCount > spellLimits.preparedSpells
-                        ? "text-destructive font-medium"
-                        : canManageSpellPrep
-                          ? "text-foreground font-medium"
-                          : "text-muted-foreground"
-                    }
-                  >
-                    Prepared spells: {preparedLeveledCount}/{spellLimits.preparedSpells}
-                  </span>
-                ) : null}
+                  {spellLimits.spellsKnown !== null ? (
+                    <span className={leveledKnownCount > spellLimits.spellsKnown ? "text-destructive font-medium" : "text-muted-foreground"}>
+                      Spells known: {leveledKnownCount}/{spellLimits.spellsKnown}
+                      {grantedLeveledCount > 0 ? ` + ${grantedLeveledCount}` : ""}
+                    </span>
+                  ) : null}
+                  {spellLimits.preparedSpells !== null ? (
+                    <Tooltip content={preparedSpellLimitTooltip}>
+                      <span
+                        className={
+                          preparedLeveledCount > spellLimits.preparedSpells
+                            ? "text-destructive font-medium cursor-default"
+                            : "text-muted-foreground cursor-default"
+                        }
+                      >
+                        Prepared spells: {preparedLeveledCount}/{spellLimits.preparedSpells}
+                        {grantedLeveledCount > 0 ? ` + ${grantedLeveledCount}` : ""}
+                      </span>
+                    </Tooltip>
+                  ) : null}
+                </div>
                 {slotSummary.length > 0 ? (
-                  <span className="text-muted-foreground">
+                  <p className="text-muted-foreground">
                     Slots: {slotSummary.join(" · ")}
-                  </span>
+                  </p>
                 ) : null}
               </div>
                 </>
@@ -2291,7 +2391,17 @@ export function CharacterSheet({
               {data.spells.known.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {editable && resolvedClass?.spellcasting && spellLimits
-                    ? 'Click "+ Add Spell" to pick from the catalog.'
+                    ? fullListPreparedCaster
+                      ? canEditPlayerCantrips
+                        ? "Add cantrips from the catalog or take a long rest to change prepared spells."
+                        : "Cantrips are set at creation. Take a long rest to change prepared spells."
+                      : isWizardClass
+                        ? canEditWizardSpells
+                          ? 'Click "+ Add Spell" to pick from the catalog.'
+                          : "Spells are set at creation. Take a long rest to change prepared spells."
+                        : canEditPlayerCantrips
+                          ? 'Click "+ Add Spell" to pick from the catalog.'
+                          : 'Click "+ Add Spell" to add leveled spells. Cantrips are set at creation.'
                     : "No spells."}
                 </p>
               ) : (
@@ -2337,28 +2447,32 @@ export function CharacterSheet({
                               </>
                             ) : null}
                           </p>
-                          {slotInfo && canMutate ? (
+                          {slotInfo && (canMutate || isDm) ? (
                             <span className="inline-flex items-center gap-1">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-6 px-2 text-xs normal-case tracking-normal"
-                                disabled={slotInfo.remaining <= 0}
-                                onClick={() => adjustSlotUsed(group.level, 1)}
-                              >
-                                Use slot
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 px-2 text-xs normal-case tracking-normal"
-                                disabled={slotInfo.used <= 0}
-                                onClick={() => adjustSlotUsed(group.level, -1)}
-                              >
-                                Restore
-                              </Button>
+                              {canMutate ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 px-2 text-xs normal-case tracking-normal"
+                                  disabled={slotInfo.remaining <= 0}
+                                  onClick={() => adjustSlotUsed(group.level, 1)}
+                                >
+                                  Use slot
+                                </Button>
+                              ) : null}
+                              {isDm ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-2 text-xs normal-case tracking-normal"
+                                  disabled={slotInfo.used <= 0}
+                                  onClick={() => adjustSlotUsed(group.level, -1)}
+                                >
+                                  Restore
+                                </Button>
+                              ) : null}
                             </span>
                           ) : null}
                         </div>
@@ -2382,19 +2496,27 @@ export function CharacterSheet({
                                   featureCatalogs
                                 )
                               : null;
-                          const showPrepareToggle =
-                            !isGrantSpell &&
-                            spell.level > 0 &&
-                            resolvedClass &&
-                            isPreparedCaster(resolvedClass) &&
-                            !isKnownCaster(resolvedClass);
-                          const atPrepareLimit =
-                            spellLimits?.preparedSpells != null &&
-                            !spell.prepared &&
-                            !canPrepareAnother(
-                              data.spells.known,
-                              spellLimits.preparedSpells
+                          const canSwapSpellRow =
+                            editable &&
+                            canEditSpellOnSheet(
+                              spell,
+                              resolvedClass,
+                              isDm,
+                              dmCantripEditMode
                             );
+                          const canRemoveSpellRow =
+                            editable &&
+                            canEditSpellOnSheet(
+                              spell,
+                              resolvedClass,
+                              isDm,
+                              dmCantripEditMode
+                            );
+                          const showPreparedBadge =
+                            spell.level > 0 &&
+                            spell.prepared &&
+                            !isGrantSpell &&
+                            spellLimits?.isWizard === true;
 
                           return (
                             <div
@@ -2407,13 +2529,14 @@ export function CharacterSheet({
                               )}
                             >
                               <div className="flex flex-wrap items-center gap-2">
-                                {editable && !isGrantSpell ? (
+                                {editable && canSwapSpellRow ? (
                                   <Tooltip content={spellTooltip}>
                                     <button
                                       type="button"
                                       className="flex-1 text-left px-2.5 py-1.5 rounded-md border text-sm font-medium hover:bg-accent transition-colors min-w-0"
                                       onClick={() => {
                                         swapSpellIndexRef.current = i;
+                                        setSpellPickerCantripOnly(spell.level === 0);
                                         setSpellPickerOpen(true);
                                       }}
                                     >
@@ -2437,7 +2560,7 @@ export function CharacterSheet({
                                     {grantSource}
                                   </Badge>
                                 ) : null}
-                                {showPrepareToggle && spell.prepared && !canManageSpellPrep ? (
+                                {showPreparedBadge ? (
                                   <Badge variant="secondary" className="text-xs shrink-0">
                                     Prepared
                                   </Badge>
@@ -2475,39 +2598,9 @@ export function CharacterSheet({
                                   ) : null}
                                 </div>
                               ) : null}
-                              {(canManageSpellPrep && showPrepareToggle) ||
-                              (editable && !isGrantSpell) ? (
+                              {canRemoveSpellRow ? (
                                 <div className="flex flex-wrap items-center gap-3 pt-1">
-                                  {canManageSpellPrep && showPrepareToggle ? (
-                                    <label
-                                      className={`flex items-center gap-1.5 text-xs select-none ${
-                                        atPrepareLimit ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-                                      }`}
-                                    >
-                                      <Checkbox
-                                        checked={spell.prepared}
-                                        disabled={atPrepareLimit}
-                                        onCheckedChange={(checked) => {
-                                          if (
-                                            checked &&
-                                            spellLimits?.preparedSpells != null &&
-                                            !canPrepareAnother(
-                                              data.spells.known,
-                                              spellLimits.preparedSpells
-                                            )
-                                          ) {
-                                            return;
-                                          }
-                                          const known = [...data.spells.known];
-                                          known[i] = { ...spell, prepared: !!checked };
-                                          updateSpells({ ...data.spells, known });
-                                        }}
-                                      />
-                                      Prepared
-                                    </label>
-                                  ) : null}
-                                  {editable && !isGrantSpell ? (
-                                    <Button
+                                  <Button
                                       size="sm"
                                       variant="ghost"
                                       className="h-6 px-2 text-xs text-destructive hover:text-destructive ml-auto"
@@ -2520,7 +2613,6 @@ export function CharacterSheet({
                                     >
                                       Remove
                                     </Button>
-                                  ) : null}
                                 </div>
                               ) : null}
                             </div>
@@ -2574,10 +2666,26 @@ export function CharacterSheet({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {entries.map((action) => {
                         if (action.source !== "custom" || !editable) {
+                          const hpPoolFeatureId = (() => {
+                            const featureId = featureIdFromActionId(action.id);
+                            if (!featureId) return null;
+                            const resolved = getResolvedMechanicalFeature(
+                              data,
+                              featureId,
+                              featureCatalogs
+                            );
+                            if (resolved?.kind !== "hp-pool" || !resolved.usesAction) {
+                              return null;
+                            }
+                            return featureId;
+                          })();
+
                           return (
                             <div
                               key={action.id}
-                              className="rounded-md border p-3 space-y-1 min-w-0"
+                              className={`rounded-md border p-3 min-w-0${
+                                hpPoolFeatureId ? " space-y-0.5" : " space-y-1"
+                              }`}
                             >
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-medium text-sm">{action.name}</p>
@@ -2588,13 +2696,42 @@ export function CharacterSheet({
                               <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                                 {action.description}
                               </p>
-                              {action.uses ? (
-                                <p className="text-xs text-muted-foreground">
-                                  Uses: {action.uses.current}/{action.uses.max}
-                                  {action.restReset && action.restReset !== "none"
-                                    ? ` (${action.restReset} rest)`
-                                    : ""}
-                                </p>
+                              {action.uses ||
+                              (canAdjustMechanical && onUseHpPool && hpPoolFeatureId) ? (
+                                <div className="relative h-6">
+                                  {action.uses ? (
+                                    <span className="absolute inset-y-0 left-0 flex items-center pr-10 text-xs leading-none text-muted-foreground">
+                                      {hpPoolFeatureId ? "Pool" : "Uses"}:{" "}
+                                      {hpPoolFeatureId
+                                        ? `${action.uses.current}/${action.uses.max} HP`
+                                        : `${action.uses.current}/${action.uses.max}`}
+                                      {action.restReset && action.restReset !== "none"
+                                        ? ` (${action.restReset} rest)`
+                                        : ""}
+                                    </span>
+                                  ) : null}
+                                  {canAdjustMechanical && onUseHpPool && hpPoolFeatureId ? (
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        "absolute right-0 top-0 inline-flex h-6 items-center rounded-md border border-border bg-background px-2 text-xs leading-none font-medium",
+                                        "hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                                      )}
+                                      disabled={
+                                        (action.uses?.current ?? 0) <= 0 ||
+                                        hpPoolCombatPreferred
+                                      }
+                                      onClick={() => onUseHpPool(hpPoolFeatureId)}
+                                      title={
+                                        hpPoolCombatPreferred
+                                          ? "Use this healing pool from the combat board during an encounter."
+                                          : undefined
+                                      }
+                                    >
+                                      Use
+                                    </button>
+                                  ) : null}
+                                </div>
                               ) : null}
                             </div>
                           );
@@ -2682,16 +2819,25 @@ export function CharacterSheet({
             </CardContent>
           </Card>
 
+          {isWizardClass ? (
+            <SpellbookDialog
+              open={spellbookOpen}
+              onClose={() => setSpellbookOpen(false)}
+              spells={wizardSpellbookSpells}
+            />
+          ) : null}
+
           {editable && resolvedClass?.spellcasting && spellPickerOpen ? (
           <SpellPicker
             open={spellPickerOpen}
             onClose={() => {
               setSpellPickerOpen(false);
+              setSpellPickerCantripOnly(false);
               swapSpellIndexRef.current = null;
             }}
             onSelect={applySpellPickerSelection}
             defaultClassListId={classSpellListId}
-            maxSpellLevel={maxCastableSpellLevel}
+            maxSpellLevel={spellPickerCantripOnly ? 0 : maxCastableSpellLevel}
             excludeSlugs={
               swapSpellIndexRef.current !== null
                 ? knownSpellSlugs.filter(
@@ -2700,6 +2846,9 @@ export function CharacterSheet({
                   )
                 : knownSpellSlugs
             }
+            title={spellPickerCantripOnly ? "Add cantrip" : undefined}
+            initialLevel={spellPickerCantripOnly ? "0" : "all"}
+            lockLevelFilter={spellPickerCantripOnly}
           />
           ) : null}
         </TabsContent>

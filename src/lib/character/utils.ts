@@ -15,7 +15,7 @@ import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
 import { migrateLanguageChoices } from "@/lib/character/language-choices";
 import { normalizeCombatConditions } from "@/lib/dnd/conditions";
-import { syncSpellcastingFromClass } from "@/lib/dnd/spellcasting";
+import { syncSpellcastingFromClass, migrateFullListPreparedCasterSpells } from "@/lib/dnd/spellcasting";
 import { levelFromXp, xpForLevel } from "@/lib/dnd/xp";
 import type { Character } from "@/lib/types/database";
 
@@ -254,10 +254,12 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
       : 0
   );
   if (spellClass?.spellcasting) {
+    let migrated = raw as unknown as CharacterData;
+    migrated = migrateFullListPreparedCasterSpells(migrated, spellClass);
     raw = {
       ...raw,
       spells: syncSpellcastingFromClass(
-        raw as unknown as CharacterData,
+        migrated,
         spellClass,
         spellLevel
       ),
