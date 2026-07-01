@@ -6,6 +6,7 @@ import { parseCharacterRow } from "@/lib/character/utils";
 import { parseWorldData } from "@/lib/schemas/world";
 import { CampaignNav } from "@/components/layout/campaign-nav";
 import { CampaignNotifications } from "@/components/layout/campaign-notifications";
+import { DmViewProvider } from "@/components/layout/dm-view-provider";
 import { RetroShell } from "@/components/layout/retro-shell";
 import type { Character } from "@/lib/types/database";
 
@@ -49,13 +50,15 @@ export default async function CampaignLayout({
   return (
     <div className="campaign-page-frame">
         <RetroShell>
-        <CampaignNav
-          campaignId={campaignId}
-          campaignName={access.campaign.name}
-          userEmail={access.user?.email ?? null}
-          isDm={access.isDm}
-        />
-        {children}
+        <DmViewProvider campaignId={campaignId} isDm={access.isDm}>
+          <CampaignNav
+            campaignId={campaignId}
+            campaignName={access.campaign.name}
+            userEmail={access.user?.email ?? null}
+            isDm={access.isDm}
+          />
+          {children}
+        </DmViewProvider>
       </RetroShell>
       <CampaignNotifications
         campaignId={campaignId}

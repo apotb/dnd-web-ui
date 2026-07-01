@@ -21,6 +21,7 @@ import {
   HexRevealMap,
   HexRevealMapFullscreen,
 } from "@/components/campaign/hex-reveal-map";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import {
   MAP_MARKER_COLORS,
   clearRevealedHexes,
@@ -51,6 +52,7 @@ export function CampaignMaps({
   initialMapsData,
   isDm,
 }: CampaignMapsProps) {
+  const showDmUi = useShowDmUi(isDm);
   const liveMapsData = useRealtimeMapsData(campaignId, initialMapsData);
   const [draft, setDraft] = useState(liveMapsData);
   const [saving, setSaving] = useState(false);
@@ -60,13 +62,13 @@ export function CampaignMaps({
   const [activeMapId, setActiveMapId] = useState<string | null>(null);
   const [restoredTab, setRestoredTab] = useState(false);
 
-  const mapsData = isDm ? draft : liveMapsData;
+  const mapsData = showDmUi ? draft : liveMapsData;
   const sortedMaps = useMemo(() => sortCampaignMaps(mapsData.maps), [mapsData.maps]);
 
   useEffect(() => {
-    if (!isDm) return;
+    if (!showDmUi) return;
     setDraft(liveMapsData);
-  }, [liveMapsData, isDm]);
+  }, [liveMapsData, showDmUi]);
 
   useEffect(() => {
     setRestoredTab(false);
@@ -139,14 +141,14 @@ export function CampaignMaps({
   }
 
   function toggleHex(hexId: number) {
-    if (!activeMap || !isDm) return;
+    if (!activeMap || !showDmUi) return;
     const next = toggleRevealedHex(draft, activeMap.id, hexId);
     updateDraft(next);
     void persistMapsData(next);
   }
 
   function resetHexFog() {
-    if (!activeMap || !isDm) return;
+    if (!activeMap || !showDmUi) return;
     const revealedCount = getRevealedHexesForMap(draft, activeMap.id).length;
     if (revealedCount === 0) return;
     if (
@@ -316,11 +318,11 @@ export function CampaignMaps({
       <section className="retro-box">
         <p className="retro-box-title">Maps</p>
         <p className="retro-muted">No maps yet.</p>
-        {isDm && (
+        {showDmUi ? (
           <button type="button" className="candy-btn" onClick={addMap}>
             + Add map
           </button>
-        )}
+        ) : null}
       </section>
     );
   }
@@ -345,7 +347,7 @@ export function CampaignMaps({
             {map.name}
           </button>
         ))}
-        {isDm && (
+        {showDmUi ? (
           <button
             type="button"
             className="candy-btn"
@@ -354,7 +356,7 @@ export function CampaignMaps({
           >
             + Add map
           </button>
-        )}
+        ) : null}
       </div>
 
       {activeMap ? (
@@ -372,7 +374,7 @@ export function CampaignMaps({
               >
                 Expand
               </button>
-              {isDm && activeMap.imagePath && !activeHexReveal && (
+              {showDmUi && activeMap.imagePath && !activeHexReveal && (
                 <MapImageUploadButton
                   uploading={uploadingMapId === activeMap.id}
                   onFile={(file) => void uploadMapImage(activeMap.id, file)}
@@ -382,7 +384,7 @@ export function CampaignMaps({
             </div>
           </div>
 
-          {isDm && (
+          {showDmUi ? (
             <div className="campaign-map-dm-controls">
               <button
                 type="button"
@@ -421,11 +423,11 @@ export function CampaignMaps({
                 Remove map
               </button>
             </div>
-          )}
+          ) : null}
 
           {activeHexReveal?.hexLayoutId ? (
             <>
-              {!isDm ? (
+              {!showDmUi ? (
                 <p className="retro-muted" style={{ marginBottom: "12px" }}>
                   {activeRevealedHexes.length} explored hex
                   {activeRevealedHexes.length === 1 ? "" : "es"}.
@@ -436,7 +438,7 @@ export function CampaignMaps({
                   layoutId={activeHexReveal.hexLayoutId}
                   revealedHexIds={activeRevealedHexes}
                   markers={activeMarkers}
-                  isDm={isDm}
+                  isDm={showDmUi}
                   onToggleHex={toggleHex}
                   onResetFog={resetHexFog}
                   onMarkerMove={updateMarkerPosition}
@@ -448,10 +450,10 @@ export function CampaignMaps({
               campaignId={campaignId}
               imagePath={activeMap.imagePath}
               markers={activeMarkers}
-              isDm={isDm}
+              isDm={showDmUi}
               onMarkerMove={updateMarkerPosition}
             />
-          ) : isDm ? (
+          ) : showDmUi ? (
             <div className="campaign-map-empty">
               <p className="retro-muted">Upload a map image for {activeMap.name}.</p>
               <MapImageUploadButton
@@ -464,7 +466,7 @@ export function CampaignMaps({
             <p className="retro-muted">No map image yet.</p>
           )}
 
-          {isDm && activeMarkers.length > 0 && (
+          {showDmUi && activeMarkers.length > 0 && (
             <div className="campaign-map-marker-list">
               <p className="retro-box-subtitle">Markers on this map</p>
               {activeMarkers.map((marker) => (
@@ -478,7 +480,7 @@ export function CampaignMaps({
             </div>
           )}
 
-          {!isDm && activeMarkers.length > 0 && (
+          {!showDmUi && activeMarkers.length > 0 && (
             <div className="campaign-map-marker-legend">
               {activeMarkers.map((marker) => (
                 <span key={marker.id} className="campaign-map-marker-chip">
@@ -492,7 +494,7 @@ export function CampaignMaps({
             </div>
           )}
 
-          {isDm ? (
+          {showDmUi ? (
             <div className="party-inventory-save">
               <button
                 type="button"
@@ -514,12 +516,12 @@ export function CampaignMaps({
           mapName={activeHexReveal.name}
           revealedHexIds={activeRevealedHexes}
           markers={activeMarkers}
-          isDm={isDm}
+          isDm={showDmUi}
           onClose={() => setExpanded(false)}
           onToggleHex={toggleHex}
           onResetFog={resetHexFog}
           onMarkerMove={updateMarkerPosition}
-          onSave={isDm ? save : undefined}
+          onSave={showDmUi ? save : undefined}
           saving={saving}
         />
       ) : null}
@@ -530,10 +532,10 @@ export function CampaignMaps({
           imagePath={activeMap.imagePath}
           mapName={activeMap.name}
           markers={activeMarkers}
-          isDm={isDm}
+          isDm={showDmUi}
           onClose={() => setExpanded(false)}
           onMarkerMove={updateMarkerPosition}
-          onSave={isDm ? save : undefined}
+          onSave={showDmUi ? save : undefined}
           saving={saving}
         />
       ) : null}

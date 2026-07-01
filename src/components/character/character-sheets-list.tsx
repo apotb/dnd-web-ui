@@ -9,6 +9,7 @@ import {
   type CharacterSheetViewerHandle,
 } from "@/components/character/character-sheet-viewer";
 import { CharacterImportButton } from "@/components/character/character-import-button";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { PhbClass } from "@/lib/dnd/phb/types";
@@ -61,8 +62,11 @@ export function CharacterSheetsList({
   hideTitle = false,
 }: CharacterSheetsListProps) {
   const searchParams = useSearchParams();
+  const showDmUi = useShowDmUi(isDm);
   const createCharacterHref = `/campaigns/${campaignId}/create-character`;
-  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
+  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm, {
+    includeDmData: showDmUi,
+  });
   const sortedCharacters = useMemo(() => {
     return [...characters].sort((a, b) => {
       const aOwned = !!userId && a.owner_user_id === userId;
@@ -217,7 +221,7 @@ export function CharacterSheetsList({
         <Link href={createCharacterHref} className="candy-btn" style={{ flex: "0 1 auto" }}>
           Create character
         </Link>
-        {isDm && <CharacterImportButton campaignId={campaignId} />}
+        {showDmUi ? <CharacterImportButton campaignId={campaignId} /> : null}
       </div>
     </div>
   );

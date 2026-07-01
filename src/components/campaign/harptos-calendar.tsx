@@ -20,6 +20,7 @@ import {
 } from "@/lib/dnd/harptos-calendar";
 import { useRealtimeCalendarEvents } from "@/lib/hooks/use-realtime-calendar-events";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import {
   calendarEventFormSchema,
   calendarEventToInsert,
@@ -74,6 +75,7 @@ export function HarptosCalendar({
   userId,
   canManageEvents,
 }: HarptosCalendarProps) {
+  const showDmUi = useShowDmUi(isDm);
   const worldData = useRealtimeWorldData(campaignId, initialWorldData);
   const events = useRealtimeCalendarEvents(campaignId, initialEvents);
   const today = getCampaignCalendarDate(worldData);
@@ -266,7 +268,7 @@ export function HarptosCalendar({
     <section className="retro-box harptos-calendar">
       <div className="retro-section-header animals-section-header">
         <p className="retro-box-title">Calendar</p>
-        {isDm ? (
+        {showDmUi ? (
           <div className="harptos-today-controls">
             <button
               type="button"

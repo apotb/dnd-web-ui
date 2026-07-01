@@ -1,6 +1,7 @@
 "use client";
 
 import { CharacterList } from "@/components/character/character-list";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import type { ParsedCharacter } from "@/lib/character/utils";
 
@@ -15,7 +16,10 @@ export function CharacterListClient({
   initialCharacters,
   isDm,
 }: CharacterListClientProps) {
-  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
+  const showDmUi = useShowDmUi(isDm);
+  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm, {
+    includeDmData: showDmUi,
+  });
 
   return (
     <CharacterList

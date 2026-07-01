@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import {
   formatAnimalHeading,
@@ -28,17 +29,18 @@ export function PartyInventory({
   characters,
   isDm,
 }: PartyInventoryProps) {
+  const showDmUi = useShowDmUi(isDm);
   const livePartyData = useRealtimePartyData(campaignId, initialPartyData);
   const [draft, setDraft] = useState(livePartyData);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isDm) return;
+    if (!showDmUi) return;
     setDraft(livePartyData);
-  }, [livePartyData, isDm]);
+  }, [livePartyData, showDmUi]);
 
-  const partyData = isDm ? draft : livePartyData;
+  const partyData = showDmUi ? draft : livePartyData;
   const animals = listPartyAnimals(partyData, characters);
   const suppliesWeight = getPartySuppliesWeight(partyData);
   const carryCapacity = getPartyCarryCapacity(partyData);
@@ -74,7 +76,7 @@ export function PartyInventory({
         <p className="retro-box-title">
           Animals · {formatPartyWeight(suppliesWeight, carryCapacity)}
         </p>
-        {isDm && (
+        {showDmUi ? (
           <button
             type="button"
             className="retro-inline-link"
@@ -82,10 +84,10 @@ export function PartyInventory({
           >
             + Add animal
           </button>
-        )}
+        ) : null}
       </div>
 
-      {isDm ? (
+      {showDmUi ? (
         <PartyInventoryEditor
           draft={draft}
           characters={characters}
@@ -101,7 +103,7 @@ export function PartyInventory({
         />
       )}
 
-      {isDm && (
+      {showDmUi ? (
         <div className="party-inventory-save">
           <button
             type="button"
@@ -113,7 +115,7 @@ export function PartyInventory({
           </button>
           {message && <span className="retro-muted">{message}</span>}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

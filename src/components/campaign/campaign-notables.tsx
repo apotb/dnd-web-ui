@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { User } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -65,6 +66,7 @@ export function CampaignNotables({
   isDm,
   canEditNotables,
 }: CampaignNotablesProps) {
+  const showDmUi = useShowDmUi(isDm);
   const liveNotablesData = useRealtimeNotablesData(
     campaignId,
     initialNotablesData
@@ -117,11 +119,11 @@ export function CampaignNotables({
       activeCategory,
       editable ? savedCategoriesById : undefined
     );
-    return filterNotablesForViewer(inCategory, isDm || editable);
+    return filterNotablesForViewer(inCategory, showDmUi || editable);
   }, [
     activeCategory,
     editable,
-    isDm,
+    showDmUi,
     notablesData.notables,
     savedCategoriesById,
   ]);
@@ -298,7 +300,7 @@ export function CampaignNotables({
               campaignId={campaignId}
               notable={notable}
               campaignDate={campaignDate}
-              isDm={isDm}
+              isDm={showDmUi}
               editable={editable}
               canMoveUp={editable && index > 0}
               canMoveDown={editable && index < visibleNotables.length - 1}
@@ -313,7 +315,9 @@ export function CampaignNotables({
               }
               onPersist={editable ? persistNotable : undefined}
               onToggleVisibility={
-                editable ? () => toggleNotableVisibility(notable) : undefined
+                editable && showDmUi
+                  ? () => toggleNotableVisibility(notable)
+                  : undefined
               }
               onRemove={() => setNotablePendingRemoval(notable)}
             />

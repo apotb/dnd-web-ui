@@ -37,6 +37,7 @@ import type { HarptosDate } from "@/lib/dnd/harptos-calendar";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 import { SpellPreparationDialog } from "@/components/spells/spell-preparation-dialog";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 
 interface CharacterRestButtonsProps {
   data: CharacterData;
@@ -55,6 +56,7 @@ export function CharacterRestButtons({
   speciesList,
   onApply,
 }: CharacterRestButtonsProps) {
+  const showDmUi = useShowDmUi(isDm);
   const [longOpen, setLongOpen] = useState(false);
   const [shortOpen, setShortOpen] = useState(false);
   const [prepPromptOpen, setPrepPromptOpen] = useState(false);
@@ -105,8 +107,8 @@ export function CharacterRestButtons({
   }, [data.spells.known, resolvedClass]);
 
   const longAvailability = useMemo(
-    () => canTakeLongRest(data, campaignDate, isDm),
-    [data, campaignDate, isDm]
+    () => canTakeLongRest(data, campaignDate, showDmUi),
+    [data, campaignDate, showDmUi]
   );
   const longRestEffects = useMemo(
     () => describeLongRestEffects(data, classes, speciesList),
@@ -260,7 +262,7 @@ export function CharacterRestButtons({
               </ul>
             </div>
           ) : null}
-          {!isDm ? (
+          {!showDmUi ? (
             <p className="text-xs text-muted-foreground">
               Each character can take one long rest per in-game day.
             </p>

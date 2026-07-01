@@ -1,24 +1,58 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { parseCharacterRow, type ParsedCharacter } from "@/lib/character/utils";
 import type { Character } from "@/lib/types/database";
+
+function toCharacterRow(character: ParsedCharacter): Character {
+  return {
+    id: character.id,
+    campaign_id: character.campaign_id,
+    name: character.name,
+    player_name: character.player_name,
+    owner_user_id: character.owner_user_id,
+    data: character.data,
+    created_at: character.created_at,
+    updated_at: character.updated_at,
+  };
+}
 
 export function useRealtimeCharacters(
   campaignId: string,
   initialCharacters: ParsedCharacter[],
   isDm: boolean,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; includeDmData?: boolean }
 ) {
+  const includeDmData = options?.includeDmData ?? isDm;
   const [characters, setCharacters] = useState(initialCharacters);
+  const rawRowsRef = useRef<Map<string, Character>>(new Map());
   const subscriptionId = useId().replace(/:/g, "");
   const enabled = options?.enabled ?? true;
 
   useEffect(() => {
-    setCharacters(initialCharacters);
+    const nextRaw = new Map<string, Character>();
+    for (const character of initialCharacters) {
+      nextRaw.set(character.id, toCharacterRow(character));
+    }
+    rawRowsRef.current = nextRaw;
+    setCharacters(
+      initialCharacters.map((character) =>
+        parseCharacterRow(toCharacterRow(character), includeDmData)
+      )
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialCharacters read at campaign switch
   }, [campaignId]);
+
+  useEffect(() => {
+    setCharacters((prev) =>
+      prev.map((character) => {
+        const raw =
+          rawRowsRef.current.get(character.id) ?? toCharacterRow(character);
+        return parseCharacterRow(raw, includeDmData);
+      })
+    );
+  }, [includeDmData]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -39,6 +73,7 @@ export function useRealtimeCharacters(
           if (payload.eventType === "DELETE") {
             const old = payload.old as { id?: string };
             if (old.id) {
+              rawRowsRef.current.delete(old.id);
               setCharacters((prev) => prev.filter((c) => c.id !== old.id));
             }
             return;
@@ -65,7 +100,8 @@ export function useRealtimeCharacters(
               updated_at: row.updated_at ?? existing?.updated_at ?? "",
             };
 
-            const parsed = parseCharacterRow(merged, isDm);
+            rawRowsRef.current.set(merged.id, merged);
+            const parsed = parseCharacterRow(merged, includeDmData);
 
             if (idx >= 0) {
               const next = [...prev];
@@ -81,7 +117,7 @@ export function useRealtimeCharacters(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [campaignId, enabled, isDm, subscriptionId]);
+  }, [campaignId, enabled, includeDmData, subscriptionId]);
 
   return characters;
 }

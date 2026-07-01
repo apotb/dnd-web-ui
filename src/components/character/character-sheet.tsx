@@ -15,6 +15,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -669,8 +670,9 @@ export function CharacterSheet({
   hpPoolCombatPreferred = false,
   onUseHpPool,
 }: CharacterSheetProps) {
+  const showDmUi = useShowDmUi(isDm);
   const canMutate = editable || canToggleEquipment;
-  const canEditAbilities = editable && isDm;
+  const canEditAbilities = editable && showDmUi;
 
   const update = (patch: Partial<CharacterData>) => {
     if (!canMutate || !onChange) return;
@@ -752,7 +754,7 @@ export function CharacterSheet({
   const [dmCantripEditMode, setDmCantripEditMode] = useState(false);
   const [deathSaveRollOpen, setDeathSaveRollOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const canEditPlayerCantrips = canModifyPlayerCantrips(isDm, dmCantripEditMode);
+  const canEditPlayerCantrips = canModifyPlayerCantrips(showDmUi, dmCantripEditMode);
 
   useEffect(() => {
     setMounted(true);
@@ -767,7 +769,7 @@ export function CharacterSheet({
   const resolvedClass = resolveCharacterClass(data, classCatalog);
   const isWizardClass = resolvedClass ? isWizard(resolvedClass) : false;
   const canEditWizardSpells = canModifyPlayerSpells(
-    isDm,
+    showDmUi,
     dmCantripEditMode,
     resolvedClass
   );
@@ -1389,7 +1391,7 @@ export function CharacterSheet({
           <InspirationIndicator
             inspiration={inspiration}
             max={profBonus}
-            isDm={isDm}
+            isDm={showDmUi}
             onAdjust={canMutate ? adjustInspiration : undefined}
           />
         </div>
@@ -1435,7 +1437,7 @@ export function CharacterSheet({
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Level</Label>
-                {isDm && editable ? (
+                {showDmUi && editable ? (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-3">
                       <p className="text-sm font-medium w-6 shrink-0">{level}</p>
@@ -1598,7 +1600,7 @@ export function CharacterSheet({
               </p>
             )}
           </div>
-          {isDm ? (
+          {showDmUi ? (
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">DM Notes</Label>
               {editable ? (
@@ -2276,7 +2278,7 @@ export function CharacterSheet({
                       : ""}
                   </Button>
                 ) : null}
-                {isDm && editable ? (
+                {showDmUi && editable ? (
                   <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                     <Checkbox
                       checked={dmCantripEditMode}
@@ -2305,7 +2307,7 @@ export function CharacterSheet({
                       ) : null
                     ) : canAddSpellsOnSheet(
                         resolvedClass,
-                        isDm,
+                        showDmUi,
                         dmCantripEditMode
                       ) ? (
                       <Button
@@ -2447,7 +2449,7 @@ export function CharacterSheet({
                               </>
                             ) : null}
                           </p>
-                          {slotInfo && (canMutate || isDm) ? (
+                          {slotInfo && (canMutate || showDmUi) ? (
                             <span className="inline-flex items-center gap-1">
                               {canMutate ? (
                                 <Button
@@ -2461,7 +2463,7 @@ export function CharacterSheet({
                                   Use slot
                                 </Button>
                               ) : null}
-                              {isDm ? (
+                              {showDmUi ? (
                                 <Button
                                   type="button"
                                   size="sm"
@@ -2501,7 +2503,7 @@ export function CharacterSheet({
                             canEditSpellOnSheet(
                               spell,
                               resolvedClass,
-                              isDm,
+                              showDmUi,
                               dmCantripEditMode
                             );
                           const canRemoveSpellRow =
@@ -2509,7 +2511,7 @@ export function CharacterSheet({
                             canEditSpellOnSheet(
                               spell,
                               resolvedClass,
-                              isDm,
+                              showDmUi,
                               dmCantripEditMode
                             );
                           const showPreparedBadge =

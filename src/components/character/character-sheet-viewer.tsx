@@ -19,6 +19,7 @@ import { JsonImportExport } from "@/components/character/json-import-export";
 import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
 import { HpPoolModal } from "@/components/character/hp-pool-modal";
 import { AlertModal } from "@/components/ui/alert-modal";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import { syncCharacterTopLevelFields } from "@/lib/character/utils";
 import type { ParsedCharacter } from "@/lib/character/utils";
@@ -73,6 +74,7 @@ export const CharacterSheetViewer = forwardRef<
   ref
 ) {
   const router = useRouter();
+  const showDmUi = useShowDmUi(isDm);
   const worldData = useRealtimeWorldData(campaignId, initialWorldData);
   const subscribedPartyCharacters = useRealtimeCharacters(
     campaignId,
@@ -447,7 +449,7 @@ export const CharacterSheetViewer = forwardRef<
         data={data}
         onImport={handleImport}
       />
-      {canDelete ? (
+      {canDelete && showDmUi ? (
         <CharacterDeleteButton
           characterId={character.id}
           campaignId={campaignId}

@@ -59,6 +59,7 @@ import {
   useRealtimeCombatState,
 } from "@/lib/hooks/use-realtime-combat-state";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import type { CombatState, CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 import { DEFAULT_BOARD_TITLE, isCombatantToken, isHiddenEnemy, isTokenInTurnOrder } from "@/lib/schemas/combat-state";
 import {
@@ -493,12 +494,15 @@ export function CombatBoard({
   ownedCharacterId = null,
 }: CombatBoardProps) {
   const router = useRouter();
+  const showDmUi = useShowDmUi(isDm);
   const enemiesBySlug = useMemo(
     () => Object.fromEntries(enemies.map((enemy) => [enemy.slug, enemy])),
     [enemies]
   );
 
-  const liveCharacters = useRealtimeCharacters(campaignId, characters, isDm);
+  const liveCharacters = useRealtimeCharacters(campaignId, characters, isDm, {
+    includeDmData: showDmUi,
+  });
   const [localCharacters, setLocalCharacters] = useState(liveCharacters);
   const charactersById = useMemo(
     () => Object.fromEntries(localCharacters.map((character) => [character.id, character])),
@@ -615,7 +619,7 @@ export function CombatBoard({
 
   const awaitingPersistFingerprintRef = useRef<string | null>(null);
 
-  const combatState = isDm ? draft : liveState;
+  const combatState = showDmUi ? draft : liveState;
 
   combatStateRef.current = combatState;
 
@@ -654,7 +658,7 @@ export function CombatBoard({
   );
 
   const showCollisionDragHint =
-    isDm && !!draggingTokenId && !collisionEditMode && savedBlockedKeys.size > 0;
+    showDmUi && !!draggingTokenId && !collisionEditMode && savedBlockedKeys.size > 0;
 
   const characterRosterKey = useMemo(
     () =>
@@ -940,7 +944,7 @@ export function CombatBoard({
     [combatState.tokens]
   );
   const playerAbsentFromCombatBoard =
-    !isDm &&
+    !showDmUi &&
     (!ownedCharacterId || !presentCharacterIds.has(ownedCharacterId));
 
   const initiativeTokens = useMemo(() => {
@@ -948,7 +952,7 @@ export function CombatBoard({
     const tokensById = new Map(combatState.tokens.map((token) => [token.id, token]));
     const { order, results } = combatState.initiative;
 
-    if (isDm) {
+    if (showDmUi) {
       const combatantsWithResults = combatState.tokens.filter(
         (token) => isCombatantToken(token) && results[token.id] != null
       );
@@ -967,7 +971,7 @@ export function CombatBoard({
     combatState.initiative.results,
     combatState.initiative.status,
     combatState.tokens,
-    isDm,
+    showDmUi,
   ]);
 
   const gridRenderTokens = useMemo(
@@ -992,7 +996,7 @@ export function CombatBoard({
   const hpAmountValid = parsePositiveHpAmount(hpAmount) != null;
 
   const canStartInitiative =
-    isDm &&
+    showDmUi &&
     combatState.initiative.status === "none" &&
     combatantCount > 0 &&
     !startingInitiative &&
@@ -1325,7 +1329,7 @@ export function CombatBoard({
   const turnTokenHasPendingAction =
     currentTurnPendingAttack != null &&
     !currentTurnPendingAttack.isOpportunityAttack;
-  const playerHasPendingAction = turnTokenHasPendingAction && !isDm;
+  const playerHasPendingAction = turnTokenHasPendingAction && !showDmUi;
   const pendingOptionId = turnTokenHasPendingAction
     ? currentTurnPendingAttack.optionId
     : null;
@@ -2504,7 +2508,7 @@ export function CombatBoard({
 
   const handleCollisionPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!collisionEditMode || !isDm) return;
+      if (!collisionEditMode || !showDmUi) return;
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
@@ -2943,7 +2947,7 @@ export function CombatBoard({
   }
 
   function handleSaveEncounterClick() {
-    if (!isDm || !preBattleSetup) return;
+    if (!showDmUi || !preBattleSetup) return;
     setOverwriteConfirmEncounter(null);
     setPendingSaveName(null);
     setSaveEncounterNameOpen(true);
@@ -3120,14 +3124,14 @@ export function CombatBoard({
   }
 
   function renderToken(token: CombatToken) {
-    if (isHiddenEnemy(token) && !isDm) return null;
+    if (isHiddenEnemy(token) && !showDmUi) return null;
 
     const portraitUrl = resolveTokenPortraitUrl(supabase, token);
     const displayLabel = getCombatTokenDisplayLabel(token);
     const isSelected = selectedTokenId === token.id;
     const enemy = token.enemySlug ? enemiesBySlug[token.enemySlug] : null;
     const character = token.characterId ? charactersById[token.characterId] : null;
-    const isHiddenForDm = isHiddenEnemy(token) && isDm;
+    const isHiddenForDm = isHiddenEnemy(token) && showDmUi;
     const isHovered = hoveredTokenId === token.id && !draggingTokenId;
     const speciesClassLine = character
       ? [
@@ -3150,7 +3154,7 @@ export function CombatBoard({
     const statusLabels = getTokenStatusLabels(token);
     const isExpanded =
       isHovered &&
-      ((token.kind === "enemy" && (isDm ? enemy != null : true)) ||
+      ((token.kind === "enemy" && (showDmUi ? enemy != null : true)) ||
         (token.kind === "party" && character != null) ||
         token.kind === "marker");
 
@@ -3186,7 +3190,7 @@ export function CombatBoard({
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isHiddenForDm && isHovered ? " combat-token-hidden-enemy-hovered" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isPickupTarget ? " combat-token-pickup-highlight" : ""}${isSelfObjectTarget ? " combat-token-self-object-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${showDmUi ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isHiddenForDm && isHovered ? " combat-token-hidden-enemy-hovered" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isPickupTarget ? " combat-token-pickup-highlight" : ""}${isSelfObjectTarget ? " combat-token-self-object-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -3253,12 +3257,12 @@ export function CombatBoard({
                 </span>
               </>
             ) : null}
-            {isExpanded && !isDm && token.kind === "enemy" && enemyDamageTaken > 0 ? (
+            {isExpanded && !showDmUi && token.kind === "enemy" && enemyDamageTaken > 0 ? (
               <span className="combat-token-label-detail">
                 Damage taken: {enemyDamageTaken}
               </span>
             ) : null}
-            {isExpanded && isDm && enemy ? (
+            {isExpanded && showDmUi && enemy ? (
               <>
                 <span className="combat-token-label-detail">
                   AC {enemy.data.armorClass.value}
@@ -3369,7 +3373,7 @@ export function CombatBoard({
             draggable={false}
           />
         ) : null}
-        {collisionEditMode && isDm ? (
+        {collisionEditMode && showDmUi ? (
           <CombatCollisionOverlay
             gridWidth={combatState.gridWidth}
             gridHeight={combatState.gridHeight}
@@ -3468,11 +3472,11 @@ export function CombatBoard({
             const portraitUrl = resolveTokenPortraitUrl(supabase, token);
             const displayLabel = getCombatTokenDisplayLabel(token);
             const initiativeResult = combatState.initiative.results[token.id];
-            const isHiddenForDm = isHiddenEnemy(token) && isDm;
+            const isHiddenForDm = isHiddenEnemy(token) && showDmUi;
             const labelLetter =
               token.kind === "enemy" ? getEnemyTokenLabelLetter(token) : null;
             const turnTooltip =
-              isDm && initiativeResult
+              showDmUi && initiativeResult
                 ? formatInitiativeResultTooltip(displayLabel, initiativeResult)
                 : displayLabel;
 
@@ -3518,7 +3522,7 @@ export function CombatBoard({
             <div className="combat-toolbar combat-toolbar-header">
               <div className="combat-toolbar-top">
                 <div className="combat-toolbar-meta">
-                  {isDm ? (
+                  {showDmUi ? (
                     <input
                       type="text"
                       className="combat-title combat-title-input"
@@ -3534,7 +3538,7 @@ export function CombatBoard({
                     <h2 className="combat-title">{boardTitle}</h2>
                   )}
                   <p className="combat-meta">
-                  {isDm ? (
+                  {showDmUi ? (
                     <>
                       <input
                         type="number"
@@ -3594,7 +3598,7 @@ export function CombatBoard({
                   </p>
                 </div>
                 <div className="combat-board-view-actions">
-                  {isDm ? (
+                  {showDmUi ? (
                     <label
                       className={`candy-btn combat-auto-approve-toggle${autoApprove ? " candy-btn-active" : ""}`}
                     >
@@ -3748,7 +3752,7 @@ export function CombatBoard({
               ) : null}
             </div>
 
-            {isDm ? (
+            {showDmUi ? (
               <div className="combat-toolbar combat-toolbar-actions-row">
                 <input
                   ref={backgroundInputRef}
@@ -4173,7 +4177,7 @@ export function CombatBoard({
         enemiesBySlug={enemiesBySlug}
         onLoad={(encounter, options) => void handleLoadEncounter(encounter, options)}
       />
-      {characterSlotToken && isCharacterPlaceholder(characterSlotToken) && isDm ? (
+      {characterSlotToken && isCharacterPlaceholder(characterSlotToken) && showDmUi ? (
         <CharacterSlotAssignModal
           tokenLabel={getCombatTokenDisplayLabel(characterSlotToken)}
           characters={localCharacters}
@@ -4186,7 +4190,7 @@ export function CombatBoard({
       ) : null}
       {characterSlotToken &&
       isCharacterPlaceholder(characterSlotToken) &&
-      !isDm &&
+      !showDmUi &&
       ownedCharacter ? (
         <CharacterSlotClaimModal
           characterName={ownedCharacter.name}

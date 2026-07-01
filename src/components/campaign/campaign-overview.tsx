@@ -7,6 +7,7 @@ import { CampaignDayAdvance } from "@/components/campaign/campaign-day-advance";
 import { HarptosCalendar } from "@/components/campaign/harptos-calendar";
 import { CampaignMaps } from "@/components/campaign/campaign-maps";
 import { CampaignNotables } from "@/components/campaign/campaign-notables";
+import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import { getCharacterPortraitUrl } from "@/lib/character/portrait-storage";
 import { createClient } from "@/lib/supabase/client";
@@ -76,7 +77,10 @@ export function CampaignOverview({
   canManageCalendarEvents,
   canEditNotables,
 }: CampaignOverviewProps) {
-  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm);
+  const showDmUi = useShowDmUi(isDm);
+  const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm, {
+    includeDmData: showDmUi,
+  });
   const sortedCharacters = useMemo(() => {
     return [...characters].sort((a, b) => {
       const aOwned = !!userId && a.owner_user_id === userId;
@@ -178,7 +182,7 @@ export function CampaignOverview({
 
       {activeTab === "world" ? (
         <div className="retro-stack">
-          {isDm ? (
+          {showDmUi ? (
             <CampaignDayAdvance
               campaignId={campaignId}
               initialWorldData={initialWorldData}
