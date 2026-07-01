@@ -9,6 +9,7 @@ import {
   ARCANE_RECOVERY_ID,
   canLayOnHandsHealTarget,
   canUseSecondWind,
+  characterHasClassId,
   getLayOnHandsPoolRemaining,
   getMechanicalFeatureCurrent,
   getSpellRecoveryBudget,
@@ -21,6 +22,8 @@ import {
   spendLayOnHandsPool,
   validateSpellRecoverySelections,
 } from "@/lib/dnd/mechanical-features";
+import { getAllCharacterActions } from "@/lib/dnd/character-actions";
+import { findLayOnHandsAction } from "@/lib/combat/combat-mechanical-actions";
 import type { CharacterData } from "@/lib/schemas/character";
 
 function wizardData(overrides: Partial<CharacterData> = {}): CharacterData {
@@ -361,5 +364,39 @@ describe("mechanical-features", () => {
       featureUseState: { [LAY_ON_HANDS_ID]: { current: 10 } },
     });
     assert.equal(applyLayOnHands(paladin, target, "heal", 5), null);
+  });
+
+  it("qualifies lay on hands when paladin is not the primary class", () => {
+    const fighterPaladin = wizardData({
+      basicInfo: { ...wizardData().basicInfo, classes: ["Fighter", "Paladin"], xp: 6500 },
+    });
+    assert.equal(characterHasClassId(fighterPaladin, "paladin"), true);
+    assert.equal(mechanicalFeatureQualifies(fighterPaladin, LAY_ON_HANDS_ID), true);
+  });
+
+  it("injects lay on hands into character actions when qualified", () => {
+    const paladin = wizardData({
+      basicInfo: { ...wizardData().basicInfo, classes: ["Paladin"], xp: 6500 },
+      featureUseState: { [LAY_ON_HANDS_ID]: { current: 12 } },
+    });
+    const action = findLayOnHandsAction(getAllCharacterActions(paladin));
+    assert.ok(action);
+    assert.equal(action!.cost, "action");
+    assert.deepEqual(action!.uses, { current: 12, max: 25 });
+  });
+
+  it("merges self-target lay on hands heal into paladin data", () => {
+    const paladin = wizardData({
+      basicInfo: { ...wizardData().basicInfo, classes: ["Paladin"], xp: 6500 },
+      combat: { ...wizardData().combat, maxHp: 30, currentHp: 10 },
+      featureUseState: { [LAY_ON_HANDS_ID]: { current: 10 } },
+    });
+    const result = applyLayOnHands(paladin, paladin, "heal", 5, undefined, {
+      selfTarget: true,
+    });
+    assert.ok(result);
+    assert.equal(result!.paladinData.combat.currentHp, 15);
+    assert.equal(getLayOnHandsPoolRemaining(result!.paladinData), 5);
+    assert.equal(result!.paladinData, result!.targetData);
   });
 });

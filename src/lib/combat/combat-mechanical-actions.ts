@@ -1,10 +1,15 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
-import type { CharacterActionEntry } from "@/lib/dnd/character-actions";
+import {
+  ACTION_COST_LABELS,
+  actionSourceBadgeLabel,
+  type CharacterActionEntry,
+} from "@/lib/dnd/character-actions";
 import type { FeatureCatalogs } from "@/lib/character/feature-choices";
 import {
   canLayOnHandsCureTarget,
   canLayOnHandsHealTarget,
   getLayOnHandsPoolRemaining,
+  LAY_ON_HANDS_ACTION_ID,
   LAY_ON_HANDS_ID,
   mechanicalFeatureQualifies,
 } from "@/lib/dnd/mechanical-features";
@@ -13,7 +18,7 @@ import { isTokenInShellDefense } from "@/lib/combat/feature-effects";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import type { CombatOption } from "@/lib/combat/combat-options";
 
-export const LAY_ON_HANDS_ACTION_ID = `feature:${LAY_ON_HANDS_ID}`;
+export { LAY_ON_HANDS_ACTION_ID } from "@/lib/dnd/mechanical-features";
 
 export interface LayOnHandsCombatTarget {
   token: CombatToken;
@@ -92,4 +97,21 @@ export function canShowLayOnHandsOption(
   battleOver: boolean
 ): boolean {
   return !battleOver && !turn.actionUsed && !isTokenInShellDefense(actorToken);
+}
+
+export function formatLayOnHandsCombatSubtitle(poolRemaining: number): string {
+  return `${ACTION_COST_LABELS.action} · ${poolRemaining} HP pool`;
+}
+
+export function formatLayOnHandsCombatTooltip(
+  action: CharacterActionEntry,
+  poolRemaining: number
+): string {
+  const lines = [
+    `${ACTION_COST_LABELS.action} · ${actionSourceBadgeLabel(action)}`,
+    `${poolRemaining} HP remaining in pool`,
+  ];
+  const description = action.description.trim();
+  if (description) lines.push(description);
+  return lines.join("\n");
 }

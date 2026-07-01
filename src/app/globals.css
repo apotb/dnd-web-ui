@@ -4021,14 +4021,16 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .combat-attack-body {
+  --combat-action-row-height: 41px;
+  --combat-action-row-gap: 6px;
   display: flex;
   gap: 8px;
   align-items: stretch;
-  min-height: 88px;
+  min-height: calc(var(--combat-action-row-height) * 2 + var(--combat-action-row-gap));
 }
 
 .combat-attack-body-compact {
-  min-height: 0;
+  min-height: var(--combat-action-row-height);
 }
 
 .combat-attack-grid {
@@ -4036,12 +4038,12 @@ html.campaign-bg-active .retro-back-link {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: var(--combat-action-row-gap);
   min-width: 0;
 }
 
 .combat-attack-grid-compact {
-  align-content: start;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .combat-attack-option-empty {
@@ -4064,7 +4066,8 @@ html.campaign-bg-active .retro-back-link {
   color: #f8fafc;
   cursor: pointer;
   text-align: left;
-  min-height: 0;
+  min-height: var(--combat-action-row-height, 41px);
+  height: 100%;
 }
 
 .combat-attack-option:hover:not(:disabled) {

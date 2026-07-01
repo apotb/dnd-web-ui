@@ -342,6 +342,9 @@ export const featureSchema = z.object({
   id: z.string().default(() => crypto.randomUUID()),
   name: z.string().default(""),
   description: z.string().default(""),
+  /** When true, this feature appears in the Actions list and combat action panel. */
+  usesAction: z.boolean().default(false),
+  actionCost: actionCostSchema.default("action"),
   uses: z
     .object({
       current: z.number().int().min(0).default(0),

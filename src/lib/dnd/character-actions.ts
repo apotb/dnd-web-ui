@@ -4,6 +4,9 @@ import {
   featureSourceLabel,
   getCustomFeatures,
 } from "@/lib/character/feature-derivation";
+import {
+  deriveMechanicalFeatureActions,
+} from "@/lib/dnd/mechanical-features";
 import type {
   ActionCost,
   CharacterAction,
@@ -183,18 +186,31 @@ export function inferActionCost(description: string): ActionCost | null {
   return earliest?.cost ?? null;
 }
 
+export function resolveFeatureActionCost(feature: {
+  usesAction?: boolean;
+  actionCost?: ActionCost;
+  description: string;
+}): ActionCost | null {
+  if (feature.usesAction) {
+    return feature.actionCost ?? "action";
+  }
+  return inferActionCost(feature.description);
+}
+
 function featureToAction(
   feature: {
     id?: string;
     name: string;
     description: string;
+    usesAction?: boolean;
+    actionCost?: ActionCost;
     uses?: { current: number; max: number };
     restReset?: CharacterData["features"][number]["restReset"];
   },
   source: Extract<ActionSource, "feature" | "custom">,
   sourceLabel: string
 ): CharacterActionEntry | null {
-  const cost = inferActionCost(feature.description);
+  const cost = resolveFeatureActionCost(feature);
   if (!cost) return null;
 
   return {
@@ -258,22 +274,49 @@ function customStoredActions(
   }));
 }
 
+function addCharacterAction(
+  merged: CharacterActionEntry[],
+  seenKeys: Set<string>,
+  seenIds: Set<string>,
+  action: CharacterActionEntry,
+  replaceExisting = false
+) {
+  if (seenIds.has(action.id)) {
+    if (!replaceExisting) return;
+    const index = merged.findIndex((entry) => entry.id === action.id);
+    if (index >= 0) merged[index] = action;
+    return;
+  }
+
+  const key = `${action.cost}:${action.name.toLowerCase()}`;
+  if (seenKeys.has(key)) return;
+
+  seenIds.add(action.id);
+  seenKeys.add(key);
+  merged.push(action);
+}
+
 /** Core PHB actions, feature-granted actions, and stored custom actions. */
 export function getAllCharacterActions(
   data: CharacterData,
   catalogs: FeatureCatalogs = {}
 ): CharacterActionEntry[] {
+  const mechanicalActions = deriveMechanicalFeatureActions(data, catalogs);
   const featureActions = deriveFeatureActions(data, catalogs);
   const custom = customStoredActions(data.customActions ?? []);
-  const seen = new Set(CORE_ACTIONS.map((a) => `${a.cost}:${a.name.toLowerCase()}`));
+  const seenKeys = new Set(CORE_ACTIONS.map((a) => `${a.cost}:${a.name.toLowerCase()}`));
+  const seenIds = new Set(CORE_ACTIONS.map((a) => a.id));
 
   const merged: CharacterActionEntry[] = [...CORE_ACTIONS];
 
-  for (const action of [...featureActions, ...custom]) {
-    const key = `${action.cost}:${action.name.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(action);
+  for (const action of mechanicalActions) {
+    addCharacterAction(merged, seenKeys, seenIds, action, true);
+  }
+  for (const action of featureActions) {
+    addCharacterAction(merged, seenKeys, seenIds, action);
+  }
+  for (const action of custom) {
+    addCharacterAction(merged, seenKeys, seenIds, action);
   }
 
   return merged;

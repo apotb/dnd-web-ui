@@ -57,7 +57,11 @@ export function CombatOptionPanel({
   const clampedRowOffset = Math.min(rowOffset, rowLimit);
   const startIndex = clampedRowOffset * COLUMNS;
   const rowsToShow = visibleRowCount(options.length, clampedRowOffset);
-  const visibleSlotCount = rowsToShow * COLUMNS;
+  const isCompact = rowsToShow < VISIBLE_ROWS;
+  const singleRowCompact = isCompact && totalRows(options.length) === 1;
+  const visibleSlotCount = singleRowCompact
+    ? options.length - startIndex
+    : rowsToShow * COLUMNS;
   const visibleCells = useMemo(() => {
     const slice = options.slice(startIndex, startIndex + visibleSlotCount);
     const cells: (CombatOption | null)[] = [...slice];
@@ -83,14 +87,16 @@ export function CombatOptionPanel({
     return (
       <div
         className={`combat-attack-body${
-          rowsToShow < VISIBLE_ROWS ? " combat-attack-body-compact" : ""
+          isCompact ? " combat-attack-body-compact" : ""
         }`}
       >
         <div
           className={`combat-attack-grid${
-            rowsToShow < VISIBLE_ROWS ? " combat-attack-grid-compact" : ""
+            isCompact ? " combat-attack-grid-compact" : ""
           }`}
-          style={{ gridTemplateRows: `repeat(${rowsToShow}, minmax(0, 1fr))` }}
+          style={{
+            gridTemplateRows: `repeat(${rowsToShow}, minmax(0, 1fr))`,
+          }}
         >
           {visibleCells.map((option, index) =>
             option ? (
@@ -163,6 +169,7 @@ export function CombatOptionPanel({
     canScrollDown,
     canScrollUp,
     emptyMessage,
+    isCompact,
     onSelectOption,
     options.length,
     rowLimit,

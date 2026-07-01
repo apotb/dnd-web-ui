@@ -3204,6 +3204,8 @@ export function CharacterSheet({
                           id: crypto.randomUUID(),
                           name: "",
                           description: "",
+                          usesAction: false,
+                          actionCost: "action" as const,
                           restReset: "long" as const,
                         },
                       ],
@@ -3273,6 +3275,50 @@ export function CharacterSheet({
                           update({ features });
                         }}
                       />
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={feature.usesAction ?? false}
+                            onCheckedChange={(checked) => {
+                              const features = [...customFeatures];
+                              features[i] = {
+                                ...feature,
+                                usesAction: checked === true,
+                              };
+                              update({ features });
+                            }}
+                          />
+                          Uses action economy
+                        </label>
+                        {feature.usesAction ? (
+                          <Select
+                            value={feature.actionCost ?? "action"}
+                            onValueChange={(value) => {
+                              const features = [...customFeatures];
+                              features[i] = {
+                                ...feature,
+                                actionCost: value as ActionCost,
+                              };
+                              update({ features });
+                            }}
+                          >
+                            <SelectTrigger className="w-full sm:w-48">
+                              <SelectValue>
+                                {ACTION_COST_LABELS[feature.actionCost ?? "action"]}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ACTION_COST_ORDER.filter((cost) => cost !== "movement").map(
+                                (option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {ACTION_COST_LABELS[option]}
+                                  </SelectItem>
+                                )
+                              )}
+                            </SelectContent>
+                          </Select>
+                        ) : null}
+                      </div>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -3292,6 +3338,11 @@ export function CharacterSheet({
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                         {feature.description}
                       </p>
+                      {feature.usesAction ? (
+                        <p className="text-xs text-muted-foreground">
+                          Action: {ACTION_COST_LABELS[feature.actionCost ?? "action"]}
+                        </p>
+                      ) : null}
                       {feature.uses && (
                         <p className="text-xs">
                           Uses: {feature.uses.current}/{feature.uses.max} (

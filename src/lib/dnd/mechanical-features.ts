@@ -11,7 +11,12 @@ import { removeConditionSlugs } from "@/lib/dnd/conditions";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 import { levelFromXp } from "@/lib/dnd/xp";
-import type { CharacterData, Feature } from "@/lib/schemas/character";
+import type {
+  ActionCost,
+  CharacterData,
+  Feature,
+} from "@/lib/schemas/character";
+import type { CharacterActionEntry } from "@/lib/dnd/character-actions";
 
 type MechanicalRestKind = "short" | "long";
 
@@ -21,7 +26,10 @@ export const SECOND_WIND_ID = "granted:class:second-wind";
 export const RAGE_ID = "granted:class:rage";
 export const BARDIC_INSPIRATION_ID = "granted:class:bardic-inspiration";
 export const LAY_ON_HANDS_ID = "granted:class:lay-on-hands";
+export const LAY_ON_HANDS_ACTION_ID = `feature:${LAY_ON_HANDS_ID}`;
 export const LAY_ON_HANDS_CURE_COST = 5;
+export const LAY_ON_HANDS_ACTION_DESCRIPTION =
+  "As an action, touch a creature to restore HP from a pool of 5 × paladin level, or spend 5 pool HP to cure one poison or disease.";
 export const TIDES_OF_CHAOS_ID = "granted:subclass:tides-of-chaos";
 
 export type MechanicalFeatureKind =
@@ -47,6 +55,11 @@ export interface MechanicalFeatureDef {
   maxValue: (ctx: MechanicalFeatureContext) => number;
   /** Max spell slot level that can be recovered (short-rest-slots only). */
   maxRecoverableSlotLevel?: number;
+  /** When set, injects a combat/sheet action without parsing feature description text. */
+  usesAction?: boolean;
+  actionCost?: ActionCost;
+  actionName?: string;
+  actionDescription?: string;
 }
 
 export interface SpellRecoveryLevelOption {
@@ -74,6 +87,29 @@ function resolveCatalogs(catalogs: FeatureCatalogs = {}) {
     classes: catalogs.classes?.length ? catalogs.classes : PHB_CLASSES,
     species: catalogs.species ?? [],
   };
+}
+
+/** Whether any entry in the character's class list matches the given class id. */
+export function characterHasClassId(
+  data: CharacterData,
+  classId: string,
+  catalogs: FeatureCatalogs = {}
+): boolean {
+  const { classes } = resolveCatalogs(catalogs);
+  const labels = data.basicInfo.classes.length
+    ? data.basicInfo.classes
+    : data.basicInfo.class
+      ? [data.basicInfo.class]
+      : [];
+
+  for (const label of labels) {
+    const raw = label.trim();
+    const lower = raw.toLowerCase();
+    const match = classes.find((c) => c.id === raw || c.name.toLowerCase() === lower);
+    if (match?.id === classId) return true;
+  }
+
+  return false;
 }
 
 function buildContext(
@@ -147,8 +183,12 @@ const MECHANICAL_FEATURES: Record<string, MechanicalFeatureDef> = {
     id: LAY_ON_HANDS_ID,
     kind: "hp-pool",
     restReset: "long",
-    qualifies: (ctx) => ctx.cls?.id === "paladin",
+    qualifies: (ctx) => characterHasClassId(ctx.data, "paladin", { classes: ctx.classes }),
     maxValue: (ctx) => 5 * ctx.level,
+    usesAction: true,
+    actionCost: "action",
+    actionName: "Lay on Hands",
+    actionDescription: LAY_ON_HANDS_ACTION_DESCRIPTION,
   },
   [TIDES_OF_CHAOS_ID]: {
     id: TIDES_OF_CHAOS_ID,
@@ -605,16 +645,22 @@ export function applyLayOnHands(
   targetData: CharacterData,
   mode: LayOnHandsMode,
   healAmount: number,
-  catalogs?: FeatureCatalogs
+  catalogs?: FeatureCatalogs,
+  options?: { selfTarget?: boolean }
 ):
   | { paladinData: CharacterData; targetData: CharacterData; poolSpent: number; healed: number }
   | null {
   if (mode === "cure") {
     const result = applyLayOnHandsCure(paladinData, targetData, catalogs);
     if (!result) return null;
+    const finalized = finalizeLayOnHandsResult(
+      result.paladinData,
+      result.targetData,
+      options?.selfTarget ?? false
+    );
     return {
-      paladinData: result.paladinData,
-      targetData: result.targetData,
+      paladinData: finalized.paladinData,
+      targetData: finalized.targetData,
       poolSpent: LAY_ON_HANDS_CURE_COST,
       healed: 0,
     };
@@ -622,12 +668,78 @@ export function applyLayOnHands(
 
   const result = applyLayOnHandsHeal(paladinData, targetData, healAmount, catalogs);
   if (!result) return null;
+  const finalized = finalizeLayOnHandsResult(
+    result.paladinData,
+    result.targetData,
+    options?.selfTarget ?? false
+  );
   return {
-    paladinData: result.paladinData,
-    targetData: result.targetData,
+    paladinData: finalized.paladinData,
+    targetData: finalized.targetData,
     poolSpent: result.healed,
     healed: result.healed,
   };
+}
+
+function finalizeLayOnHandsResult(
+  paladinData: CharacterData,
+  targetData: CharacterData,
+  selfTarget: boolean
+): { paladinData: CharacterData; targetData: CharacterData } {
+  if (!selfTarget) {
+    return { paladinData, targetData };
+  }
+
+  const merged: CharacterData = {
+    ...paladinData,
+    combat: {
+      ...paladinData.combat,
+      currentHp: targetData.combat.currentHp,
+      conditions: targetData.combat.conditions ?? paladinData.combat.conditions,
+    },
+  };
+
+  return { paladinData: merged, targetData: merged };
+}
+
+function mechanicalFeatureActionSourceLabel(featureId: string): string {
+  if (featureId.startsWith("granted:species:")) return "Species";
+  if (featureId.startsWith("granted:subclass:")) return "Subclass";
+  if (featureId.startsWith("granted:class:")) return "Class";
+  if (featureId.startsWith("granted:background:")) return "Background";
+  return "Feature";
+}
+
+/** Rules-backed actions for mechanical features with usesAction set. */
+export function deriveMechanicalFeatureActions(
+  data: CharacterData,
+  catalogs?: FeatureCatalogs
+): CharacterActionEntry[] {
+  const actions: CharacterActionEntry[] = [];
+
+  for (const def of Object.values(MECHANICAL_FEATURES)) {
+    if (!def.usesAction) continue;
+    if (!mechanicalFeatureQualifies(data, def.id, catalogs)) continue;
+
+    const max = getMechanicalFeatureMax(def, data, catalogs);
+    const current = getMechanicalFeatureCurrent(data, def.id, catalogs);
+
+    actions.push({
+      id: `feature:${def.id}`,
+      name: def.actionName ?? "Feature",
+      cost: def.actionCost ?? "action",
+      description: def.actionDescription ?? "",
+      source: "feature",
+      sourceLabel: mechanicalFeatureActionSourceLabel(def.id),
+      uses:
+        def.kind === "uses" || def.kind === "hp-pool"
+          ? { current, max }
+          : undefined,
+      restReset: def.restReset,
+    });
+  }
+
+  return actions;
 }
 
 /** Labels for mechanical features available on a short rest. */

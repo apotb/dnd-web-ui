@@ -2172,20 +2172,22 @@ export function CombatBoard({
   }) {
     if (!actingToken || !actingTokenCharacter) return;
 
+    const targetToken = input.target.token;
+    const targetCharacter = input.target.character;
+
     const result = applyLayOnHands(
       actingTokenCharacter.data,
-      input.target.character.data,
+      targetCharacter.data,
       input.mode,
       input.healAmount,
-      featureCatalogs
+      featureCatalogs,
+      { selfTarget: targetCharacter.id === actingTokenCharacter.id }
     );
     if (!result) {
       showAlert("Lay on Hands could not be applied.");
       return;
     }
 
-    const targetToken = input.target.token;
-    const targetCharacter = input.target.character;
     const maxHp =
       targetToken.maxHp ?? getEffectiveMaxHp(result.targetData, featureCatalogs);
     const nextHp = result.targetData.combat.currentHp;

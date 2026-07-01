@@ -31,9 +31,11 @@ import { getWeaponProperties, type Item } from "@/lib/schemas/item";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { canUseHelpAction, isTokenEngaged } from "@/lib/combat/engagement";
 import { isBattleOver, isTokenOnMapEdge } from "@/lib/combat/battle-over";
+import { getLayOnHandsPoolRemaining, LAY_ON_HANDS_ACTION_ID } from "@/lib/dnd/mechanical-features";
 import {
   canShowLayOnHandsOption,
-  findLayOnHandsAction,
+  formatLayOnHandsCombatSubtitle,
+  formatLayOnHandsCombatTooltip,
   hasLayOnHandsValidTarget,
   isLayOnHandsOption,
 } from "@/lib/combat/combat-mechanical-actions";
@@ -367,7 +369,7 @@ export function isEmergeFromShellOption(option: CombatOption): boolean {
 
 function buildLayOnHandsOption(
   character: ParsedCharacter,
-  characterActions: CharacterActionEntry[],
+  action: CharacterActionEntry,
   token: CombatToken,
   combatState: CombatState,
   partyCharacters: ParsedCharacter[],
@@ -388,37 +390,61 @@ function buildLayOnHandsOption(
     return null;
   }
 
-  const action = findLayOnHandsAction(characterActions);
-  if (!action) return null;
+  const poolRemaining = getLayOnHandsPoolRemaining(character.data, featureCatalogs);
 
   return {
     id: `action:${action.id}`,
     name: action.name,
-    subtitle: actionSubtitle(action),
-    tooltip: formatActionTooltip(action),
+    subtitle: formatLayOnHandsCombatSubtitle(poolRemaining),
+    tooltip: formatLayOnHandsCombatTooltip(action, poolRemaining),
     kind: "action",
     action,
   };
 }
 
 function buildRegisteredFeatureActionOptions(
+  character: ParsedCharacter,
   characterActions: CharacterActionEntry[],
   turn: { actionUsed: boolean },
   token: CombatToken,
+  combatState: CombatState,
+  partyCharacters: ParsedCharacter[],
+  featureCatalogs: FeatureCatalogs,
   battleOver = false
 ): CombatOption[] {
   if (battleOver || turn.actionUsed || isTokenInShellDefense(token)) return [];
 
-  return characterActions
-    .filter((action) => isRegisteredFeatureEnterAction(action.id))
-    .map((action) => ({
+  const options: CombatOption[] = [];
+
+  for (const action of characterActions) {
+    if (!isRegisteredFeatureEnterAction(action.id)) continue;
+
+    if (action.id === LAY_ON_HANDS_ACTION_ID) {
+      const layOnHands = buildLayOnHandsOption(
+        character,
+        action,
+        token,
+        combatState,
+        partyCharacters,
+        turn,
+        featureCatalogs,
+        battleOver
+      );
+      if (layOnHands) options.push(layOnHands);
+      continue;
+    }
+
+    options.push({
       id: `action:${action.id}`,
       name: action.name,
       subtitle: actionSubtitle(action),
       tooltip: formatActionTooltip(action),
       kind: "action" as const,
       action,
-    }));
+    });
+  }
+
+  return options;
 }
 
 function buildStandardActionOptions(
@@ -636,26 +662,16 @@ function buildPartyOptionGroups(
       options?.battleOver
     ),
     ...buildRegisteredFeatureActionOptions(
+      character,
       characterActions,
       turn,
       token,
+      combatState,
+      partyCharacters,
+      featureCatalogs,
       options?.battleOver
     ),
   ];
-
-  const layOnHands = buildLayOnHandsOption(
-    character,
-    characterActions,
-    token,
-    combatState,
-    partyCharacters,
-    turn,
-    featureCatalogs,
-    options?.battleOver
-  );
-  if (layOnHands) {
-    actionOptions.push(layOnHands);
-  }
 
   const bonusActionOptions: CombatOption[] = turn.bonusActionUsed
     ? []

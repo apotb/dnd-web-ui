@@ -90,7 +90,8 @@ export function LayOnHandsModal({
       target.data,
       mode,
       healAmount,
-      featureCatalogs
+      featureCatalogs,
+      { selfTarget: target.id === paladin.id }
     );
     if (!result) return;
 
