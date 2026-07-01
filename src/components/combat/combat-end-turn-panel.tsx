@@ -18,16 +18,22 @@ export function CombatEndTurnPanel({
       <div className="combat-end-turn-header">
         <h3 className="combat-end-turn-title">End Turn</h3>
       </div>
-      <div className="combat-end-turn-options">
-        <button
-          type="button"
-          className="combat-attack-option"
-          onClick={onSelectEndTurn}
-          disabled={endingTurn || disabled}
-        >
-          <span className="combat-attack-option-name">End Turn</span>
-          <span className="combat-attack-option-sub">Next: {nextTurnLabel}</span>
-        </button>
+      <div className="combat-attack-body">
+        <div className="combat-end-turn-options">
+          <button
+            type="button"
+            className="combat-attack-option"
+            onClick={onSelectEndTurn}
+            disabled={endingTurn || disabled}
+          >
+            <span className="combat-attack-option-name">End Turn</span>
+            <span className="combat-attack-option-sub">Next: {nextTurnLabel}</span>
+          </button>
+        </div>
+        <div
+          className="combat-attack-scroll combat-attack-scroll-reserved"
+          aria-hidden="true"
+        />
       </div>
     </section>
   );

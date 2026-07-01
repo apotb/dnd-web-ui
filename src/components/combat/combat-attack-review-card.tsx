@@ -12,6 +12,7 @@ import {
   SaveRollField,
 } from "@/components/combat/combat-roll-fields";
 import { CombatSaveRollEntry } from "@/components/combat/combat-save-roll-entry";
+import { CombatPendingSpellDetails } from "@/components/combat/combat-pending-spell-details";
 import {
   computeDamageApplied,
   computeHitFromRoll,
@@ -407,7 +408,12 @@ export function CombatAttackReviewCard({
     ? dmSaveTargets.length > 0
       ? "Awaiting saves"
       : "Waiting for player saves"
-    : "Ready to approve";
+    : pending.spellDetails?.isDeclarationOnly
+      ? "Declared spell cast"
+      : "Ready to approve";
+
+  const isDeclaredSpellOnly =
+    pending.spellDetails?.isDeclarationOnly && pending.targets.length === 0;
 
   return (
     <article className="combat-attack-review-card retro-box">
@@ -437,6 +443,10 @@ export function CombatAttackReviewCard({
           </span>
         ) : null}
       </div>
+
+      {pending.spellDetails ? (
+        <CombatPendingSpellDetails details={pending.spellDetails} />
+      ) : null}
 
       {isAwaitingSaves && dmSaveTargets.length > 0 ? (
         <div className="combat-awaiting-saves-panel">
@@ -479,7 +489,7 @@ export function CombatAttackReviewCard({
         </div>
       ) : null}
 
-      {!(isAwaitingSaves && dmSaveTargets.length > 0) ? (
+      {!(isAwaitingSaves && dmSaveTargets.length > 0) && !isDeclaredSpellOnly ? (
         <div className="combat-attack-review-targets">{targetSections}</div>
       ) : null}
 

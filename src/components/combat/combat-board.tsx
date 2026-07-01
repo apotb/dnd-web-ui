@@ -87,6 +87,7 @@ import { CombatEndTurnConfirmModal } from "@/components/combat/combat-end-turn-c
 import { CombatEndTurnPanel } from "@/components/combat/combat-end-turn-panel";
 import { CombatMovePanel } from "@/components/combat/combat-move-panel";
 import { CombatBoardFullscreen } from "@/components/combat/combat-board-fullscreen";
+import { CombatLosOverlay } from "@/components/combat/combat-los-overlay";
 import { CombatMeasureOverlay } from "@/components/combat/combat-measure-overlay";
 import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
 import { CombatCollisionOverlay } from "@/components/combat/combat-collision-overlay";
@@ -95,6 +96,11 @@ import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-
 import { CombatShellDefenseConfirmModal } from "@/components/combat/combat-shell-defense-confirm-modal";
 import { CombatHpPoolModal } from "@/components/combat/combat-hp-pool-modal";
 import { CombatOtherActionsModal } from "@/components/combat/combat-other-actions-modal";
+import { CombatSpellCastModal } from "@/components/combat/combat-spell-cast-modal";
+import {
+  CombatSpellPickerModal,
+  type CombatSpellPickerSelection,
+} from "@/components/combat/combat-spell-picker-modal";
 import { CombatOpportunityAttackModal } from "@/components/combat/combat-opportunity-attack-modal";
 import { CombatOpportunityAttackPanel } from "@/components/combat/combat-opportunity-attack-panel";
 import { CombatAttackSubmitModal } from "@/components/combat/combat-attack-submit-modal";
@@ -121,6 +127,8 @@ import {
   isHpPoolCombatOptionKind,
   isImplementedCombatOption,
   isShellDefenseEnterOption,
+  isSpellCastOption,
+  isSpellcastingEntryOption,
   isUseObjectActionOption,
   COMBAT_USE_OBJECT_OPTION_ID,
   type CombatOption,
@@ -129,6 +137,7 @@ import { leaveCombatArea } from "@/lib/combat/battle-over-actions";
 import { getBattleOverTurnDisplay, isBattleOver } from "@/lib/combat/battle-over";
 import {
   recordCombatActionUsed,
+  recordCombatBonusActionUsed,
   recordCombatDash,
   recordCombatDisengage,
   recordCombatEquipmentChange,
@@ -146,6 +155,7 @@ import {
   resolveCombatAttack,
   shouldAutoApprovePendingAttack,
   submitCombatAttack,
+  submitCombatSpellCast,
   submitCombatDmSaveRolls,
   submitCombatSaveRoll,
   type CharacterHpUpdate,
@@ -155,7 +165,8 @@ import {
   recordCombatFeatureEffectExit,
 } from "@/lib/combat/feature-effect-actions";
 import {
-  getTokenStatusLabels,
+  getTokenStatusEntries,
+  getTokenStatusTooltip,
   isTokenRestrictedByEffects,
   SHELL_DEFENSE_EFFECT_ID,
 } from "@/lib/combat/feature-effects";
@@ -172,10 +183,12 @@ import {
   canAdvanceTurnWithPendingAttacks,
 } from "@/lib/combat/pending-attacks";
 import {
+  buildVisionCellBands,
   getTargetingHighlights,
   getAttackRollDisadvantage,
   formatAttackDisadvantageLabel,
   hasRangedAttackAdjacentDisadvantage,
+  isTokenOnGrid,
   parseAttackRangeSpec,
 } from "@/lib/combat/targeting";
 import {
@@ -185,7 +198,15 @@ import {
   buildBlockedCellSet,
   type BlockedCell,
 } from "@/lib/combat/collision";
-import type { DerivedAttack } from "@/lib/dnd/attacks";
+import {
+  type DerivedAttack,
+} from "@/lib/dnd/attacks";
+import {
+  formatDeclareCastSpellSubtitle,
+  formatSpellPickerCombatTooltip,
+  resolveCombatCastableSpell,
+  type CombatCastableSpell,
+} from "@/lib/dnd/combat-spells";
 import {
   submitCombatOpportunityAttack,
 } from "@/lib/combat/attack-actions";
@@ -545,6 +566,7 @@ export function CombatBoard({
   const [attackTargeting, setAttackTargeting] = useState<{
     option: CombatOption;
     attack: DerivedAttack;
+    spellCastSlotLevel?: number;
   } | null>(null);
   const [attackSubmitDraft, setAttackSubmitDraft] = useState<{
     option: CombatOption;
@@ -554,6 +576,7 @@ export function CombatBoard({
     isOpportunityAttack?: boolean;
     attackerToken?: CombatToken;
     attackDisadvantageByTokenId?: Record<string, boolean>;
+    spellCastSlotLevel?: number;
   } | null>(null);
   const [hoveredTargetingCell, setHoveredTargetingCell] = useState<{
     x: number;
@@ -579,6 +602,11 @@ export function CombatBoard({
   const [pendingShellDefenseConfirm, setPendingShellDefenseConfirm] = useState(false);
   const [pendingHpPoolFeatureId, setPendingHpPoolFeatureId] = useState<string | null>(null);
   const [pendingOtherActionsConfirm, setPendingOtherActionsConfirm] = useState(false);
+  const [pendingSpellCast, setPendingSpellCast] = useState<CombatOption | null>(null);
+  const [pendingSpellcasting, setPendingSpellcasting] = useState<{
+    castingCost: "action" | "bonus-action";
+    preselectedEntry?: CombatCastableSpell;
+  } | null>(null);
   const [pendingOpportunityAttackMove, setPendingOpportunityAttackMove] = useState<{
     destination: ReachableDestination;
     dashConsumed: boolean;
@@ -606,6 +634,7 @@ export function CombatBoard({
   const [measureMode, setMeasureMode] = useState(false);
   const [measureStartCell, setMeasureStartCell] = useState<GridPosition | null>(null);
   const [measureHoverCell, setMeasureHoverCell] = useState<GridPosition | null>(null);
+  const [losMode, setLosMode] = useState(false);
   const [boardExpanded, setBoardExpanded] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
@@ -615,6 +644,7 @@ export function CombatBoard({
   const combatStateRef = useRef<CombatState>(initialCombatState);
   const attackTargetingRef = useRef(attackTargeting);
   attackTargetingRef.current = attackTargeting;
+  const dmTokenSelectionBlockedRef = useRef(false);
   const supabase = useMemo(() => createClient(), []);
 
   const awaitingPersistFingerprintRef = useRef<string | null>(null);
@@ -647,9 +677,17 @@ export function CombatBoard({
   );
 
   const canUseCollisionEdit =
-    !movementMode && !attackTargeting && !draggingTokenId && !startingInitiative && !measureMode;
+    !movementMode &&
+    !attackTargeting &&
+    !draggingTokenId &&
+    !startingInitiative &&
+    !measureMode &&
+    !losMode;
 
   const canUseMeasure =
+    !movementMode && !attackTargeting && !draggingTokenId && !collisionEditMode;
+
+  const canUseLos =
     !movementMode && !attackTargeting && !draggingTokenId && !collisionEditMode;
 
   const savedBlockedKeys = useMemo(
@@ -892,7 +930,8 @@ export function CombatBoard({
 
   const handleTokenPointerDown = useCallback(
     (tokenId: string, event: React.PointerEvent<HTMLDivElement>) => {
-      if (!isDm || collisionEditMode) return;
+      if (!isDm || !showDmUi || collisionEditMode) return;
+      if (!losMode && dmTokenSelectionBlockedRef.current) return;
       event.preventDefault();
       event.stopPropagation();
 
@@ -922,7 +961,7 @@ export function CombatBoard({
       function handlePointerUp(upEvent: PointerEvent) {
         if (upEvent.pointerId !== pointerId) return;
         cleanup();
-        if (!dragStarted) {
+        if (!dragStarted && (losMode || !dmTokenSelectionBlockedRef.current)) {
           setSelectedTokenId(tokenId);
         }
       }
@@ -931,7 +970,7 @@ export function CombatBoard({
       window.addEventListener("pointerup", handlePointerUp);
       window.addEventListener("pointercancel", handlePointerUp);
     },
-    [beginTokenDrag, collisionEditMode, isDm]
+    [beginTokenDrag, collisionEditMode, isDm, losMode, showDmUi]
   );
 
   const presentCharacterIds = useMemo(
@@ -944,7 +983,7 @@ export function CombatBoard({
     [combatState.tokens]
   );
   const playerAbsentFromCombatBoard =
-    !showDmUi &&
+    !isDm &&
     (!ownedCharacterId || !presentCharacterIds.has(ownedCharacterId));
 
   const initiativeTokens = useMemo(() => {
@@ -985,6 +1024,27 @@ export function CombatBoard({
   const selectedToken = selectedTokenId
     ? combatState.tokens.find((token) => token.id === selectedTokenId) ?? null
     : null;
+  const losObserverToken = useMemo(() => {
+    const turnToken = getCurrentTurnToken(combatState);
+
+    if (isDm) {
+      if (selectedToken) return selectedToken;
+      return turnToken;
+    }
+
+    if (ownedCharacterId) {
+      const ownedToken =
+        combatState.tokens.find((token) => token.characterId === ownedCharacterId) ?? null;
+      if (ownedToken) return ownedToken;
+    }
+
+    return turnToken;
+  }, [combatState, isDm, ownedCharacterId, selectedToken]);
+  const losVisionBands = useMemo(() => {
+    if (!losMode || !losObserverToken) return null;
+    if (!isTokenOnGrid(losObserverToken, combatState)) return null;
+    return buildVisionCellBands(losObserverToken, combatState);
+  }, [combatState, losMode, losObserverToken]);
   const selectedMarker = selectedToken?.kind === "marker" ? selectedToken : null;
   const selectedEnemy = selectedToken?.kind === "enemy" ? selectedToken : null;
   const canEditSelectedToken = selectedMarker != null || selectedEnemy != null;
@@ -1096,6 +1156,7 @@ export function CombatBoard({
     : combatState.turn.freeObjectInteractionUsed;
   const pendingAttacks = combatState.pendingAttacks;
   const autoApprove = combatState.autoApprove;
+  const autoApproveDm = combatState.autoApproveDm;
   const dmApprovalTrayAttacks = useMemo(
     () => getDmApprovalTrayAttacks(pendingAttacks),
     [pendingAttacks]
@@ -1136,8 +1197,15 @@ export function CombatBoard({
 
   useEffect(() => {
     if (!battleOver || !defaultBattleOverActingToken) return;
+    if (isDm && !showDmUi) return;
     setSelectedTokenId((current) => current ?? defaultBattleOverActingToken.id);
-  }, [battleOver, defaultBattleOverActingToken]);
+  }, [battleOver, defaultBattleOverActingToken, isDm, showDmUi]);
+
+  useEffect(() => {
+    if (isDm && !showDmUi) {
+      setSelectedTokenId(null);
+    }
+  }, [isDm, showDmUi]);
 
   const canUseObjectAction = useMemo(() => {
     if (!actingToken || !actingTokenCharacter) return false;
@@ -1329,7 +1397,7 @@ export function CombatBoard({
   const turnTokenHasPendingAction =
     currentTurnPendingAttack != null &&
     !currentTurnPendingAttack.isOpportunityAttack;
-  const playerHasPendingAction = turnTokenHasPendingAction && !showDmUi;
+  const playerHasPendingAction = turnTokenHasPendingAction && !isDm;
   const pendingOptionId = turnTokenHasPendingAction
     ? currentTurnPendingAttack.optionId
     : null;
@@ -1365,6 +1433,10 @@ export function CombatBoard({
     setMeasureHoverCell(null);
   }
 
+  function clearLosMode() {
+    setLosMode(false);
+  }
+
   function clearAttackFlow() {
     setAttackTargeting(null);
     setAttackSubmitDraft(null);
@@ -1390,7 +1462,7 @@ export function CombatBoard({
       }
       return;
     }
-    if (movementMode || measureMode || turnTokenHasPendingAction) return;
+    if (movementMode || measureMode || losMode || turnTokenHasPendingAction) return;
 
     if (isLeaveAreaOption(option)) {
       if (!userControlsCombat || !actingToken) return;
@@ -1426,6 +1498,7 @@ export function CombatBoard({
       }
       setMovementMode(false);
       clearMeasureMode();
+      clearLosMode();
       clearAttackFlow();
       setObjectInteractionMode(true);
       return;
@@ -1500,6 +1573,32 @@ export function CombatBoard({
       return;
     }
 
+    if (isSpellcastingEntryOption(option)) {
+      if (battleOver || actionUsed) return;
+      setPendingSpellcasting({ castingCost: "action" });
+      return;
+    }
+
+    if (isSpellCastOption(option)) {
+      if (battleOver) return;
+      if (option.spellCast?.castingCost === "bonus-action" && bonusActionUsed) return;
+      if (option.spellCast?.castingCost === "action" && actionUsed) return;
+
+      const spellCast = option.spellCast;
+      if (spellCast && spellCast.level > 0 && actingTokenCharacter) {
+        const entry = resolveCombatCastableSpell(actingTokenCharacter.data, spellCast);
+        if (!entry) return;
+        setPendingSpellcasting({
+          castingCost: spellCast.castingCost,
+          preselectedEntry: entry,
+        });
+        return;
+      }
+
+      setPendingSpellCast(option);
+      return;
+    }
+
     if (isAttackTargetingOption(option) && userControlsCombat && actingToken && !battleOver) {
       const attack = optionToAttack(option);
       if (!attack) return;
@@ -1512,6 +1611,7 @@ export function CombatBoard({
       }
       setMovementMode(false);
       clearMeasureMode();
+      clearLosMode();
       clearObjectInteractionMode();
       clearAttackFlow();
       setAttackTargeting({ option, attack });
@@ -1530,6 +1630,15 @@ export function CombatBoard({
     setMeasureMode(true);
   }
 
+  function handleToggleLosMode() {
+    if (!losMode && !canUseLos) return;
+    if (losMode) {
+      clearLosMode();
+      return;
+    }
+    setLosMode(true);
+  }
+
   function handleMeasureCellClick(cell: GridPosition) {
     if (!measureStartCell) {
       setMeasureStartCell(cell);
@@ -1542,6 +1651,16 @@ export function CombatBoard({
   }
 
   const mapSelectionActive = Boolean(attackTargeting || movementMode || objectInteractionMode);
+  dmTokenSelectionBlockedRef.current = Boolean(
+    (isDm && !showDmUi) ||
+      attackTargeting ||
+      movementMode ||
+      objectInteractionMode ||
+      measureMode ||
+      turnTokenHasPendingAction ||
+      provokingMovePending ||
+      pendingOpportunityAttackMove
+  );
   const selectedActionOptionId =
     pendingOptionId ??
     attackTargeting?.option.id ??
@@ -1625,6 +1744,7 @@ export function CombatBoard({
         attackTargeting.attack,
         targets
       ),
+      spellCastSlotLevel: attackTargeting.spellCastSlotLevel,
     });
     setAttackTargeting(null);
     setHoveredTargetingCell(null);
@@ -1701,6 +1821,14 @@ export function CombatBoard({
                   },
                 }
               : {}),
+            ...(update.spellSlots != null
+              ? {
+                  spells: {
+                    ...character.data.spells,
+                    slots: update.spellSlots,
+                  },
+                }
+              : {}),
           },
         };
       })
@@ -1745,6 +1873,7 @@ export function CombatBoard({
       showAlert(error);
       return;
     }
+
     if (attackSubmitDraft.isOpportunityAttack) {
       setUserOaLocked(hasPendingAttackForAttacker(next, attacker.id));
     }
@@ -1934,6 +2063,7 @@ export function CombatBoard({
     }
   }, [
     autoApprove,
+    autoApproveDm,
     campaignId,
     charactersById,
     combatState,
@@ -1946,18 +2076,27 @@ export function CombatBoard({
     void persist({ ...combatState, autoApprove: checked });
   }
 
+  function handleToggleAutoApproveDm(checked: boolean) {
+    if (checked === autoApproveDm) return;
+    void persist({ ...combatState, autoApproveDm: checked });
+  }
+
   function handleToggleMovementMode() {
     if (
       attackTargeting ||
       objectInteractionMode ||
       measureMode ||
+      losMode ||
       turnTokenHasPendingAction ||
       provokingMovePending ||
       pendingOpportunityAttackMove
     ) {
       return;
     }
-    setMovementMode((value) => !value);
+    setMovementMode((value) => {
+      if (!value) clearLosMode();
+      return !value;
+    });
     setHoveredMovementCell(null);
   }
 
@@ -2027,12 +2166,16 @@ export function CombatBoard({
           clearMeasureMode();
           return;
         }
+        if (losMode) {
+          clearLosMode();
+          return;
+        }
         clearAttackFlow();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [losMode, measureMode]);
 
   async function tryCommitMovement(
     destination: ReachableDestination,
@@ -2254,6 +2397,29 @@ export function CombatBoard({
     setPendingHpPoolFeatureId(null);
   }
 
+  function handleSpellPickerConfirm(selection: CombatSpellPickerSelection) {
+    if (!actingTokenCharacter || !pendingSpellcasting) return;
+
+    const { entry, castSlotLevel } = selection;
+    const castingCost = pendingSpellcasting.castingCost;
+    setPendingSpellcasting(null);
+
+    setPendingSpellCast({
+      id: `spell-cast:${entry.spell.id}`,
+      name: entry.spell.name,
+      subtitle: formatDeclareCastSpellSubtitle(entry.spell, entry.slug),
+      tooltip: formatSpellPickerCombatTooltip(entry, actingTokenCharacter.data),
+      kind: castingCost === "bonus-action" ? "bonus-action" : "action",
+      spellCast: {
+        spellId: entry.slug,
+        characterSpellId: entry.spell.id,
+        level: entry.spell.level,
+        castSlotLevel,
+        castingCost,
+      },
+    });
+  }
+
   async function handleConfirmOtherActions() {
     const { next, error } = await recordCombatActionUsed(campaignId, combatState, {
       isDm,
@@ -2265,6 +2431,38 @@ export function CombatBoard({
     }
     if (isDm) {
       setDraft(next);
+    }
+  }
+
+  async function handleConfirmSpellCast() {
+    if (!pendingSpellCast?.spellCast || !actingToken) return;
+
+    if (hasPendingAttackForAttacker(combatState, actingToken.id)) {
+      showAlert("You already have an action pending.");
+      return;
+    }
+
+    setSubmittingAttack(true);
+    const { next, error, characterUpdates } = await submitCombatSpellCast(
+      campaignId,
+      combatState,
+      {
+        userId,
+        isDm,
+        attacker: actingToken,
+        combatOption: pendingSpellCast,
+        charactersById,
+      }
+    );
+    setSubmittingAttack(false);
+    setPendingSpellCast(null);
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+      applyCharacterHpUpdates(next, characterUpdates);
     }
   }
 
@@ -2365,7 +2563,12 @@ export function CombatBoard({
   }
 
   async function handleGrantTurnAction() {
-    if (!canAdjustTurnMovement || !actionUsed) return;
+    if (
+      !canAdjustTurnMovement ||
+      (!actionUsed && !bonusActionUsed && !freeObjectInteractionUsed)
+    ) {
+      return;
+    }
 
     const next = applyActionGranted(combatState);
     setGrantingAction(true);
@@ -2462,13 +2665,21 @@ export function CombatBoard({
   }
 
   function handleTokenClick(tokenId: string, event: React.MouseEvent) {
-    if (attackTargeting || movementMode || measureMode || draggingTokenId || collisionEditMode) {
+    if (
+      !losMode &&
+      (attackTargeting || movementMode || measureMode || draggingTokenId || collisionEditMode)
+    ) {
       return;
     }
     event.stopPropagation();
 
     const token = combatState.tokens.find((entry) => entry.id === tokenId);
     if (!token) return;
+
+    if (losMode && showDmUi) {
+      setSelectedTokenId(tokenId);
+      return;
+    }
 
     if (objectInteractionMode && userControlsCombat && isPickupMarker(token)) {
       void handlePickupObject(tokenId);
@@ -2487,7 +2698,7 @@ export function CombatBoard({
     }
 
     if (isCharacterPlaceholder(token)) {
-      if (isDm) {
+      if (showDmUi) {
         setCharacterSlotTokenId(tokenId);
         return;
       }
@@ -2498,6 +2709,7 @@ export function CombatBoard({
     }
 
     if (battleOver) {
+      if (isDm && !showDmUi) return;
       const character = token.characterId ? charactersById[token.characterId] ?? null : null;
       if (canUserActForToken(userId, isDm, token, character)) {
         setSelectedTokenId(tokenId);
@@ -2628,6 +2840,7 @@ export function CombatBoard({
     setCollisionDragStart(null);
     setCollisionDragEnd(null);
     setCollisionDragRemoving(false);
+    clearLosMode();
     setCollisionEditMode(true);
   }
 
@@ -3128,7 +3341,7 @@ export function CombatBoard({
 
     const portraitUrl = resolveTokenPortraitUrl(supabase, token);
     const displayLabel = getCombatTokenDisplayLabel(token);
-    const isSelected = selectedTokenId === token.id;
+    const isSelected = selectedTokenId === token.id && (!isDm || showDmUi);
     const enemy = token.enemySlug ? enemiesBySlug[token.enemySlug] : null;
     const character = token.characterId ? charactersById[token.characterId] : null;
     const isHiddenForDm = isHiddenEnemy(token) && showDmUi;
@@ -3151,7 +3364,7 @@ export function CombatBoard({
           )
         : null;
     const effectiveAc = getTokenAc(token, character, enemy?.data ?? null);
-    const statusLabels = getTokenStatusLabels(token);
+    const statusEntries = getTokenStatusEntries(token);
     const isExpanded =
       isHovered &&
       ((token.kind === "enemy" && (showDmUi ? enemy != null : true)) ||
@@ -3242,11 +3455,19 @@ export function CombatBoard({
                     AC {effectiveAc}
                   </span>
                 )}
-                {statusLabels.map((label) => (
-                  <span key={label} className="combat-token-status-chip">
-                    {label}
-                  </span>
-                ))}
+                {statusEntries.map((entry) => {
+                  const statusTooltip = getTokenStatusTooltip(entry.slug);
+                  const chip = (
+                    <span className="combat-token-status-chip">{entry.label}</span>
+                  );
+                  return statusTooltip ? (
+                    <Tooltip key={entry.slug} content={statusTooltip}>
+                      {chip}
+                    </Tooltip>
+                  ) : (
+                    <span key={entry.slug}>{chip}</span>
+                  );
+                })}
                 <span className="combat-token-label-detail">
                   HP {token.currentHp ?? character.data.combat.currentHp}/
                   {token.maxHp ?? character.data.combat.maxHp}
@@ -3335,7 +3556,7 @@ export function CombatBoard({
     return (
       <div
         ref={gridRef}
-        className={`combat-grid${fullscreen ? " combat-grid-fullscreen" : ""}${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${objectInteractionMode ? " combat-grid-object-interaction-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}${measureMode ? " combat-grid-measure-mode" : ""}`}
+        className={`combat-grid${fullscreen ? " combat-grid-fullscreen" : ""}${draggingTokenId ? " combat-grid-dragging" : ""}${movementMode ? " combat-grid-movement-mode" : ""}${attackTargeting ? " combat-grid-targeting-mode" : ""}${objectInteractionMode ? " combat-grid-object-interaction-mode" : ""}${collisionEditMode ? " combat-grid-collision-mode" : ""}${measureMode ? " combat-grid-measure-mode" : ""}${losMode ? " combat-grid-los-mode" : ""}`}
         style={{
           ["--grid-width" as string]: combatState.gridWidth,
           ["--grid-height" as string]: combatState.gridHeight,
@@ -3390,6 +3611,13 @@ export function CombatBoard({
             gridHeight={combatState.gridHeight}
             blockedKeys={savedBlockedKeys}
             translucent
+          />
+        ) : null}
+        {losMode && losVisionBands ? (
+          <CombatLosOverlay
+            gridWidth={combatState.gridWidth}
+            gridHeight={combatState.gridHeight}
+            visibleBands={losVisionBands}
           />
         ) : null}
         {gridRenderTokens.map((token) => renderToken(token))}
@@ -3599,17 +3827,30 @@ export function CombatBoard({
                 </div>
                 <div className="combat-board-view-actions">
                   {showDmUi ? (
-                    <label
-                      className={`candy-btn combat-auto-approve-toggle${autoApprove ? " candy-btn-active" : ""}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={autoApprove}
-                        onChange={(event) => handleToggleAutoApprove(event.target.checked)}
-                        aria-label="Auto-approve player actions"
-                      />
-                      <span>Auto-approve</span>
-                    </label>
+                    <>
+                      <label
+                        className={`candy-btn combat-auto-approve-toggle${autoApprove ? " candy-btn-active" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={autoApprove}
+                          onChange={(event) => handleToggleAutoApprove(event.target.checked)}
+                          aria-label="Auto-approve player actions"
+                        />
+                        <span>Auto-approve players</span>
+                      </label>
+                      <label
+                        className={`candy-btn combat-auto-approve-toggle${autoApproveDm ? " candy-btn-active" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={autoApproveDm}
+                          onChange={(event) => handleToggleAutoApproveDm(event.target.checked)}
+                          aria-label="Auto-approve DM actions"
+                        />
+                        <span>Auto-approve DM</span>
+                      </label>
+                    </>
                   ) : null}
                   <button
                     type="button"
@@ -3617,6 +3858,14 @@ export function CombatBoard({
                     onClick={() => setBoardExpanded(true)}
                   >
                     Expand
+                  </button>
+                  <button
+                    type="button"
+                    className={`candy-btn combat-los-btn${losMode ? " candy-btn-active" : ""}`}
+                    disabled={!losMode && !canUseLos}
+                    onClick={handleToggleLosMode}
+                  >
+                    LOS
                   </button>
                   <button
                     type="button"
@@ -3674,6 +3923,7 @@ export function CombatBoard({
                             speedFeet={currentSpeedFt}
                             dashAvailableFeet={dashPreviewFeet}
                             dashUsed={dashUsed}
+                            showDash={!battleOver && !dashUsed}
                             movementMode={movementMode}
                             disabled={
                               !!attackTargeting ||
@@ -3683,7 +3933,12 @@ export function CombatBoard({
                               provokingMovePending ||
                               !!pendingOpportunityAttackMove
                             }
+                            dashDisabled={!canUseDash}
                             onToggleMovementMode={handleToggleMovementMode}
+                            onSelectDash={() => {
+                              if (battleOver || dashUsed || actionUsed) return;
+                              setPendingDashActionConfirm(true);
+                            }}
                           />
                         ) : null}
                         {currentTurnOptionGroups.actions.length > 0 ? (
@@ -3929,7 +4184,9 @@ export function CombatBoard({
                           disabled={
                             !canAdjustTurnMovement ||
                             grantingAction ||
-                            !actionUsed
+                            (!actionUsed &&
+                              !bonusActionUsed &&
+                              !freeObjectInteractionUsed)
                           }
                           onClick={() => void handleGrantTurnAction()}
                         >
@@ -3945,7 +4202,7 @@ export function CombatBoard({
             <div className="combat-grid-shell">
               {!boardExpanded ? renderCombatGrid(false) : null}
             </div>
-            {isDm && battleActive && dmApprovalTrayAttacks.length > 0 ? (
+            {showDmUi && battleActive && dmApprovalTrayAttacks.length > 0 ? (
               <CombatDmApprovalTray
                 pendingAttacks={dmApprovalTrayAttacks}
                 tokens={combatState.tokens}
@@ -4020,6 +4277,11 @@ export function CombatBoard({
           optionName={attackSubmitDraft.option.name}
           targets={attackSubmitDraft.targets}
           attackerToken={attackSubmitDraft.attackerToken}
+          attackerCharacter={
+            attackSubmitDraft.attackerToken?.characterId
+              ? charactersById[attackSubmitDraft.attackerToken.characterId]?.data
+              : undefined
+          }
           combatState={combatState}
           attackDisadvantageByTokenId={attackSubmitDraft.attackDisadvantageByTokenId ?? {}}
           damageTakenByTokenId={damageTakenByTokenId}
@@ -4082,13 +4344,15 @@ export function CombatBoard({
       ) : null}
       {pendingDashDestination ? (
         <CombatDashConfirmModal
+          movementGainedFeet={currentSpeedFt}
+          forDestination
           onConfirm={() => void handleConfirmDashMove()}
           onCancel={() => setPendingDashDestination(null)}
         />
       ) : null}
       {pendingDashActionConfirm ? (
         <CombatDashConfirmModal
-          message="Use Dash? This will consume your action and grant extra movement equal to your speed."
+          movementGainedFeet={currentSpeedFt}
           onConfirm={() => void handleConfirmDashAction()}
           onCancel={() => setPendingDashActionConfirm(false)}
         />
@@ -4115,6 +4379,22 @@ export function CombatBoard({
         <CombatOtherActionsModal
           onCancel={() => setPendingOtherActionsConfirm(false)}
           onUse={() => void handleConfirmOtherActions()}
+        />
+      ) : null}
+      {pendingSpellcasting && actingTokenCharacter ? (
+        <CombatSpellPickerModal
+          character={actingTokenCharacter.data}
+          castingCost={pendingSpellcasting.castingCost}
+          preselectedEntry={pendingSpellcasting.preselectedEntry}
+          onCancel={() => setPendingSpellcasting(null)}
+          onConfirm={handleSpellPickerConfirm}
+        />
+      ) : null}
+      {pendingSpellCast ? (
+        <CombatSpellCastModal
+          option={pendingSpellCast}
+          onCancel={() => setPendingSpellCast(null)}
+          onConfirm={() => void handleConfirmSpellCast()}
         />
       ) : null}
       {pendingOpportunityAttackMove ? (

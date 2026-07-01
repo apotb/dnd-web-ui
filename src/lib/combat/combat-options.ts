@@ -8,7 +8,6 @@ import {
   type CharacterActionEntry,
 } from "@/lib/dnd/character-actions";
 import {
-  formatAttackRollLine,
   getAllAttacks,
   getAttackCategoryLabel,
   hasTwoWeaponFighting,
@@ -20,22 +19,15 @@ import {
   getWieldedWeaponPair,
 } from "@/lib/dnd/two-weapon-fighting";
 import {
-  appendExhaustionSheetNote,
-  getExhaustionAttackSaveSheetNote,
-} from "@/lib/dnd/exhaustion";
-import { formatAmmunitionLine, formatThrownWeaponLine } from "@/lib/dnd/ammunition";
-import type { PhbClass } from "@/lib/dnd/phb/types";
-import type { CharacterData } from "@/lib/schemas/character";
-import type { EnemyData, EnemyNamedBlock } from "@/lib/schemas/enemy";
-import { getWeaponProperties, type Item } from "@/lib/schemas/item";
-import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+  formatBattleActionTooltip,
+  formatBattleAttackTooltip,
+  formatBattleEnemyActionTooltip,
+  formatBattleMoveTooltip,
+  formatBattleOtherActionsTooltip,
+  formatBattleTooltip,
+} from "@/lib/combat/battle-tooltip";
 import { canUseHelpAction, isTokenEngaged } from "@/lib/combat/engagement";
 import { isBattleOver, isTokenOnMapEdge } from "@/lib/combat/battle-over";
-import { featureIdFromActionId } from "@/lib/dnd/catalog-feature-mechanics";
-import {
-  getHpPoolRemaining,
-  getResolvedMechanicalFeature,
-} from "@/lib/dnd/mechanical-features";
 import {
   canShowHpPoolOption,
   formatHpPoolCombatSubtitle,
@@ -44,6 +36,27 @@ import {
   isHpPoolCombatOption,
 } from "@/lib/combat/combat-mechanical-actions";
 import { parseAttackRangeSpec } from "@/lib/combat/targeting";
+import { featureIdFromActionId } from "@/lib/dnd/catalog-feature-mechanics";
+import {
+  getHpPoolRemaining,
+  getResolvedMechanicalFeature,
+} from "@/lib/dnd/mechanical-features";
+import type { PhbClass } from "@/lib/dnd/phb/types";
+import type { CharacterData } from "@/lib/schemas/character";
+import type { EnemyData, EnemyNamedBlock } from "@/lib/schemas/enemy";
+import { getWeaponProperties, type Item } from "@/lib/schemas/item";
+import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import {
+  formatDeclareCastSpellSubtitle,
+  formatSpellCastCombatTooltip,
+  formatSpellCombatSubtitle,
+  formatSpellPickerCombatTooltip,
+  formatSpellSlotSummaryFooter,
+  listCombatCastableCantripSpells,
+  listCombatCastableActionSpellsForPicker,
+  listCombatCastableLeveledSpells,
+  resolveCombatCastableSpell,
+} from "@/lib/dnd/combat-spells";
 import {
   EMERGE_FROM_SHELL_ACTION_ID,
   SHELL_DEFENSE_ENTER_ACTION_ID,
@@ -81,22 +94,110 @@ export interface CombatOption {
   mechanicalKind?: CombatMechanicalKind;
   /** Granted feature id for mechanical combat options. */
   mechanicalFeatureId?: string;
+  spellCast?: {
+    spellId: string;
+    characterSpellId: string;
+    level: number;
+    castSlotLevel: number;
+    castingCost: "action" | "bonus-action";
+  };
+  /** Opens the leveled spell picker for action-cost spells (cantrips and bonus-action spells stay direct). */
+  spellcasting?: {
+    castingCost: "action";
+  };
+}
+
+export const COMBAT_CAST_SPELL_ACTION_ID = "core:cast-spell";
+
+function buildCantripCastCombatOptions(
+  character: CharacterData,
+  castingCost: "action" | "bonus-action"
+): CombatOption[] {
+  return listCombatCastableCantripSpells(character, { castingCost }).map(
+    ({ spell, slug, castingCost: cost }) => ({
+      id: `spell-cast:${spell.id}`,
+      name: spell.name,
+      subtitle: formatDeclareCastSpellSubtitle(spell, slug),
+      tooltip: formatSpellCastCombatTooltip(spell, slug, character),
+      kind: cost === "bonus-action" ? "bonus-action" : "action",
+      spellCast: {
+        spellId: slug,
+        characterSpellId: spell.id,
+        level: spell.level,
+        castSlotLevel: 0,
+        castingCost: cost,
+      },
+    })
+  );
+}
+
+function buildLeveledSpellCastCombatOptions(
+  character: CharacterData,
+  castingCost: "action" | "bonus-action"
+): CombatOption[] {
+  return listCombatCastableLeveledSpells(character, { castingCost }).map((entry) => ({
+    id: `spell-cast:${entry.spell.id}`,
+    name: entry.spell.name,
+    subtitle: formatDeclareCastSpellSubtitle(entry.spell, entry.slug, {
+      omitSpellLevel: entry.castingCost === "bonus-action",
+    }),
+    tooltip: formatSpellPickerCombatTooltip(entry, character),
+    kind: entry.castingCost === "bonus-action" ? "bonus-action" : "action",
+    spellCast: {
+      spellId: entry.slug,
+      characterSpellId: entry.spell.id,
+      level: entry.spell.level,
+      castSlotLevel: 0,
+      castingCost: entry.castingCost,
+    },
+  }));
+}
+
+function buildCastSpellCombatOption(character: CharacterData): CombatOption | null {
+  const cantrips = listCombatCastableCantripSpells(character, { castingCost: "action" });
+  const leveled = listCombatCastableLeveledSpells(character, { castingCost: "action" });
+  if (cantrips.length === 0 && leveled.length === 0) return null;
+
+  const tooltipLines = ["Choose a prepared spell or utility cantrip."];
+  if (leveled.length > 0) {
+    tooltipLines.push(formatSpellSlotSummaryFooter(character.spells.slots));
+  }
+
+  return {
+    id: `action:${COMBAT_CAST_SPELL_ACTION_ID}`,
+    name: "Cast a Spell",
+    subtitle: ACTION_COST_LABELS.action,
+    tooltip: tooltipLines.join("\n"),
+    kind: "action",
+    spellcasting: { castingCost: "action" },
+  };
+}
+
+export function isSpellCastOption(option: CombatOption): boolean {
+  return option.spellCast != null;
+}
+
+export function isSpellcastingEntryOption(option: CombatOption): boolean {
+  return option.spellcasting != null;
 }
 
 function actionSubtitle(action: CharacterActionEntry): string {
   return ACTION_COST_LABELS[action.cost];
 }
 
-function attackTypeLabel(source: DerivedAttack["source"]): string {
-  if (source === "weapon" || source === "manual" || source === "natural") return "Attack";
-  if (source === "cantrip") return "Cantrip";
-  return "Spell";
-}
-
 function attackOptionSubtitle(attack: DerivedAttack): string {
-  const typeLabel = attackTypeLabel(attack.source);
-  const rollLine = formatAttackRollLine(attack);
-  return `${typeLabel} · ${rollLine}`;
+  const range = attack.range?.trim() || null;
+  if (attack.source === "cantrip") {
+    return formatSpellCombatSubtitle(0, range);
+  }
+  if (attack.source === "spell") {
+    return formatSpellCombatSubtitle(
+      attack.castSlotLevel ?? attack.spellLevel ?? 1,
+      range
+    );
+  }
+  const category = getAttackCategoryLabel(attack);
+  return range ? `${category} · ${range}` : category;
 }
 
 function inferEnemyActionTypeLabel(description: string): string {
@@ -112,90 +213,20 @@ function enemyActionSubtitle(description: string): string {
   return inferEnemyActionTypeLabel(description);
 }
 
-function stripBonusActionNote(notes: string): string {
-  return notes
-    .split(" · ")
-    .filter((part) => part !== "Bonus action")
-    .join(" · ")
-    .trim();
-}
-
-function formatAttackTooltip(
-  attack: DerivedAttack,
-  data: CharacterData,
-  options?: { omitBonusActionNote?: boolean }
-): string {
-  const lines: string[] = [getAttackCategoryLabel(attack)];
-
-  const rollAppliesExhaustion =
-    attack.rollType === "attack" || attack.rollType == null;
-  const rollLine = appendExhaustionSheetNote(
-    formatAttackRollLine(attack),
-    rollAppliesExhaustion ? getExhaustionAttackSaveSheetNote(data) : null
-  );
-  if (rollLine) lines.push(rollLine);
-
-  const detailParts: string[] = [];
-  if (attack.damageDice) {
-    detailParts.push(`${attack.damageDice} ${attack.damageType}`.trim());
-  }
-  if (attack.range) detailParts.push(attack.range);
-  if (detailParts.length > 0) lines.push(detailParts.join(" · "));
-
-  if (
-    attack.ammunitionName != null &&
-    attack.ammunitionRemaining != null
-  ) {
-    lines.push(formatAmmunitionLine(attack.ammunitionName, attack.ammunitionRemaining));
-  }
-
-  if (
-    attack.throwsWeapon &&
-    attack.thrownItemName != null &&
-    attack.thrownRemaining != null
-  ) {
-    lines.push(formatThrownWeaponLine(attack.thrownItemName, attack.thrownRemaining));
-  }
-
-  const notes = attack.notes.trim();
-  if (notes) {
-    const displayNotes = options?.omitBonusActionNote ? stripBonusActionNote(notes) : notes;
-    if (displayNotes) lines.push(displayNotes);
-  }
-
-  return lines.join("\n");
-}
-
-function formatActionTooltip(
-  action: CharacterActionEntry,
-  options?: { omitCostLabel?: boolean }
-): string {
-  const lines = [
-    options?.omitCostLabel
-      ? actionSourceBadgeLabel(action)
-      : `${ACTION_COST_LABELS[action.cost]} · ${actionSourceBadgeLabel(action)}`,
-  ];
-  const description = action.description.trim();
-  if (description) lines.push(description);
-  if (action.uses) {
-    const rest =
-      action.restReset && action.restReset !== "none"
-        ? ` (${action.restReset} rest)`
-        : "";
-    lines.push(`Uses: ${action.uses.current}/${action.uses.max}${rest}`);
-  }
-  return lines.join("\n");
-}
-
-function formatEnemyActionTooltip(action: EnemyNamedBlock): string {
-  return action.description.trim() || action.name.trim() || "No description.";
-}
-
 const CORE_MOVE_ACTION: CharacterActionEntry = {
   id: "core:move",
   name: "Move",
   cost: "movement",
   description: "Move up to your speed. You can split movement before and after an action.",
+  source: "core",
+  sourceLabel: "Standard",
+};
+
+const CORE_DASH_ACTION: CharacterActionEntry = {
+  id: "core:dash",
+  name: "Dash",
+  cost: "action",
+  description: "Gain extra movement equal to your speed for this turn.",
   source: "core",
   sourceLabel: "Standard",
 };
@@ -206,21 +237,31 @@ export function buildMoveCombatOption(context: {
   dashAvailableFeet: number | null;
   dashUsed: boolean;
 }): CombatOption {
-  let tooltip = formatActionTooltip(CORE_MOVE_ACTION);
-  if (!context.dashUsed && context.dashAvailableFeet != null) {
-    tooltip += `\nDash: +${Math.max(0, context.dashAvailableFeet - context.remainingFeet)} ft available`;
-  }
-  if (context.dashUsed) {
-    tooltip += "\nDash has been used this turn.";
-  }
-
   return {
     id: COMBAT_MOVE_OPTION_ID,
     name: CORE_MOVE_ACTION.name,
     subtitle: `${ACTION_COST_LABELS.movement} · ${context.remainingFeet} ft left`,
-    tooltip,
+    tooltip: formatBattleMoveTooltip(context),
     kind: "movement",
     action: CORE_MOVE_ACTION,
+  };
+}
+
+export function buildDashCombatOption(context: {
+  speedFeet: number;
+  dashUsed: boolean;
+}): CombatOption {
+  const additionalFooter = !context.dashUsed
+    ? [`Grants: +${context.speedFeet} ft movement this turn`]
+    : ["Dash: used this turn"];
+
+  return {
+    id: `action:${COMBAT_DASH_ACTION_ID}`,
+    name: CORE_DASH_ACTION.name,
+    subtitle: actionSubtitle(CORE_DASH_ACTION),
+    tooltip: formatBattleActionTooltip(CORE_DASH_ACTION, { additionalFooter }),
+    kind: "movement",
+    action: CORE_DASH_ACTION,
   };
 }
 
@@ -256,9 +297,13 @@ function attackToCombatOption(
   twf = false
 ): CombatOption {
   const displayAttack = attackWithDamageForKind(attack, kind, twf);
-  let tooltip = formatAttackTooltip(displayAttack, data, { omitBonusActionNote: true });
+  let tooltip = formatBattleAttackTooltip(displayAttack, data, { omitBonusActionNote: true });
   if (kind === "bonus-action" && attack.source === "weapon") {
-    tooltip = `Two-weapon fighting\n${tooltip}`;
+    tooltip = formatBattleTooltip({
+      header: "Two-weapon fighting",
+      metadata: [],
+      footer: [tooltip],
+    });
   }
 
   return {
@@ -297,7 +342,7 @@ export function buildLeaveAreaOption(): CombatOption {
     id: `action:${COMBAT_LEAVE_AREA_ACTION_ID}`,
     name: LEAVE_AREA_ACTION.name,
     subtitle: actionSubtitle(LEAVE_AREA_ACTION),
-    tooltip: formatActionTooltip(LEAVE_AREA_ACTION),
+    tooltip: formatBattleActionTooltip(LEAVE_AREA_ACTION),
     kind: "action",
     action: LEAVE_AREA_ACTION,
   };
@@ -356,13 +401,6 @@ export function getCombatOtherActionEntries(): CharacterActionEntry[] {
   return getStandardCombatActions().filter((action) =>
     COMBAT_MERGED_OTHER_ACTION_IDS.has(action.id)
   );
-}
-
-function buildOtherActionsTooltip(): string {
-  const actionNames = getCombatOtherActionEntries()
-    .map((action) => action.name)
-    .join(", ");
-  return `${ACTION_COST_LABELS.action} · ${actionSourceBadgeLabel(CORE_OTHER_ACTIONS_ACTION)}\n${actionNames}`;
 }
 
 export function isOtherActionsOption(option: CombatOption): boolean {
@@ -464,7 +502,7 @@ function buildRegisteredFeatureActionOptions(
       id: `action:${action.id}`,
       name: action.name,
       subtitle: actionSubtitle(action),
-      tooltip: formatActionTooltip(action),
+      tooltip: formatBattleActionTooltip(action),
       kind: "action" as const,
       action,
     });
@@ -489,7 +527,6 @@ function buildStandardActionOptions(
       (action) =>
         action.cost === "action" &&
         !COMBAT_MERGED_OTHER_ACTION_IDS.has(action.id) &&
-        (action.id !== COMBAT_DASH_ACTION_ID || (!battleOver && !turn.dashUsed)) &&
         (action.id !== COMBAT_USE_OBJECT_ACTION_ID || canUseObject) &&
         (action.id === COMBAT_USE_OBJECT_ACTION_ID || !turn.actionUsed) &&
         (action.id !== COMBAT_DISENGAGE_ACTION_ID || isEngaged) &&
@@ -499,7 +536,7 @@ function buildStandardActionOptions(
       id: `action:${action.id}`,
       name: action.name,
       subtitle: actionSubtitle(action),
-      tooltip: formatActionTooltip(action),
+      tooltip: formatBattleActionTooltip(action),
       kind: "action" as const,
       action,
     }));
@@ -509,7 +546,7 @@ function buildStandardActionOptions(
       id: `action:${COMBAT_OTHER_ACTIONS_ACTION_ID}`,
       name: CORE_OTHER_ACTIONS_ACTION.name,
       subtitle: actionSubtitle(CORE_OTHER_ACTIONS_ACTION),
-      tooltip: buildOtherActionsTooltip(),
+      tooltip: formatBattleOtherActionsTooltip(getCombatOtherActionEntries()),
       kind: "action",
       action: CORE_OTHER_ACTIONS_ACTION,
     });
@@ -592,7 +629,7 @@ export function getOpportunityAttackOptionsForToken(
         id: `enemy-action:${index}:${action.name}`,
         name: action.name || "Attack",
         subtitle: enemyActionSubtitle(action.description),
-        tooltip: formatEnemyActionTooltip(action),
+        tooltip: formatBattleEnemyActionTooltip(action),
         kind: "enemy-action" as const,
         enemyAction: action,
       }));
@@ -636,16 +673,13 @@ function buildPartyOptionGroups(
   );
   const twf = hasTwoWeaponFighting(character.data, classCatalog);
 
-  const wieldedAttacks = attacks.filter(
-    (attack) =>
-      attack.source === "weapon" ||
-      attack.source === "cantrip" ||
-      attack.source === "spell"
-  );
+  const weaponAttacks = attacks.filter((attack) => attack.source === "weapon");
+  // Cantrips stay as direct buttons; leveled spells use the Cast a Spell picker.
+  const spellAttacks = attacks.filter((attack) => attack.source === "cantrip");
   const naturalAttacks = attacks.filter((attack) => attack.source === "natural");
 
-  const mainHandAttacks = wieldedAttacks.filter((attack) => !attack.isOffHand);
-  const offHandAttacks = wieldedAttacks.filter((attack) => attack.isOffHand);
+  const mainHandWeaponAttacks = weaponAttacks.filter((attack) => !attack.isOffHand);
+  const offHandWeaponAttacks = weaponAttacks.filter((attack) => attack.isOffHand);
 
   const { main: mainWeapon, off: offWeapon } = getWieldedWeaponPair(
     character.data,
@@ -656,13 +690,13 @@ function buildPartyOptionGroups(
   const hasMainHandWielded = mainWeapon != null;
   const hasAnyWeaponWielded = mainWeapon != null || offWeapon != null;
 
-  const wieldedActionPanelAttacks = bothHandsWielded
-    ? [...mainHandAttacks, ...offHandAttacks]
+  const wieldedWeaponAttacks = bothHandsWielded
+    ? [...mainHandWeaponAttacks, ...offHandWeaponAttacks]
     : hasMainHandWielded
-      ? mainHandAttacks
-      : offHandAttacks.length > 0
-        ? offHandAttacks
-        : mainHandAttacks;
+      ? mainHandWeaponAttacks
+      : offHandWeaponAttacks.length > 0
+        ? offHandWeaponAttacks
+        : mainHandWeaponAttacks;
 
   const actionNaturalAttacks = naturalAttacks.filter(
     (attack) =>
@@ -670,7 +704,16 @@ function buildPartyOptionGroups(
       (attack.alwaysAvailable || !hasAnyWeaponWielded)
   );
 
-  const actionPanelAttacks = [...wieldedActionPanelAttacks, ...actionNaturalAttacks];
+  const actionPanelAttacks = [
+    ...wieldedWeaponAttacks,
+    ...spellAttacks,
+    ...actionNaturalAttacks,
+  ];
+
+  const castSpellOption =
+    options?.battleOver || turn.actionUsed
+      ? null
+      : buildCastSpellCombatOption(character.data);
 
   const attackOptions: CombatOption[] =
     options?.battleOver || turn.actionUsed
@@ -680,13 +723,7 @@ function buildPartyOptionGroups(
         );
 
   const actionOptions: CombatOption[] = [
-    ...buildStandardActionOptions(
-      turn,
-      isEngaged,
-      canUseHelp,
-      canUseObject,
-      options?.battleOver
-    ),
+    ...(castSpellOption ? [castSpellOption] : []),
     ...buildRegisteredFeatureActionOptions(
       character,
       characterActions,
@@ -695,6 +732,13 @@ function buildPartyOptionGroups(
       combatState,
       partyCharacters,
       featureCatalogs,
+      options?.battleOver
+    ),
+    ...buildStandardActionOptions(
+      turn,
+      isEngaged,
+      canUseHelp,
+      canUseObject,
       options?.battleOver
     ),
   ];
@@ -710,7 +754,7 @@ function buildPartyOptionGroups(
           id: `bonus-action:${action.id}`,
           name: action.name,
           subtitle: actionSourceBadgeLabel(action),
-          tooltip: formatActionTooltip(action, { omitCostLabel: true }),
+          tooltip: formatBattleActionTooltip(action),
           kind: "bonus-action",
           action,
         }));
@@ -723,7 +767,7 @@ function buildPartyOptionGroups(
 
   const bonusWeaponAttacks =
     turn.twoWeaponFightingUsedOffHand != null
-      ? [...mainHandAttacks, ...offHandAttacks].filter(
+      ? weaponAttacks.filter(
           (attack) => attack.isOffHand !== turn.twoWeaponFightingUsedOffHand
         )
       : [];
@@ -752,11 +796,22 @@ function buildPartyOptionGroups(
           attackToCombatOption(attack, character.data, "bonus-action", twf)
         );
 
+  const cantripBonusCastOptions =
+    options?.battleOver || turn.bonusActionUsed
+      ? []
+      : buildCantripCastCombatOptions(character.data, "bonus-action");
+  const bonusLeveledSpellCastOptions =
+    options?.battleOver || turn.bonusActionUsed
+      ? []
+      : buildLeveledSpellCastCombatOptions(character.data, "bonus-action");
+
   return {
     actions: [...attackOptions, ...actionOptions],
     bonusActions: options?.battleOver
       ? []
       : [
+          ...bonusLeveledSpellCastOptions,
+          ...cantripBonusCastOptions,
           ...bonusActionOptions,
           ...offHandAttackOptions,
           ...bonusNaturalAttackOptions,
@@ -773,7 +828,7 @@ function buildEnemyStatBlockOptions(
     id: `enemy-action:${index}:${action.name}`,
     name: action.name || "Action",
     subtitle: enemyActionSubtitle(action.description),
-    tooltip: formatEnemyActionTooltip(action),
+    tooltip: formatBattleEnemyActionTooltip(action),
     kind: "enemy-action" as const,
     enemyAction: action,
   }));
@@ -822,6 +877,8 @@ export function isHpPoolCombatOptionKind(option: CombatOption): boolean {
 export function isImplementedCombatOption(option: CombatOption): boolean {
   return (
     isAttackTargetingOption(option) ||
+    isSpellCastOption(option) ||
+    isSpellcastingEntryOption(option) ||
     isHelpActionOption(option) ||
     isDisengageActionOption(option) ||
     isDashActionOption(option) ||

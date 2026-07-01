@@ -6,6 +6,7 @@ import {
   applyDmSaveRolls,
   applySaveRoll,
   createPendingAttack,
+  createPendingSpellCast,
   type AttackSubmissionInput,
 } from "@/lib/combat/pending-attack-builder";
 import type { CombatOption } from "@/lib/combat/combat-options";
@@ -57,9 +58,10 @@ export function shouldSkipDmReviewForAttacker(
   userId: string | null,
   isDm: boolean,
   attacker: CombatToken,
-  charactersById: Record<string, ParsedCharacter>
+  charactersById: Record<string, ParsedCharacter>,
+  state: CombatState
 ): boolean {
-  if (!isDm) return false;
+  if (!isDm || !state.autoApproveDm) return false;
   return canUserActForToken(userId, isDm, attacker, getAttackerCharacter(attacker, charactersById));
 }
 
@@ -84,6 +86,14 @@ async function persistCharacterHpUpdates(
               inventory: {
                 ...character.data.inventory,
                 items: update.inventoryItems,
+              },
+            }
+          : {}),
+        ...(update.spellSlots != null
+          ? {
+              spells: {
+                ...character.data.spells,
+                slots: update.spellSlots,
               },
             }
           : {}),
@@ -161,7 +171,8 @@ export async function submitCombatAttack(
     options.userId,
     options.isDm,
     options.attacker,
-    options.charactersById
+    options.charactersById,
+    state
   );
 
   const pending = createPendingAttack(
@@ -176,6 +187,54 @@ export async function submitCombatAttack(
     options.enemiesBySlug,
     { skipDmReview, catalogItems: options.catalogItems, classCatalog: options.classCatalog }
   );
+
+  if (skipDmReview && pending.status === "awaiting-dm-review") {
+    return finalizePendingAttack(campaignId, state, pending, options.charactersById);
+  }
+
+  const next = addPendingAttack(state, pending);
+
+  const { error } = await persistOrRpc(campaignId, next, options.isDm, "submit_combat_attack", {
+    p_campaign_id: campaignId,
+    p_pending_attack: pending,
+  });
+
+  return { next, error };
+}
+
+export async function submitCombatSpellCast(
+  campaignId: string,
+  state: CombatState,
+  options: {
+    userId: string | null;
+    isDm: boolean;
+    attacker: CombatToken;
+    combatOption: CombatOption;
+    charactersById: Record<string, ParsedCharacter>;
+  }
+): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
+  if (!options.combatOption.spellCast) {
+    return { next: state, error: "No spell cast to submit." };
+  }
+
+  if (hasPendingAttackForAttacker(state, options.attacker.id)) {
+    return { next: state, error: "You already have an action pending." };
+  }
+
+  const skipDmReview = shouldSkipDmReviewForAttacker(
+    options.userId,
+    options.isDm,
+    options.attacker,
+    options.charactersById,
+    state
+  );
+
+  const pending = createPendingSpellCast(options.attacker, options.combatOption, {
+    skipDmReview,
+  });
+  if (!pending) {
+    return { next: state, error: "Could not build spell cast for approval." };
+  }
 
   if (skipDmReview && pending.status === "awaiting-dm-review") {
     return finalizePendingAttack(campaignId, state, pending, options.charactersById);
@@ -219,7 +278,8 @@ export async function submitCombatOpportunityAttack(
     options.userId,
     options.isDm,
     options.attacker,
-    options.charactersById
+    options.charactersById,
+    state
   );
 
   const pending = createPendingAttack(

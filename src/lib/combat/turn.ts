@@ -161,13 +161,21 @@ export function applyActionUsed(state: CombatState): CombatState {
 
 export function applyActionGranted(state: CombatState): CombatState {
   if (!isBattleActive(state)) return state;
-  if (!state.turn.actionUsed) return state;
+  if (
+    !state.turn.actionUsed &&
+    !state.turn.bonusActionUsed &&
+    !state.turn.freeObjectInteractionUsed
+  ) {
+    return state;
+  }
 
   return {
     ...state,
     turn: {
       ...state.turn,
       actionUsed: false,
+      bonusActionUsed: false,
+      freeObjectInteractionUsed: false,
     },
   };
 }

@@ -1,8 +1,9 @@
 import type { CharacterActionEntry } from "@/lib/dnd/character-actions";
 import { ACTION_COST_LABELS } from "@/lib/dnd/character-actions";
+import { formatBattleActionTooltip } from "@/lib/combat/battle-tooltip";
 import type { AbilityKey } from "@/lib/schemas/character";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
-import { getConditionDisplayName } from "@/lib/dnd/conditions";
+import { getConditionBySlug, getConditionDisplayName } from "@/lib/dnd/conditions";
 import { applyActionUsed, applyBonusActionUsed } from "@/lib/combat/turn";
 
 export const SHELL_DEFENSE_EFFECT_ID = "shell-defense";
@@ -145,19 +146,30 @@ export function canTakeReactions(token: CombatToken): boolean {
   return !getActiveEffectDefs(token).some((def) => def.blocksReactions);
 }
 
-export function getTokenStatusLabels(token: CombatToken): string[] {
-  const labels: string[] = [];
+export function getTokenStatusEntries(
+  token: CombatToken
+): { slug: string; label: string }[] {
+  const entries: { slug: string; label: string }[] = [];
   const seen = new Set<string>();
 
   for (const def of getActiveEffectDefs(token)) {
     for (const slug of def.appliedConditionSlugs ?? []) {
       if (seen.has(slug)) continue;
       seen.add(slug);
-      labels.push(getConditionDisplayName(slug));
+      entries.push({ slug, label: getConditionDisplayName(slug) });
     }
   }
 
-  return labels;
+  return entries;
+}
+
+export function getTokenStatusTooltip(slug: string): string | null {
+  const description = getConditionBySlug(slug)?.description.trim();
+  return description || null;
+}
+
+export function getTokenStatusLabels(token: CombatToken): string[] {
+  return getTokenStatusEntries(token).map((entry) => entry.label);
 }
 
 export function buildEmergeFromShellCombatOption() {
@@ -165,7 +177,7 @@ export function buildEmergeFromShellCombatOption() {
     id: `bonus-action:${EMERGE_FROM_SHELL_ACTION_ID}`,
     name: EMERGE_FROM_SHELL_ACTION.name,
     subtitle: ACTION_COST_LABELS["bonus-action"],
-    tooltip: `${ACTION_COST_LABELS["bonus-action"]} · ${EMERGE_FROM_SHELL_ACTION.sourceLabel}\n${EMERGE_FROM_SHELL_ACTION.description}`,
+    tooltip: formatBattleActionTooltip(EMERGE_FROM_SHELL_ACTION),
     kind: "bonus-action" as const,
     action: EMERGE_FROM_SHELL_ACTION,
   };

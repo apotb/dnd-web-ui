@@ -135,7 +135,7 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
   },
   {
     id: "core:interact",
-    name: "Interact with an Object",
+    name: "Use an Object (1st use)",
     cost: "free",
     description:
       "Interact with one object or feature of the environment for free once on your turn.",
@@ -146,6 +146,7 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
 
 const NON_COMBAT_PANEL_ACTION_IDS = new Set([
   "core:move",
+  "core:dash",
   "core:interact",
   "core:opportunity-attack",
 ]);
@@ -307,19 +308,24 @@ export function getAllCharacterActions(
   const seenKeys = new Set(CORE_ACTIONS.map((a) => `${a.cost}:${a.name.toLowerCase()}`));
   const seenIds = new Set(CORE_ACTIONS.map((a) => a.id));
 
-  const merged: CharacterActionEntry[] = [...CORE_ACTIONS];
+  const nonStandard: CharacterActionEntry[] = [];
 
   for (const action of mechanicalActions) {
-    addCharacterAction(merged, seenKeys, seenIds, action, true);
+    addCharacterAction(nonStandard, seenKeys, seenIds, action, true);
   }
   for (const action of featureActions) {
-    addCharacterAction(merged, seenKeys, seenIds, action);
+    addCharacterAction(nonStandard, seenKeys, seenIds, action);
   }
   for (const action of custom) {
-    addCharacterAction(merged, seenKeys, seenIds, action);
+    addCharacterAction(nonStandard, seenKeys, seenIds, action);
   }
 
-  return merged;
+  return [...nonStandard, ...CORE_ACTIONS];
+}
+
+export function getActionSheetSection(action: CharacterActionEntry): ActionCost {
+  if (action.id === "core:dash") return "movement";
+  return action.cost;
 }
 
 export function groupActionsByCost(
@@ -331,6 +337,20 @@ export function groupActionsByCost(
   }
   for (const action of actions) {
     grouped.get(action.cost)?.push(action);
+  }
+  return grouped;
+}
+
+/** Group actions for the character sheet Actions card (Dash appears under Movement). */
+export function groupActionsBySheetSection(
+  actions: CharacterActionEntry[]
+): Map<ActionCost, CharacterActionEntry[]> {
+  const grouped = new Map<ActionCost, CharacterActionEntry[]>();
+  for (const cost of ACTION_COST_ORDER) {
+    grouped.set(cost, []);
+  }
+  for (const action of actions) {
+    grouped.get(getActionSheetSection(action))?.push(action);
   }
   return grouped;
 }

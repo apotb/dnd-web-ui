@@ -3,14 +3,21 @@
 interface CombatDashConfirmModalProps {
   onConfirm: () => void;
   onCancel: () => void;
-  message?: string;
+  movementGainedFeet: number;
+  /** Confirming dash to reach a movement destination beyond normal range. */
+  forDestination?: boolean;
 }
 
 export function CombatDashConfirmModal({
   onConfirm,
   onCancel,
-  message = "Use Dash to reach this tile? This will consume your action for this turn.",
+  movementGainedFeet,
+  forDestination = false,
 }: CombatDashConfirmModalProps) {
+  const intro = forDestination
+    ? "Use Dash to reach this tile?"
+    : "Use Dash?";
+
   return (
     <div className="supply-picker-overlay" onClick={onCancel}>
       <div
@@ -19,7 +26,10 @@ export function CombatDashConfirmModal({
       >
         <p className="retro-box-title">Dash</p>
         <div className="combat-roll-body">
-          <p className="combat-roll-line">{message}</p>
+          <p className="combat-roll-line">
+            {intro} This will consume your action and grant{" "}
+            <strong>+{movementGainedFeet} ft</strong> movement.
+          </p>
         </div>
         <div className="supply-picker-actions combat-roll-actions">
           <button type="button" className="candy-btn" onClick={onCancel}>

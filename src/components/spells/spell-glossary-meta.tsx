@@ -4,12 +4,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { CatalogSpellRow } from "@/lib/content/catalog-client";
 import {
+  formatSpellMaterialLine,
   getSpellComponentTooltip,
+  getSpellMaterialNotice,
   getSpellSchoolTooltip,
   parseSpellComponentLetters,
   SPELL_FLAG_TOOLTIPS,
   type SpellComponentLetter,
 } from "@/lib/dnd/spell-glossary";
+import { useSpellRowTooltipOverride } from "@/components/spells/spell-row-tooltip-context";
+import { cn } from "@/lib/utils";
 
 function GlossaryTerm({
   label,
@@ -20,16 +24,27 @@ function GlossaryTerm({
   tooltip: string;
   className?: string;
 }) {
-  return (
-    <Tooltip content={tooltip}>
+  const setRowTooltip = useSpellRowTooltipOverride();
+  const termClassName = [
+    "cursor-default underline decoration-dotted underline-offset-2",
+    className,
+  ].join(" ");
+
+  if (setRowTooltip) {
+    return (
       <span
-        className={[
-          "cursor-default underline decoration-dotted underline-offset-2",
-          className,
-        ].join(" ")}
+        className={termClassName}
+        onMouseEnter={() => setRowTooltip(tooltip)}
+        onMouseLeave={() => setRowTooltip(null)}
       >
         {label}
       </span>
+    );
+  }
+
+  return (
+    <Tooltip content={tooltip}>
+      <span className={termClassName}>{label}</span>
     </Tooltip>
   );
 }
@@ -50,16 +65,53 @@ function ComponentLetter({
   );
 }
 
+export function SpellMaterialLine({
+  components,
+  className,
+}: {
+  components: string;
+  className?: string;
+}) {
+  const notice = getSpellMaterialNotice(components);
+  const setRowTooltip = useSpellRowTooltipOverride();
+  const materialTooltip = formatSpellMaterialLine(components);
+  if (!notice) return null;
+
+  return (
+    <div
+      className={cn(
+        "rounded-md border border-amber-500/45 bg-amber-500/10 px-2 py-1 text-xs leading-snug text-amber-950 dark:text-amber-100",
+        className
+      )}
+      onMouseEnter={
+        setRowTooltip && materialTooltip
+          ? () => setRowTooltip(materialTooltip)
+          : undefined
+      }
+      onMouseLeave={setRowTooltip ? () => setRowTooltip(null) : undefined}
+    >
+      <span className="font-semibold">Material:</span> {notice.description}
+      {notice.consumed ? (
+        <span className="text-amber-800/80 dark:text-amber-200/80"> (consumed)</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function SpellGlossaryMeta({
   spell,
   showCastingTime = true,
+  showMaterialLine = false,
   usageLabel,
 }: {
   spell: CatalogSpellRow;
   showCastingTime?: boolean;
+  /** Show material requirements inline (recommended in combat). */
+  showMaterialLine?: boolean;
   /** e.g. innate spell frequency shown after casting time and range. */
   usageLabel?: string;
 }) {
+  const setRowTooltip = useSpellRowTooltipOverride();
   const letters = parseSpellComponentLetters(spell.components);
   const hasPrimaryMeta =
     !!spell.school ||
@@ -98,25 +150,51 @@ export function SpellGlossaryMeta({
           ) : null}
 
           {spell.ritual ? (
-            <Tooltip content={SPELL_FLAG_TOOLTIPS.R}>
-              <Badge variant="outline" className="text-xs shrink-0 cursor-default px-1.5">
+            setRowTooltip ? (
+              <Badge
+                variant="outline"
+                className="text-xs shrink-0 cursor-default px-1.5"
+                onMouseEnter={() => setRowTooltip(SPELL_FLAG_TOOLTIPS.R)}
+                onMouseLeave={() => setRowTooltip(null)}
+              >
                 R
               </Badge>
-            </Tooltip>
+            ) : (
+              <Tooltip content={SPELL_FLAG_TOOLTIPS.R}>
+                <Badge variant="outline" className="text-xs shrink-0 cursor-default px-1.5">
+                  R
+                </Badge>
+              </Tooltip>
+            )
           ) : null}
 
           {spell.concentration ? (
-            <Tooltip content={SPELL_FLAG_TOOLTIPS.C}>
-              <Badge variant="outline" className="text-xs shrink-0 cursor-default px-1.5">
+            setRowTooltip ? (
+              <Badge
+                variant="outline"
+                className="text-xs shrink-0 cursor-default px-1.5"
+                onMouseEnter={() => setRowTooltip(SPELL_FLAG_TOOLTIPS.C)}
+                onMouseLeave={() => setRowTooltip(null)}
+              >
                 C
               </Badge>
-            </Tooltip>
+            ) : (
+              <Tooltip content={SPELL_FLAG_TOOLTIPS.C}>
+                <Badge variant="outline" className="text-xs shrink-0 cursor-default px-1.5">
+                  C
+                </Badge>
+              </Tooltip>
+            )
           ) : null}
         </div>
       ) : null}
 
       {actionRangeLine ? (
         <div className="truncate">{actionRangeLine}</div>
+      ) : null}
+
+      {showMaterialLine ? (
+        <SpellMaterialLine components={spell.components} className="mt-1" />
       ) : null}
     </div>
   );

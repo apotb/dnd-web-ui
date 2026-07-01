@@ -98,13 +98,17 @@ export function CombatDmSaveRollModal({
         onClick={(event) => event.stopPropagation()}
       >
         <p className="retro-box-title">Enter saving throws</p>
-        <p className="retro-muted combat-awaiting-saves-summary">
-          DC {saveDc ?? "?"}
-          {saveAbility ? ` ${saveAbility}` : ""} save
-          {saveHalfDamageOnSuccess
-            ? " · half damage on a successful save"
-            : " · no damage on a successful save"}
-        </p>
+        <div className="combat-battle-tooltip-summary retro-muted combat-awaiting-saves-summary">
+          <p className="combat-battle-tooltip-meta">
+            Save: DC {saveDc ?? "?"}
+            {saveAbility ? ` ${saveAbility}` : ""}
+          </p>
+          <p className="combat-battle-tooltip-meta">
+            {saveHalfDamageOnSuccess
+              ? "Half damage on a successful save"
+              : "No damage on a successful save"}
+          </p>
+        </div>
 
         <div className="combat-dm-save-roll-list">
           {targets.map((target) => (

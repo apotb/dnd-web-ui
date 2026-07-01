@@ -1,9 +1,6 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
-import {
-  ACTION_COST_LABELS,
-  actionSourceBadgeLabel,
-  type CharacterActionEntry,
-} from "@/lib/dnd/character-actions";
+import { ACTION_COST_LABELS, type CharacterActionEntry } from "@/lib/dnd/character-actions";
+import { formatBattleHpPoolTooltip } from "@/lib/combat/battle-tooltip";
 import type { FeatureCatalogs } from "@/lib/character/feature-choices";
 import { featureIdFromActionId } from "@/lib/dnd/catalog-feature-mechanics";
 import {
@@ -132,13 +129,7 @@ export function formatHpPoolCombatTooltip(
   action: CharacterActionEntry,
   poolRemaining: number
 ): string {
-  const lines = [
-    `${ACTION_COST_LABELS[action.cost]} · ${actionSourceBadgeLabel(action)}`,
-    `${poolRemaining} HP remaining in pool`,
-  ];
-  const description = action.description.trim();
-  if (description) lines.push(description);
-  return lines.join("\n");
+  return formatBattleHpPoolTooltip(action, poolRemaining);
 }
 
 /** @deprecated Use HpPoolCombatTarget */

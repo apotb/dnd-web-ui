@@ -19,6 +19,8 @@ import {
 } from "@/lib/combat/pending-attacks";
 import { isBattleActive, isDmControlledToken } from "@/lib/combat/turn";
 import type { EnemyData } from "@/lib/schemas/enemy";
+import type { CharacterData } from "@/lib/schemas/character";
+import { consumeSpellSlotOnCharacter } from "@/lib/dnd/spellcasting";
 import type {
   CombatState,
   CombatToken,
@@ -185,6 +187,7 @@ export interface CharacterHpUpdate {
   currentHp: number;
   tempHp: number;
   inventoryItems?: InventoryItem[];
+  spellSlots?: CharacterData["spells"]["slots"];
 }
 
 export function applyResolvedAttack(
@@ -211,6 +214,7 @@ export function applyResolvedAttack(
       currentHp: patch.currentHp,
       tempHp: patch.tempHp,
       inventoryItems: patch.inventoryItems,
+      spellSlots: patch.spellSlots,
     });
   }
 
@@ -295,6 +299,20 @@ export function applyResolvedAttack(
           tempHp: combat.tempHp,
           inventoryItems,
         });
+      }
+
+      const castSlotLevel = pending.spellDetails?.castSlotLevel ?? 0;
+      if (castSlotLevel > 0) {
+        const nextData = consumeSpellSlotOnCharacter(character.data, castSlotLevel);
+        if (nextData) {
+          const combat = character.data.combat;
+          const attackerToken = tokens.find((token) => token.id === attacker.id);
+          upsertCharacterUpdate(attacker.characterId, {
+            currentHp: attackerToken?.currentHp ?? combat.currentHp,
+            tempHp: combat.tempHp,
+            spellSlots: nextData.spells.slots,
+          });
+        }
       }
 
       const targetToken =

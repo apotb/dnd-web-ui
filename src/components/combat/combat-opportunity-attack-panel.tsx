@@ -118,28 +118,29 @@ export function CombatOpportunityAttackPanel({
               )
             )}
           </div>
-          {showScroll ? (
-            <div className="combat-attack-scroll">
-              <button
-                type="button"
-                className="combat-attack-scroll-btn"
-                aria-label="Scroll up two rows"
-                disabled={!canScrollUp}
-                onClick={() => setRowOffset((value) => Math.max(0, value - SCROLL_ROWS))}
-              >
-                <ChevronUp size={18} strokeWidth={2.5} />
-              </button>
-              <button
-                type="button"
-                className="combat-attack-scroll-btn"
-                aria-label="Scroll down two rows"
-                disabled={!canScrollDown}
-                onClick={() => setRowOffset((value) => Math.min(rowLimit, value + SCROLL_ROWS))}
-              >
-                <ChevronDown size={18} strokeWidth={2.5} />
-              </button>
-            </div>
-          ) : null}
+          <div
+            className={`combat-attack-scroll${showScroll ? "" : " combat-attack-scroll-reserved"}`}
+            aria-hidden={!showScroll}
+          >
+            <button
+              type="button"
+              className="combat-attack-scroll-btn"
+              aria-label="Scroll up two rows"
+              disabled={!showScroll || !canScrollUp}
+              onClick={() => setRowOffset((value) => Math.max(0, value - SCROLL_ROWS))}
+            >
+              <ChevronUp size={18} strokeWidth={2.5} />
+            </button>
+            <button
+              type="button"
+              className="combat-attack-scroll-btn"
+              aria-label="Scroll down two rows"
+              disabled={!showScroll || !canScrollDown}
+              onClick={() => setRowOffset((value) => Math.min(rowLimit, value + SCROLL_ROWS))}
+            >
+              <ChevronDown size={18} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       )}
       <div className="combat-opportunity-attack-skip-row">

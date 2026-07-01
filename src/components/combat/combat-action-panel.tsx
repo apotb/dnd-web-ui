@@ -7,23 +7,17 @@ import { isImplementedCombatOption } from "@/lib/combat/combat-options";
 import { Tooltip } from "@/components/ui/tooltip";
 
 const COLUMNS = 4;
-const VISIBLE_ROWS = 2;
-const SCROLL_ROWS = 2;
+const DEFAULT_VISIBLE_ROWS = 2;
 
 function totalRows(optionCount: number): number {
   return Math.ceil(optionCount / COLUMNS);
 }
 
-function visibleRowCount(optionCount: number, rowOffset: number): number {
+function maxRowOffset(optionCount: number, visibleRows: number): number {
   const rows = totalRows(optionCount);
-  const remainingRows = Math.max(0, rows - rowOffset);
-  return Math.min(VISIBLE_ROWS, remainingRows);
-}
-
-function maxRowOffset(optionCount: number): number {
-  const rows = totalRows(optionCount);
-  if (rows <= VISIBLE_ROWS) return 0;
-  return rows % 2 === 1 ? rows - 1 : rows - VISIBLE_ROWS;
+  if (rows <= visibleRows) return 0;
+  if (visibleRows === 1) return rows - 1;
+  return rows % 2 === 1 ? rows - 1 : rows - visibleRows;
 }
 
 interface CombatOptionPanelProps {
@@ -35,6 +29,7 @@ interface CombatOptionPanelProps {
   selectedOptionId?: string | null;
   pendingOptionId?: string | null;
   selectionLocked?: boolean;
+  visibleRows?: number;
 }
 
 export function CombatOptionPanel({
@@ -46,6 +41,7 @@ export function CombatOptionPanel({
   selectedOptionId = null,
   pendingOptionId = null,
   selectionLocked = false,
+  visibleRows = DEFAULT_VISIBLE_ROWS,
 }: CombatOptionPanelProps) {
   const [rowOffset, setRowOffset] = useState(0);
 
@@ -53,15 +49,11 @@ export function CombatOptionPanel({
     setRowOffset(0);
   }, [options]);
 
-  const rowLimit = maxRowOffset(options.length);
+  const rowLimit = maxRowOffset(options.length, visibleRows);
   const clampedRowOffset = Math.min(rowOffset, rowLimit);
   const startIndex = clampedRowOffset * COLUMNS;
-  const rowsToShow = visibleRowCount(options.length, clampedRowOffset);
-  const isCompact = rowsToShow < VISIBLE_ROWS;
-  const singleRowCompact = isCompact && totalRows(options.length) === 1;
-  const visibleSlotCount = singleRowCompact
-    ? options.length - startIndex
-    : rowsToShow * COLUMNS;
+  const visibleSlotCount = visibleRows * COLUMNS;
+  const scrollRows = visibleRows;
   const visibleCells = useMemo(() => {
     const slice = options.slice(startIndex, startIndex + visibleSlotCount);
     const cells: (CombatOption | null)[] = [...slice];
@@ -73,7 +65,8 @@ export function CombatOptionPanel({
 
   const canScrollUp = clampedRowOffset > 0;
   const canScrollDown = clampedRowOffset < rowLimit;
-  const showScroll = totalRows(options.length) > VISIBLE_ROWS;
+  const showScroll = totalRows(options.length) > visibleRows;
+  const singleRowPanel = visibleRows === 1;
 
   const panelBody = useMemo(() => {
     if (options.length === 0) {
@@ -85,19 +78,8 @@ export function CombatOptionPanel({
     }
 
     return (
-      <div
-        className={`combat-attack-body${
-          isCompact ? " combat-attack-body-compact" : ""
-        }`}
-      >
-        <div
-          className={`combat-attack-grid${
-            isCompact ? " combat-attack-grid-compact" : ""
-          }`}
-          style={{
-            gridTemplateRows: `repeat(${rowsToShow}, minmax(0, 1fr))`,
-          }}
-        >
+      <div className="combat-attack-body">
+        <div className="combat-attack-grid">
           {visibleCells.map((option, index) =>
             option ? (
               (() => {
@@ -137,43 +119,43 @@ export function CombatOptionPanel({
             )
           )}
         </div>
-        {showScroll ? (
-          <div className="combat-attack-scroll">
-            <button
-              type="button"
-              className="combat-attack-scroll-btn"
-              aria-label="Scroll up two rows"
-              disabled={!canScrollUp}
-              onClick={() =>
-                setRowOffset((value) => Math.max(0, value - SCROLL_ROWS))
-              }
-            >
-              <ChevronUp size={18} strokeWidth={2.5} />
-            </button>
-            <button
-              type="button"
-              className="combat-attack-scroll-btn"
-              aria-label="Scroll down two rows"
-              disabled={!canScrollDown}
-              onClick={() =>
-                setRowOffset((value) => Math.min(rowLimit, value + SCROLL_ROWS))
-              }
-            >
-              <ChevronDown size={18} strokeWidth={2.5} />
-            </button>
-          </div>
-        ) : null}
+        <div
+          className={`combat-attack-scroll${showScroll ? "" : " combat-attack-scroll-reserved"}`}
+          aria-hidden={!showScroll}
+        >
+          <button
+            type="button"
+            className="combat-attack-scroll-btn"
+            aria-label={`Scroll up ${scrollRows} row${scrollRows === 1 ? "" : "s"}`}
+            disabled={!showScroll || !canScrollUp}
+            onClick={() =>
+              setRowOffset((value) => Math.max(0, value - scrollRows))
+            }
+          >
+            <ChevronUp size={18} strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            className="combat-attack-scroll-btn"
+            aria-label={`Scroll down ${scrollRows} row${scrollRows === 1 ? "" : "s"}`}
+            disabled={!showScroll || !canScrollDown}
+            onClick={() =>
+              setRowOffset((value) => Math.min(rowLimit, value + scrollRows))
+            }
+          >
+            <ChevronDown size={18} strokeWidth={2.5} />
+          </button>
+        </div>
       </div>
     );
   }, [
     canScrollDown,
     canScrollUp,
     emptyMessage,
-    isCompact,
     onSelectOption,
     options.length,
     rowLimit,
-    rowsToShow,
+    scrollRows,
     selectedOptionId,
     pendingOptionId,
     selectionLocked,
@@ -184,7 +166,9 @@ export function CombatOptionPanel({
 
   return (
     <section
-      className={`combat-attack-panel${panelClassName ? ` ${panelClassName}` : ""}`}
+      className={`combat-attack-panel${
+        singleRowPanel ? " combat-attack-panel-single-row" : ""
+      }${panelClassName ? ` ${panelClassName}` : ""}`}
       aria-label={title}
     >
       <div className="combat-attack-header">
@@ -248,6 +232,7 @@ export function CombatBonusActionPanel({
       selectedOptionId={selectedOptionId}
       pendingOptionId={pendingOptionId}
       selectionLocked={selectionLocked}
+      visibleRows={1}
     />
   );
 }

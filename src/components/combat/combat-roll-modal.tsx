@@ -1,32 +1,51 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CombatBattleTooltipSummary } from "@/components/combat/combat-battle-tooltip-summary";
 import type { CombatOption } from "@/lib/combat/combat-options";
+import { buildBattleAttackTooltipParts } from "@/lib/combat/battle-tooltip";
 import { formatModifier } from "@/lib/dnd/calculations";
-import { formatAttackRollLine } from "@/lib/dnd/attacks";
 import { formatDamageRoll, rollD20, rollDamage } from "@/lib/dnd/dice";
+import type { CharacterData } from "@/lib/schemas/character";
 
 interface CombatRollModalProps {
   option: CombatOption;
+  attackerCharacter?: CharacterData;
   onCancel: () => void;
   onUse: () => void;
 }
 
-export function CombatRollModal({ option, onCancel, onUse }: CombatRollModalProps) {
+export function CombatRollModal({
+  option,
+  attackerCharacter,
+  onCancel,
+  onUse,
+}: CombatRollModalProps) {
   const attack = option.attack;
   const rollsAttack =
     attack != null && attack.rollType !== "save" && attack.rollType !== "auto";
+
+  const attackTooltipParts = useMemo(
+    () =>
+      attack
+        ? buildBattleAttackTooltipParts(
+            attack,
+            attackerCharacter ?? ({ basicInfo: { xp: 0 }, combat: { conditions: [] }, exhaustionLevels: [] } as CharacterData),
+            { omitBonusActionNote: true }
+          )
+        : null,
+    [attack, attackerCharacter]
+  );
 
   const [d20Roll, setD20Roll] = useState<number | null>(() =>
     rollsAttack ? rollD20() : null
   );
   const [damageRoll, setDamageRoll] = useState<ReturnType<typeof rollDamage>>(null);
 
-  const attackTotal = useMemo(() => {
-    if (d20Roll == null || !attack) return null;
-    if (attack.rollType === "save" || attack.rollType === "auto") return null;
-    return d20Roll + attack.attackBonus;
-  }, [attack, d20Roll]);
+  const attackTotal =
+    d20Roll != null && attack && attack.rollType !== "save" && attack.rollType !== "auto"
+      ? d20Roll + attack.attackBonus
+      : null;
 
   function handleRollDamage() {
     if (!attack?.damageDice.trim()) return;
@@ -49,16 +68,15 @@ export function CombatRollModal({ option, onCancel, onUse }: CombatRollModalProp
       >
         <p className="retro-box-title">{title}</p>
 
-        {attack ? (
+        {attack && attackTooltipParts ? (
           <div className="combat-roll-body">
-            {attack.rollType === "save" && attack.saveDc != null ? (
-              <p className="combat-roll-line">
-                {formatAttackRollLine(attack)}
-                {attack.damageType ? ` · ${attack.damageType}` : ""}
-              </p>
-            ) : attack.rollType === "auto" ? (
-              <p className="combat-roll-line">Auto hit</p>
-            ) : (
+            <CombatBattleTooltipSummary
+              parts={attackTooltipParts}
+              omitTitle
+              className="retro-muted"
+            />
+
+            {attack.rollType !== "save" && attack.rollType !== "auto" ? (
               <div className="combat-roll-row">
                 <span className="combat-roll-die">{d20Roll ?? "—"}</span>
                 <span className="combat-roll-mod">
@@ -68,14 +86,10 @@ export function CombatRollModal({ option, onCancel, onUse }: CombatRollModalProp
                   = {attackTotal ?? "—"}
                 </span>
               </div>
-            )}
+            ) : null}
 
             {attack.damageDice ? (
               <div className="combat-roll-damage">
-                <p className="combat-roll-line">
-                  Damage: {attack.damageDice}
-                  {attack.damageType ? ` ${attack.damageType}` : ""}
-                </p>
                 <button type="button" className="candy-btn" onClick={handleRollDamage}>
                   Roll damage
                 </button>
@@ -85,10 +99,6 @@ export function CombatRollModal({ option, onCancel, onUse }: CombatRollModalProp
                   </p>
                 ) : null}
               </div>
-            ) : null}
-
-            {attack.notes ? (
-              <p className="combat-roll-notes retro-muted">{attack.notes}</p>
             ) : null}
           </div>
         ) : null}

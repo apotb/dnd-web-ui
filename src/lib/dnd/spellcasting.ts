@@ -614,3 +614,35 @@ export function canCastSpellWithRemainingSlots(
     return slot.used < slot.max;
   });
 }
+
+/** Spend one spell slot at the chosen cast level. Returns null when no slot remains. */
+export function applySpellSlotUsed(
+  slots: CharacterData["spells"]["slots"],
+  castSlotLevel: number
+): CharacterData["spells"]["slots"] | null {
+  if (castSlotLevel <= 0) return slots;
+
+  const key = String(castSlotLevel);
+  const slot = slots[key];
+  if (!slot || slot.max <= 0 || slot.used >= slot.max) return null;
+
+  return {
+    ...slots,
+    [key]: { ...slot, used: slot.used + 1 },
+  };
+}
+
+export function consumeSpellSlotOnCharacter(
+  character: CharacterData,
+  castSlotLevel: number
+): CharacterData | null {
+  const slots = applySpellSlotUsed(character.spells.slots, castSlotLevel);
+  if (!slots) return null;
+  return {
+    ...character,
+    spells: {
+      ...character.spells,
+      slots,
+    },
+  };
+}

@@ -212,7 +212,7 @@ export function isRangedAttackRoll(attack: DerivedAttack): boolean {
   return spec.normalRangeFt > 5;
 }
 
-/** Auto-hit spells (e.g. Magic Missile) with range beyond touch/melee. */
+/** Auto-hit attacks with range beyond touch/melee (projectile targeting). */
 export function isAutoHitRangedAttack(attack: DerivedAttack): boolean {
   if ((attack.rollType ?? "attack") !== "auto") return false;
   const spec = parseAttackRangeSpec(attack);
@@ -737,4 +737,54 @@ export function isCellInRangeForAoe(
 ): boolean {
   if (isCellBlocked(state, cell.x, cell.y)) return false;
   return distanceFeetToCell(attacker, cell, state.tileFeet) <= spec.maxFt;
+}
+
+export type VisionDistanceBand = "near" | "mid" | "far" | "extreme";
+
+const VISION_MAX_FT = 120;
+
+function visionBandForDistance(distanceFt: number): VisionDistanceBand | null {
+  if (distanceFt <= 30) return "near";
+  if (distanceFt <= 60) return "mid";
+  if (distanceFt <= 90) return "far";
+  if (distanceFt <= VISION_MAX_FT) return "extreme";
+  return null;
+}
+
+/** Visible cells from an observer, bucketed by distance band (0–120 ft, wall-blocked LOS). */
+export function buildVisionCellBands(
+  observer: CombatToken,
+  state: CombatState
+): Map<string, VisionDistanceBand> {
+  const bands = new Map<string, VisionDistanceBand>();
+  if (!isTokenOnGrid(observer, state)) return bands;
+
+  const tileFeet = state.tileFeet;
+
+  for (let dy = 0; dy < observer.height; dy++) {
+    for (let dx = 0; dx < observer.width; dx++) {
+      const x = observer.x + dx;
+      const y = observer.y + dy;
+      if (!isCellBlocked(state, x, y)) {
+        bands.set(`${x},${y}`, "near");
+      }
+    }
+  }
+
+  for (let y = 0; y < state.gridHeight; y++) {
+    for (let x = 0; x < state.gridWidth; x++) {
+      const key = `${x},${y}`;
+      if (bands.has(key)) continue;
+      if (isCellBlocked(state, x, y)) continue;
+
+      const cell = { x, y };
+      if (!hasLineOfSightToCell(observer, cell, state)) continue;
+
+      const distanceFt = distanceFeetToCell(observer, cell, tileFeet);
+      const band = visionBandForDistance(distanceFt);
+      if (band) bands.set(key, band);
+    }
+  }
+
+  return bands;
 }

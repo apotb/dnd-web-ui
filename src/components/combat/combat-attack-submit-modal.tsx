@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CombatBattleTooltipSummary } from "@/components/combat/combat-battle-tooltip-summary";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
-import { formatAttackDescriptionBlurb } from "@/lib/dnd/attacks";
+import { buildBattleAttackTooltipParts } from "@/lib/combat/battle-tooltip";
 import { formatAttackDisadvantageLabel } from "@/lib/combat/targeting";
+import type { CharacterData } from "@/lib/schemas/character";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import {
   areDamageRollsComplete,
@@ -44,6 +46,7 @@ interface CombatAttackSubmitModalProps {
   optionName: string;
   targets: CombatToken[];
   attackerToken?: CombatToken;
+  attackerCharacter?: CharacterData;
   combatState?: CombatState;
   attackDisadvantageByTokenId?: Record<string, boolean>;
   damageTakenByTokenId: Record<string, number>;
@@ -64,6 +67,7 @@ export function CombatAttackSubmitModal({
   optionName,
   targets,
   attackerToken,
+  attackerCharacter,
   combatState,
   attackDisadvantageByTokenId = {},
   damageTakenByTokenId,
@@ -75,7 +79,15 @@ export function CombatAttackSubmitModal({
   const isSave = rollType === "save";
   const isAuto = rollType === "auto";
   const multiTarget = targets.length > 1 && !isSave;
-  const attackDescriptionBlurb = formatAttackDescriptionBlurb(attack);
+  const attackTooltipParts = useMemo(
+    () =>
+      buildBattleAttackTooltipParts(
+        attack,
+        attackerCharacter ?? ({ basicInfo: { xp: 0 }, combat: { conditions: [] }, exhaustionLevels: [] } as CharacterData),
+        { omitBonusActionNote: true }
+      ),
+    [attack, attackerCharacter]
+  );
   const singleTargetDisadvantage =
     targets.length === 1 ? attackDisadvantageByTokenId[targets[0].id] === true : false;
 
@@ -223,12 +235,13 @@ export function CombatAttackSubmitModal({
       >
         <p className="retro-box-title">{optionName}</p>
 
+        <CombatBattleTooltipSummary
+          parts={attackTooltipParts}
+          omitTitle
+          className="retro-muted"
+        />
+
         <div className="combat-attack-submit-targets">
-          {attackDescriptionBlurb ? (
-            <div className="combat-attack-submit-target">
-              <span className="retro-muted">Attack: {attackDescriptionBlurb}</span>
-            </div>
-          ) : null}
           {targets.map((target) => (
             <div key={target.id} className="combat-attack-submit-target">
               <strong>{target.label}</strong>
@@ -284,11 +297,10 @@ export function CombatAttackSubmitModal({
         ) : null}
 
         {isSave ? (
-          <p className="retro-muted combat-attack-submit-hint">
-            Save DC {attack.saveDc}
-            {attack.saveAbility ? ` ${attack.saveAbility}` : ""}. Affected creatures will roll
-            saves; enter the damage they take on a failed save.
-          </p>
+          <div className="retro-muted combat-attack-submit-hint">
+            <p>Affected creatures will roll saves.</p>
+            <p>Enter the damage they take on a failed save.</p>
+          </div>
         ) : null}
 
         {isSave || multiTarget ? (

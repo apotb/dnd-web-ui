@@ -72,6 +72,26 @@ export const pendingAttackTargetSchema = z.object({
   finalDamage: z.number().int().min(0).nullable().optional(),
 });
 
+export const pendingSpellDetailsSchema = z.object({
+  spellId: z.string(),
+  characterSpellId: z.string().optional(),
+  spellLevel: z.number().int(),
+  castSlotLevel: z.number().int(),
+  castingCost: z.enum(["action", "bonus-action"]),
+  school: z.string().optional(),
+  castingTime: z.string().optional(),
+  range: z.string().optional(),
+  duration: z.string().optional(),
+  components: z.string().optional(),
+  materialLine: z.string().optional(),
+  concentration: z.boolean().optional(),
+  ritual: z.boolean().optional(),
+  description: z.string().optional(),
+  isDeclarationOnly: z.boolean().default(false),
+  targetingSummary: z.string().optional(),
+  castSlotLabel: z.string().optional(),
+});
+
 export const pendingAttackSchema = z.object({
   id: z.string(),
   attackerTokenId: z.string(),
@@ -106,6 +126,7 @@ export const pendingAttackSchema = z.object({
   status: z.enum(["awaiting-saves", "awaiting-dm-review"]),
   targets: z.array(pendingAttackTargetSchema),
   narration: z.string().default(""),
+  spellDetails: pendingSpellDetailsSchema.optional(),
 });
 
 export const combatTokenSchema = z.object({
@@ -195,12 +216,15 @@ export const combatStateSchema = z.object({
   savedEncounterId: z.string().uuid().nullable().default(null),
   /** When true, the DM client automatically approves player actions awaiting review. */
   autoApprove: z.boolean().default(false),
+  /** When true, the DM client's own actions skip the approval tray. */
+  autoApproveDm: z.boolean().default(true),
 });
 
 export type BlockedCell = z.infer<typeof blockedCellSchema>;
 export type CombatToken = z.infer<typeof combatTokenSchema>;
 export type PendingOpportunityAttacks = z.infer<typeof pendingOpportunityAttacksSchema>;
 export type PendingAttackTarget = z.infer<typeof pendingAttackTargetSchema>;
+export type PendingSpellDetails = z.infer<typeof pendingSpellDetailsSchema>;
 export type PendingAttack = z.infer<typeof pendingAttackSchema>;
 export type CombatInitiative = z.infer<typeof combatInitiativeSchema>;
 export type CombatTurn = z.infer<typeof combatTurnSchema>;

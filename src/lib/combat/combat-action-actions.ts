@@ -6,6 +6,7 @@ import { applyObjectPickup } from "@/lib/combat/object-pickup";
 import { applyEquipmentChange } from "@/lib/combat/object-equipment-change";
 import {
   applyActionUsed,
+  applyBonusActionUsed,
   applyDashActionUsed,
   applyDisengageUsed,
   applyMainHandAttackUsed,
@@ -111,6 +112,30 @@ export async function recordCombatActionUsed(
 
   const supabase = createClient();
   const { error } = await supabase.rpc("record_combat_action_used", {
+    p_campaign_id: campaignId,
+  });
+
+  return { next, error: error?.message };
+}
+
+export async function recordCombatBonusActionUsed(
+  campaignId: string,
+  state: CombatState,
+  options: { isDm: boolean }
+): Promise<{ next: CombatState; error?: string }> {
+  const next = applyBonusActionUsed(state);
+
+  if (next.turn.bonusActionUsed === state.turn.bonusActionUsed) {
+    return { next: state };
+  }
+
+  if (options.isDm) {
+    const error = await persistCombatState(campaignId, next);
+    return { next, error: error ?? undefined };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.rpc("record_combat_bonus_action_used", {
     p_campaign_id: campaignId,
   });
 

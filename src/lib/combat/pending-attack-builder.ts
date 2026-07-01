@@ -30,6 +30,10 @@ import type {
   PendingAttackTarget,
 } from "@/lib/schemas/combat-state";
 import { isHostileToken } from "@/lib/combat/engagement";
+import {
+  attachSpellDetailsToPending,
+  resolvePendingSpellDetailsForDeclareCast,
+} from "@/lib/combat/pending-spell-details";
 
 export interface AttackSubmissionInput {
   attackRoll?: number | null;
@@ -312,6 +316,38 @@ export function createPendingAttack(
   };
 
   if (status === "awaiting-dm-review") {
+    pending = transitionToDmReview(pending);
+  }
+
+  return attachSpellDetailsToPending(pending, option, attack);
+}
+
+export function createPendingSpellCast(
+  attacker: CombatToken,
+  option: CombatOption,
+  options?: { skipDmReview?: boolean }
+): PendingAttack | null {
+  const spellDetails = resolvePendingSpellDetailsForDeclareCast(option);
+  if (!spellDetails) return null;
+
+  const actionCost = spellDetails.castingCost;
+  let pending: PendingAttack = {
+    id: crypto.randomUUID(),
+    attackerTokenId: attacker.id,
+    optionId: option.id,
+    optionName: option.name,
+    actionCost,
+    isOpportunityAttack: false,
+    skipDmReview: options?.skipDmReview ?? false,
+    rollType: "auto",
+    isAoe: false,
+    status: "awaiting-dm-review",
+    targets: [],
+    narration: "",
+    spellDetails,
+  };
+
+  if (!options?.skipDmReview) {
     pending = transitionToDmReview(pending);
   }
 

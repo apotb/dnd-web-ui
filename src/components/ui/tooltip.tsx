@@ -114,11 +114,6 @@ export function Tooltip({ content, children }: TooltipProps) {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    setAnchor(null);
-    setLayout(null);
-  }, [content]);
-
   useLayoutEffect(() => {
     if (!anchor || !tooltipRef.current) {
       setLayout(null);

@@ -7,6 +7,8 @@ import { getEffectiveWeaponProficiencies } from "@/lib/character/class-derivatio
 import type { CharacterData, Spell } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
 import type { PhbClass } from "@/lib/dnd/phb/types";
+import { getSpell } from "@/lib/dnd/phb/spells";
+import { isSpellCastableInCombat } from "@/lib/dnd/spell-casting-time";
 import {
   countAmmunitionInInventory,
   formatAmmunitionLine,
@@ -55,7 +57,7 @@ interface OffensiveSpellMeta {
   notes?: string;
 }
 
-/** Prepared offensive spells in the PHB catalog (attack rolls, saves, or auto-hit). */
+/** Prepared offensive cantrips in the PHB catalog (attack rolls or saves). */
 const OFFENSIVE_SPELL_METADATA: Record<string, OffensiveSpellMeta> = {
   "acid-splash": {
     rollType: "attack",
@@ -140,80 +142,6 @@ const OFFENSIVE_SPELL_METADATA: Record<string, OffensiveSpellMeta> = {
     range: "60 ft",
     cantripScaling: true,
   },
-  "arms-of-hadar": {
-    rollType: "save",
-    saveAbility: "Str",
-    damageDice: "2d6",
-    damageType: "necrotic",
-    range: "10-ft radius",
-    notes: "+1d6 per slot above 1st",
-  },
-  "burning-hands": {
-    rollType: "save",
-    saveAbility: "Dex",
-    damageDice: "3d6",
-    damageType: "fire",
-    range: "15-ft cone",
-    notes: "+1d6 per slot above 1st",
-  },
-  "chromatic-orb": {
-    rollType: "attack",
-    damageDice: "3d8",
-    damageType: "varies",
-    range: "90 ft",
-    notes: "Acid, cold, fire, lightning, poison, or thunder; +1d8 per slot above 1st",
-  },
-  "guiding-bolt": {
-    rollType: "attack",
-    damageDice: "4d6",
-    damageType: "radiant",
-    range: "120 ft",
-    notes: "+1d6 per slot above 1st",
-  },
-  "hellish-rebuke": {
-    rollType: "save",
-    saveAbility: "Dex",
-    damageDice: "2d10",
-    damageType: "fire",
-    range: "60 ft",
-    notes: "Reaction; +1d10 per slot above 1st",
-  },
-  "inflict-wounds": {
-    rollType: "attack",
-    damageDice: "3d10",
-    damageType: "necrotic",
-    range: "Touch",
-    notes: "+1d10 per slot above 1st",
-  },
-  "magic-missile": {
-    rollType: "auto",
-    damageDice: "3d4+3",
-    damageType: "force",
-    range: "120 ft",
-    notes: "+1 dart per slot above 1st; each dart hits automatically",
-  },
-  "ray-of-sickness": {
-    rollType: "attack",
-    damageDice: "2d8",
-    damageType: "poison",
-    range: "60 ft",
-    notes: "+1d8 per slot above 1st",
-  },
-  "thunderwave": {
-    rollType: "save",
-    saveAbility: "Con",
-    damageDice: "2d8",
-    damageType: "thunder",
-    range: "15-ft cube",
-    notes: "+1d8 per slot above 1st",
-  },
-  "witch-bolt": {
-    rollType: "attack",
-    damageDice: "1d12",
-    damageType: "lightning",
-    range: "30 ft",
-    notes: "Concentration; +1d12 per slot above 1st on initial hit",
-  },
 };
 
 function cantripScaledDice(baseDice: string, level: number): string {
@@ -231,13 +159,21 @@ function eldritchBlastBeamCount(level: number): number {
   return 1;
 }
 
-function spellSlug(spell: Spell): string | null {
+export function resolveSpellSlug(spell: Spell): string | null {
   if (spell.spellId) return spell.spellId;
   const slug = spell.name
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-");
   return slug || null;
+}
+
+export function hasOffensiveSpellAttackMetadata(slug: string): boolean {
+  return slug in OFFENSIVE_SPELL_METADATA;
+}
+
+export function getOffensiveSpellMetadata(slug: string): OffensiveSpellMeta | undefined {
+  return OFFENSIVE_SPELL_METADATA[slug];
 }
 
 /** Melee reach weapons (glaive, whip, etc.) attack from this distance in feet. */
@@ -323,6 +259,8 @@ export interface DerivedAttack {
   notes: string;
   source: "weapon" | "cantrip" | "spell" | "manual" | "natural";
   spellLevel?: number;
+  /** Slot level used to cast a leveled spell (may be higher than spellLevel when upcast). */
+  castSlotLevel?: number;
   rollType?: OffensiveSpellRollType;
   saveAbility?: string;
   saveDc?: number;
@@ -332,6 +270,8 @@ export interface DerivedAttack {
   itemId?: string;
   /** Inventory row id for the equipped weapon stack, if any. */
   inventoryStackId?: string;
+  /** Catalog spell slug when this attack comes from a spell (for material components, etc.). */
+  spellCatalogSlug?: string;
   /** Off-hand weapon attack from two-weapon fighting (bonus action). */
   isOffHand?: boolean;
   /** Weapon damage dice without ability modifier (for bonus-action display). */
@@ -439,7 +379,11 @@ export function isMeleeWeaponAttack(attack: DerivedAttack): boolean {
 /** Combat tooltip category: Melee, Ranged, Thrown, Spell, Cantrip, etc. */
 export function getAttackCategoryLabel(attack: DerivedAttack): string {
   if (attack.source === "cantrip") return "Cantrip";
-  if (attack.source === "spell") return "Spell";
+  if (attack.source === "spell") {
+    return attack.spellLevel != null && attack.spellLevel > 0
+      ? `Spell ${attack.spellLevel}`
+      : "Spell";
+  }
   if (attack.throwsWeapon || attack.id.endsWith("-thrown")) return "Thrown";
 
   const rollType = attack.rollType ?? "attack";
@@ -745,7 +689,8 @@ function buildOffensiveSpellEntry(
   meta: OffensiveSpellMeta,
   character: CharacterData,
   saveDc: number | undefined,
-  characterLevel: number
+  characterLevel: number,
+  castSlotLevel?: number
 ): DerivedAttack {
   const attackBonus = getSpellAttackBonus(character) ?? 0;
   const attackBonusSources =
@@ -766,9 +711,14 @@ function buildOffensiveSpellEntry(
     damageDice = cantripScaledDice(meta.damageDice, characterLevel);
   }
 
-  if (spell.level > 0) {
-    noteParts.unshift(`${spell.level}${spellLevelSuffix(spell.level)}-level spell`);
+  const effectiveCastLevel = castSlotLevel ?? spell.level;
+  if (effectiveCastLevel > 0) {
+    noteParts.unshift(
+      `${effectiveCastLevel}${spellLevelSuffix(effectiveCastLevel)}-level spell`
+    );
   }
+
+  const slug = resolveSpellSlug(spell);
 
   return {
     id: `spell-${spell.id}`,
@@ -781,12 +731,42 @@ function buildOffensiveSpellEntry(
     notes: noteParts.join(" · "),
     source: spell.level === 0 ? "cantrip" : "spell",
     spellLevel: spell.level,
+    castSlotLevel: effectiveCastLevel > 0 ? effectiveCastLevel : undefined,
+    spellCatalogSlug: slug ?? undefined,
     rollType: meta.rollType,
     saveAbility: meta.saveAbility,
     saveDc: meta.rollType === "save" ? saveDc : undefined,
     saveHalfDamageOnSuccess:
       meta.rollType === "save" ? meta.saveHalfDamageOnSuccess ?? true : undefined,
   };
+}
+
+/** Build a single offensive spell attack for combat casting (supports upcast slot level). */
+export function buildSpellAttackForCast(
+  character: CharacterData,
+  spell: Spell,
+  castSlotLevel: number
+): DerivedAttack | null {
+  if (spell.level > 0) return null;
+  if (!character.spells.spellcastingAbility) return null;
+
+  const slug = resolveSpellSlug(spell);
+  if (!slug) return null;
+
+  const meta = OFFENSIVE_SPELL_METADATA[slug];
+  if (!meta) return null;
+
+  const saveDc = getSpellSaveDc(character) ?? undefined;
+  const characterLevel = levelFromXp(character.basicInfo.xp ?? 0);
+
+  return buildOffensiveSpellEntry(
+    spell,
+    meta,
+    character,
+    saveDc,
+    characterLevel,
+    castSlotLevel
+  );
 }
 
 function spellLevelSuffix(level: number): string {
@@ -796,7 +776,7 @@ function spellLevelSuffix(level: number): string {
   return "th";
 }
 
-/** Derive attacks from offensive spells (cantrips and prepared leveled spells). */
+/** Derive attack buttons from offensive cantrips only. Leveled spells use declare-cast + DM review. */
 export function deriveSpellAttacks(character: CharacterData): DerivedAttack[] {
   if (!character.spells.spellcastingAbility) return [];
 
@@ -806,20 +786,16 @@ export function deriveSpellAttacks(character: CharacterData): DerivedAttack[] {
   const attacks: DerivedAttack[] = [];
 
   for (const spell of character.spells.known) {
+    if (spell.level > 0) continue;
     if (isManagedGrantSpell(spell) && !canCastGrantSpell(spell, character)) {
       continue;
     }
-    if (spell.level > 0 && !spell.prepared) continue;
-    if (
-      spell.level > 0 &&
-      !isManagedGrantSpell(spell) &&
-      !canCastSpellWithRemainingSlots(character.spells.slots, spell.level)
-    ) {
-      continue;
-    }
 
-    const slug = spellSlug(spell);
+    const slug = resolveSpellSlug(spell);
     if (!slug) continue;
+
+    const catalog = getSpell(slug);
+    if (!catalog || !isSpellCastableInCombat(catalog)) continue;
 
     const meta = OFFENSIVE_SPELL_METADATA[slug];
     if (!meta) continue;

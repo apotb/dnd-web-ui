@@ -1,6 +1,8 @@
 import type { Spell } from "@/lib/schemas/character";
 import { isManagedGrantSpell } from "@/lib/character/spell-sources";
+import { formatBattleTooltip } from "@/lib/combat/battle-tooltip";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
+import { formatSpellMaterialLine, formatSpellComponentsAbbreviated } from "@/lib/dnd/spell-glossary";
 
 export function spellLevelLabel(level: number): string {
   if (level === 0) return "Cantrips";
@@ -112,8 +114,7 @@ export function spellClassFilterLabel(
   return "Class";
 }
 
-/** Hover tooltip text for catalog spell rows in pickers. */
-export function formatSpellPickerTooltip(spell: {
+export interface SpellPickerTooltipSpell {
   name: string;
   school?: string;
   castingTime?: string;
@@ -123,34 +124,111 @@ export function formatSpellPickerTooltip(spell: {
   description?: string;
   ritual?: boolean;
   concentration?: boolean;
-}): string {
-  const lines: string[] = [];
+}
 
+/** School and components header line for spell tooltips. */
+export function buildSpellPickerHeader(spell: SpellPickerTooltipSpell): string | undefined {
   const typeAndComponents: string[] = [];
   if (spell.school) typeAndComponents.push(spell.school);
-  if (spell.components) typeAndComponents.push(spell.components);
-  if (typeAndComponents.length > 0) {
-    lines.push(typeAndComponents.join(" · "));
+  if (spell.components) {
+    const materialLine = formatSpellMaterialLine(spell.components);
+    typeAndComponents.push(
+      materialLine
+        ? formatSpellComponentsAbbreviated(spell.components)
+        : spell.components
+    );
+  }
+  if (typeAndComponents.length === 0) return undefined;
+  return typeAndComponents.join(" · ");
+}
+
+/** Labeled metadata lines for spell tooltips (excludes header and description). */
+export function buildSpellPickerMetadataLines(
+  spell: SpellPickerTooltipSpell,
+  extraMetadata: string[] = []
+): string[] {
+  const lines: string[] = [...extraMetadata];
+
+  const castingTime = spell.castingTime?.trim();
+  if (castingTime) {
+    lines.push(`Cast time: ${castingTime}`);
   }
 
-  const castingAndRange: string[] = [];
-  if (spell.castingTime) castingAndRange.push(spell.castingTime);
-  if (spell.range) castingAndRange.push(spell.range);
-  if (castingAndRange.length > 0) {
-    lines.push(castingAndRange.join(" · "));
+  const range = spell.range?.trim();
+  if (range) {
+    lines.push(`Range: ${range}`);
+  }
+
+  const materialLine = spell.components ? formatSpellMaterialLine(spell.components) : null;
+  if (materialLine) {
+    lines.push(materialLine);
   }
 
   const duration = spell.duration?.trim();
   if (duration) {
-    lines.push(duration);
+    lines.push(`Duration: ${duration}`);
   }
 
-  const description = spell.description?.trim();
-  if (description) {
-    if (lines.length > 0) lines.push("");
-    lines.push(description);
+  if (spell.concentration) {
+    lines.push("Concentration: Yes");
   }
 
-  if (lines.length === 0) return spell.name;
-  return lines.join("\n");
+  if (spell.ritual) {
+    lines.push("Ritual: Yes");
+  }
+
+  return lines;
+}
+
+/** Remove spell school / cantrip labels duplicated in the tooltip header. */
+export function stripRedundantSpellNotes(
+  notes: string,
+  catalog?: Pick<SpellPickerTooltipSpell, "school">
+): string {
+  const trimmed = notes.trim();
+  if (!trimmed) return "";
+
+  const school = catalog?.school?.trim();
+  if (school && trimmed.toLowerCase() === school.toLowerCase()) return "";
+
+  if (school && /^spellbook\s*·\s*/i.test(trimmed)) {
+    const rest = trimmed.replace(/^spellbook\s*·\s*/i, "").trim();
+    if (rest.toLowerCase() === school.toLowerCase()) return "";
+  }
+
+  if (trimmed.toLowerCase() === "cantrip") return "";
+
+  return trimmed
+    .split(" · ")
+    .filter((part) => {
+      const piece = part.trim();
+      if (!piece) return false;
+      if (school && piece.toLowerCase() === school.toLowerCase()) return false;
+      if (piece.toLowerCase() === "cantrip") return false;
+      return true;
+    })
+    .join(" · ")
+    .trim();
+}
+
+/** Shared battle tooltip layout for catalog spells. */
+export function formatSpellBattleTooltip(
+  spell: SpellPickerTooltipSpell,
+  options?: { extraMetadata?: string[]; footer?: string[] }
+): string {
+  const tooltip = formatBattleTooltip({
+    title: spell.name.trim() || undefined,
+    header: buildSpellPickerHeader(spell),
+    metadata: buildSpellPickerMetadataLines(spell, options?.extraMetadata),
+    description: spell.description?.trim() || undefined,
+    footer: options?.footer,
+  });
+
+  if (!tooltip) return spell.name;
+  return tooltip;
+}
+
+/** Hover tooltip text for catalog spell rows in pickers. */
+export function formatSpellPickerTooltip(spell: SpellPickerTooltipSpell): string {
+  return formatSpellBattleTooltip(spell);
 }

@@ -424,6 +424,19 @@ describe("mechanical-features", () => {
     assert.deepEqual(action!.uses, { current: 12, max: 25 });
   });
 
+  it("lists non-standard actions before standard actions", () => {
+    const paladin = wizardData({
+      basicInfo: { ...wizardData().basicInfo, classes: ["Paladin"], xp: 6500 },
+      featureUseState: { [LAY_ON_HANDS_ID]: { current: 12 } },
+    });
+    const actions = getAllCharacterActions(paladin).filter((action) => action.cost === "action");
+    const layOnHandsIndex = actions.findIndex((action) => action.name === "Lay on Hands");
+    const dashIndex = actions.findIndex((action) => action.name === "Dash");
+    assert.ok(layOnHandsIndex >= 0);
+    assert.ok(dashIndex >= 0);
+    assert.ok(layOnHandsIndex < dashIndex);
+  });
+
   it("merges self-target lay on hands heal into paladin data", () => {
     const paladin = wizardData({
       basicInfo: { ...wizardData().basicInfo, classes: ["Paladin"], xp: 6500 },

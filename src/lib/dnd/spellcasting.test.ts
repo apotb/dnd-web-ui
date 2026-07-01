@@ -22,6 +22,7 @@ import {
   isPlayerCantrip,
   isWizardSpellbookSpell,
   migrateFullListPreparedCasterSpells,
+  applySpellSlotUsed,
 } from "./spellcasting";
 import type { CharacterData } from "@/lib/schemas/character";
 
@@ -407,5 +408,26 @@ describe("migrateFullListPreparedCasterSpells", () => {
     } as CharacterData;
     const migrated = migrateFullListPreparedCasterSpells(data, bard);
     assert.equal(migrated.spells.known.length, 1);
+  });
+});
+
+describe("applySpellSlotUsed", () => {
+  it("increments used count for the chosen slot level", () => {
+    const slots = { "1": { max: 4, used: 1 }, "2": { max: 3, used: 0 } };
+    const next = applySpellSlotUsed(slots, 2);
+    assert.deepEqual(next, {
+      "1": { max: 4, used: 1 },
+      "2": { max: 3, used: 1 },
+    });
+  });
+
+  it("returns null when no slot remains at the chosen level", () => {
+    const slots = { "1": { max: 2, used: 2 } };
+    assert.equal(applySpellSlotUsed(slots, 1), null);
+  });
+
+  it("no-ops for cantrip casts", () => {
+    const slots = { "1": { max: 2, used: 0 } };
+    assert.equal(applySpellSlotUsed(slots, 0), slots);
   });
 });

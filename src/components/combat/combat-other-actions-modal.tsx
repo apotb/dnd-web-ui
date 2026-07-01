@@ -1,5 +1,6 @@
 "use client";
 
+import { CombatDeclareBeforeEmphasis } from "@/components/combat/combat-declare-before-emphasis";
 import { getCombatOtherActionEntries } from "@/lib/combat/combat-options";
 
 interface CombatOtherActionsModalProps {
@@ -20,7 +21,8 @@ export function CombatOtherActionsModal({ onCancel, onUse }: CombatOtherActionsM
 
         <div className="combat-roll-body">
           <p className="combat-roll-line retro-muted">
-            Declare which action you are taking to the DM before using your action.
+            Declare which action you are taking to the DM <CombatDeclareBeforeEmphasis />{" "}
+            using your action.
           </p>
 
           <div className="combat-other-action-list">

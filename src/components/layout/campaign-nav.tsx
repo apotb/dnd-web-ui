@@ -34,10 +34,7 @@ export function CampaignNav({
         <span className="retro-title">{campaignName}</span>
         {isDm ? (
           <>
-            <label
-              className="flex items-center gap-1.5 text-sm cursor-pointer select-none whitespace-nowrap"
-              suppressHydrationWarning
-            >
+            <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none whitespace-nowrap">
               <Checkbox
                 checked={dmViewEnabled}
                 onCheckedChange={(checked) => setDmViewEnabled(checked === true)}

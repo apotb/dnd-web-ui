@@ -15,7 +15,6 @@ function storageKey(campaignId: string) {
 }
 
 function readEnabled(campaignId: string): boolean {
-  if (typeof window === "undefined") return true;
   try {
     const stored = localStorage.getItem(storageKey(campaignId));
     if (stored === "false") return false;
@@ -44,9 +43,7 @@ export function DmViewProvider({
   isDm,
   children,
 }: DmViewProviderProps) {
-  const [dmViewEnabled, setDmViewEnabledState] = useState(() =>
-    readEnabled(campaignId)
-  );
+  const [dmViewEnabled, setDmViewEnabledState] = useState(true);
 
   useEffect(() => {
     setDmViewEnabledState(readEnabled(campaignId));

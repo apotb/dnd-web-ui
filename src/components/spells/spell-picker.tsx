@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -16,9 +15,8 @@ import {
   searchSpellsClient,
   type CatalogSpellRow,
 } from "@/lib/content/catalog-client";
-import { SpellGlossaryMeta } from "@/components/spells/spell-glossary-meta";
-import { Tooltip } from "@/components/ui/tooltip";
-import { availableSpellLevels, formatSpellPickerTooltip, spellClassFilterLabel, spellLevelBadgeLabel, spellLevelFilterLabel, spellLevelLabel } from "@/lib/dnd/spell-display";
+import { SpellPickerRow } from "@/components/spells/spell-picker-row";
+import { availableSpellLevels, spellClassFilterLabel, spellLevelFilterLabel, spellLevelLabel } from "@/lib/dnd/spell-display";
 
 interface SpellPickerProps {
   open: boolean;
@@ -44,31 +42,6 @@ const EMPTY_EXCLUDE_SLUGS: readonly string[] = [];
 
 function excludeSlugsKey(slugs: readonly string[]): string {
   return slugs.length === 0 ? "" : slugs.join("\0");
-}
-
-function SpellRow({ spell, onSelect }: { spell: CatalogSpellRow; onSelect: () => void }) {
-  const tooltip = formatSpellPickerTooltip(spell);
-  return (
-    <Tooltip content={tooltip}>
-      <button
-        type="button"
-        className="h-full w-full flex items-start rounded-md border p-3 text-left hover:bg-accent transition-colors"
-        onClick={onSelect}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <span className="font-medium text-sm leading-snug">{spell.name}</span>
-            <Badge variant="outline" className="text-xs shrink-0">
-              {spellLevelBadgeLabel(spell.level)}
-            </Badge>
-          </div>
-          <div className="mt-0.5">
-            <SpellGlossaryMeta spell={spell} />
-          </div>
-        </div>
-      </button>
-    </Tooltip>
-  );
 }
 
 export function SpellPicker({
@@ -213,7 +186,7 @@ export function SpellPicker({
           ) : (
             <div className="grid grid-cols-2 gap-2">
               {results.map((spell) => (
-                <SpellRow
+                <SpellPickerRow
                   key={spell.slug}
                   spell={spell}
                   onSelect={() => handleSelect(spell)}

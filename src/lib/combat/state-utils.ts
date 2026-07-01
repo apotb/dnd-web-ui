@@ -96,6 +96,7 @@ export function createDefaultCombatState(
     boardTitle: DEFAULT_BOARD_TITLE,
     savedEncounterId: null,
     autoApprove: false,
+    autoApproveDm: true,
   };
 
   return {
@@ -961,6 +962,7 @@ export function resetCombatBoard(
     boardTitle: DEFAULT_BOARD_TITLE,
     savedEncounterId: null,
     autoApprove: false,
+    autoApproveDm: true,
   };
 }
 

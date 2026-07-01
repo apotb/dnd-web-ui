@@ -17,9 +17,12 @@ describe("formatSpellPickerTooltip", () => {
     assert.equal(
       tooltip,
       [
-        "Transmutation · V, S, M (the stem of a plant with thorns)",
-        "1 action · 30 feet",
-        "Instantaneous",
+        "Thorn Whip",
+        "Transmutation · V, S, M",
+        "Cast time: 1 action",
+        "Range: 30 feet",
+        "Material: the stem of a plant with thorns",
+        "Duration: Instantaneous",
         "",
         "Make a ranged spell attack that deals piercing damage.",
       ].join("\n")

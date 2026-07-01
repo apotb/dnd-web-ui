@@ -133,7 +133,7 @@ import {
   ACTION_COST_ORDER,
   actionSourceBadgeLabel,
   getAllCharacterActions,
-  groupActionsByCost,
+  groupActionsBySheetSection,
 } from "@/lib/dnd/character-actions";
 import {
   deriveGrantedFeatures,
@@ -1267,7 +1267,7 @@ export function CharacterSheet({
     [data, featureCatalogs]
   );
   const actionsByCost = useMemo(
-    () => groupActionsByCost(characterActions),
+    () => groupActionsBySheetSection(characterActions),
     [characterActions]
   );
   const acBreakdown = useMemo(
@@ -2603,6 +2603,7 @@ export function CharacterSheet({
                                 <SpellGlossaryMeta
                                   spell={catalogSpell}
                                   usageLabel={grantUsage}
+                                  showMaterialLine
                                 />
                               ) : spell.notes && !isGrantSpell ? (
                                 <p className="text-xs text-muted-foreground capitalize truncate">

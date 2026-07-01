@@ -1,6 +1,9 @@
 "use client";
 
-import { buildMoveCombatOption } from "@/lib/combat/combat-options";
+import {
+  buildDashCombatOption,
+  buildMoveCombatOption,
+} from "@/lib/combat/combat-options";
 import { Tooltip } from "@/components/ui/tooltip";
 
 interface CombatMovePanelProps {
@@ -8,9 +11,12 @@ interface CombatMovePanelProps {
   speedFeet: number;
   dashAvailableFeet: number | null;
   dashUsed: boolean;
+  showDash: boolean;
   movementMode: boolean;
   disabled?: boolean;
+  dashDisabled?: boolean;
   onToggleMovementMode: () => void;
+  onSelectDash: () => void;
 }
 
 export function CombatMovePanel({
@@ -18,14 +24,21 @@ export function CombatMovePanel({
   speedFeet,
   dashAvailableFeet,
   dashUsed,
+  showDash,
   movementMode,
   disabled = false,
+  dashDisabled = false,
   onToggleMovementMode,
+  onSelectDash,
 }: CombatMovePanelProps) {
-  const option = buildMoveCombatOption({
+  const moveOption = buildMoveCombatOption({
     remainingFeet,
     speedFeet,
     dashAvailableFeet,
+    dashUsed,
+  });
+  const dashOption = buildDashCombatOption({
+    speedFeet,
     dashUsed,
   });
 
@@ -34,20 +47,39 @@ export function CombatMovePanel({
       <div className="combat-move-header">
         <h3 className="combat-move-title">Move</h3>
       </div>
-      <div className="combat-move-options">
-        <Tooltip content={option.tooltip}>
-          <button
-            type="button"
-            className={`combat-attack-option${
-              movementMode ? " combat-attack-option-active" : ""
-            }`}
-            disabled={disabled}
-            onClick={onToggleMovementMode}
-          >
-            <span className="combat-attack-option-name">{option.name}</span>
-            <span className="combat-attack-option-sub">{option.subtitle}</span>
-          </button>
-        </Tooltip>
+      <div className="combat-attack-body">
+        <div className="combat-move-options">
+          <Tooltip content={moveOption.tooltip}>
+            <button
+              type="button"
+              className={`combat-attack-option${
+                movementMode ? " combat-attack-option-active" : ""
+              }`}
+              disabled={disabled}
+              onClick={onToggleMovementMode}
+            >
+              <span className="combat-attack-option-name">{moveOption.name}</span>
+              <span className="combat-attack-option-sub">{moveOption.subtitle}</span>
+            </button>
+          </Tooltip>
+          {showDash ? (
+            <Tooltip content={dashOption.tooltip}>
+              <button
+                type="button"
+                className="combat-attack-option"
+                disabled={disabled || dashDisabled}
+                onClick={onSelectDash}
+              >
+                <span className="combat-attack-option-name">{dashOption.name}</span>
+                <span className="combat-attack-option-sub">{dashOption.subtitle}</span>
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
+        <div
+          className="combat-attack-scroll combat-attack-scroll-reserved"
+          aria-hidden="true"
+        />
       </div>
     </section>
   );
