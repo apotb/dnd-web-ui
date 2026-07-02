@@ -1,5 +1,6 @@
 import { getCampaignAccess } from "@/lib/auth/campaign-access";
 import { CampaignNotebookTab } from "@/components/character/campaign-notebook-tab";
+import { parseSoulmongerData } from "@/lib/schemas/soulmonger";
 
 export default async function CampaignNotebookPage({
   params,
@@ -18,6 +19,10 @@ export default async function CampaignNotebookPage({
           campaignId={campaignId}
           userId={access.user?.id ?? null}
           canUseNotebook={access.canUseNotebook}
+          isDm={access.isDm}
+          initialSoulmongerData={parseSoulmongerData(
+            access.campaign.soulmonger_data
+          )}
         />
       </section>
     </>

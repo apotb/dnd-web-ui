@@ -1,19 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CampaignSoulmonger } from "@/components/campaign/campaign-soulmonger";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
+import type { SoulmongerData } from "@/lib/schemas/soulmonger";
 
 interface CampaignNotebookTabProps {
   campaignId: string;
   userId: string | null;
   canUseNotebook: boolean;
+  isDm: boolean;
+  initialSoulmongerData: SoulmongerData;
 }
 
 export function CampaignNotebookTab({
   campaignId,
   userId,
   canUseNotebook,
+  isDm,
+  initialSoulmongerData,
 }: CampaignNotebookTabProps) {
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState<string | null>(null);
@@ -197,6 +203,12 @@ export function CampaignNotebookTab({
       ) : null}
 
       <SaveButton />
+
+      <CampaignSoulmonger
+        campaignId={campaignId}
+        initialSoulmongerData={initialSoulmongerData}
+        isDm={isDm}
+      />
     </div>
   );
 }

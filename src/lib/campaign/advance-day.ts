@@ -15,6 +15,10 @@ import {
   getCampaignCalendarDate,
   type WorldData,
 } from "@/lib/schemas/world";
+import {
+  applySoulmongerRolls,
+  type SoulmongerData,
+} from "@/lib/schemas/soulmonger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type DmEndOfDaySuppliesByCharacterId = Record<
@@ -23,6 +27,8 @@ export type DmEndOfDaySuppliesByCharacterId = Record<
 >;
 
 export type DmEndOfDayDehydrationSaveRolls = Record<string, number>;
+
+export type DmSoulmongerRolls = Record<string, number>;
 
 export function characterNeedsDehydrationSaveAfterSupplies(
   data: CharacterData,
@@ -80,7 +86,9 @@ export async function advanceCampaignDay(
   campaignId: string,
   worldData: WorldData,
   dmSuppliesByCharacterId?: DmEndOfDaySuppliesByCharacterId,
-  dehydrationSaveRolls?: DmEndOfDayDehydrationSaveRolls
+  dehydrationSaveRolls?: DmEndOfDayDehydrationSaveRolls,
+  soulmongerRolls?: DmSoulmongerRolls,
+  currentSoulmongerData?: SoulmongerData
 ): Promise<{ error?: string; nextWorldData?: WorldData }> {
   const endingDate = getCampaignCalendarDate(worldData);
   const nextWorldData = buildNextWorldData(worldData);
@@ -120,9 +128,28 @@ export async function advanceCampaignDay(
     }
   }
 
+  const nextSoulmongerData =
+    soulmongerRolls && currentSoulmongerData
+      ? applySoulmongerRolls(
+          currentSoulmongerData,
+          soulmongerRolls,
+          endingDate
+        )
+      : undefined;
+
+  const campaignUpdate: {
+    world_data: WorldData;
+    soulmonger_data?: SoulmongerData;
+  } = {
+    world_data: nextWorldData,
+  };
+  if (nextSoulmongerData) {
+    campaignUpdate.soulmonger_data = nextSoulmongerData;
+  }
+
   const { error: campaignError } = await supabase
     .from("campaigns")
-    .update({ world_data: nextWorldData })
+    .update(campaignUpdate)
     .eq("id", campaignId);
 
   if (campaignError) {

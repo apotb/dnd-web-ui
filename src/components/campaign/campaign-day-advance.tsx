@@ -6,19 +6,24 @@ import {
   characterNeedsDehydrationSaveAfterSupplies,
   type DmEndOfDayDehydrationSaveRolls,
   type DmEndOfDaySuppliesByCharacterId,
+  type DmSoulmongerRolls,
 } from "@/lib/campaign/advance-day";
 import { formatHarptosDate } from "@/lib/dnd/harptos-calendar";
 import { characterNeedsDmEndOfDaySupplies } from "@/lib/dnd/supplies";
+import { useRealtimeSoulmongerData } from "@/lib/hooks/use-realtime-soulmonger-data";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
 import type { ParsedCharacter } from "@/lib/character/utils";
+import type { SoulmongerData } from "@/lib/schemas/soulmonger";
 import { getCampaignCalendarDate, type WorldData } from "@/lib/schemas/world";
 import { createClient } from "@/lib/supabase/client";
 import { DmEndOfDayDehydrationSavesModal } from "@/components/campaign/dm-end-of-day-dehydration-saves-modal";
 import { DmEndOfDaySuppliesModal } from "@/components/campaign/dm-end-of-day-supplies-modal";
+import { DmSoulmongerRollModal } from "@/components/campaign/dm-soulmonger-roll-modal";
 
 interface CampaignDayAdvanceProps {
   campaignId: string;
   initialWorldData: WorldData;
+  initialSoulmongerData: SoulmongerData;
   characters: ParsedCharacter[];
   userId: string | null;
 }
@@ -26,19 +31,28 @@ interface CampaignDayAdvanceProps {
 export function CampaignDayAdvance({
   campaignId,
   initialWorldData,
+  initialSoulmongerData,
   characters,
   userId,
 }: CampaignDayAdvanceProps) {
   const worldData = useRealtimeWorldData(campaignId, initialWorldData);
+  const soulmongerData = useRealtimeSoulmongerData(
+    campaignId,
+    initialSoulmongerData
+  );
   const today = getCampaignCalendarDate(worldData);
   const [advancing, setAdvancing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [suppliesModalOpen, setSuppliesModalOpen] = useState(false);
   const [dehydrationModalOpen, setDehydrationModalOpen] = useState(false);
+  const [soulmongerModalOpen, setSoulmongerModalOpen] = useState(false);
   const [pendingSuppliesChoices, setPendingSuppliesChoices] =
     useState<DmEndOfDaySuppliesByCharacterId | null>(null);
   const [pendingDehydrationCharacters, setPendingDehydrationCharacters] =
     useState<ParsedCharacter[]>([]);
+  const [pendingDehydrationRolls, setPendingDehydrationRolls] =
+    useState<DmEndOfDayDehydrationSaveRolls | null>(null);
+  const [hadDehydrationStep, setHadDehydrationStep] = useState(false);
 
   const charactersNeedingDmSupplies = useMemo(() => {
     if (!worldData.dailySuppliesActive) return [];
@@ -47,16 +61,22 @@ export function CampaignDayAdvance({
     );
   }, [characters, userId, worldData.dailySuppliesActive]);
 
+  const activeSouls = soulmongerData.active;
+
   function resetAdvanceFlow() {
     setSuppliesModalOpen(false);
     setDehydrationModalOpen(false);
+    setSoulmongerModalOpen(false);
     setPendingSuppliesChoices(null);
     setPendingDehydrationCharacters([]);
+    setPendingDehydrationRolls(null);
+    setHadDehydrationStep(false);
   }
 
   async function runAdvanceDay(
     dmSuppliesByCharacterId?: DmEndOfDaySuppliesByCharacterId,
-    dehydrationSaveRolls?: DmEndOfDayDehydrationSaveRolls
+    dehydrationSaveRolls?: DmEndOfDayDehydrationSaveRolls,
+    soulmongerRolls?: DmSoulmongerRolls
   ) {
     setAdvancing(true);
     setMessage(null);
@@ -67,7 +87,9 @@ export function CampaignDayAdvance({
       campaignId,
       worldData,
       dmSuppliesByCharacterId,
-      dehydrationSaveRolls
+      dehydrationSaveRolls,
+      soulmongerRolls,
+      soulmongerRolls ? soulmongerData : undefined
     );
 
     if (error) {
@@ -94,6 +116,24 @@ export function CampaignDayAdvance({
     });
   }
 
+  function openSoulmongerOrAdvance(
+    suppliesChoices?: DmEndOfDaySuppliesByCharacterId,
+    dehydrationSaveRolls?: DmEndOfDayDehydrationSaveRolls
+  ) {
+    if (activeSouls.length > 0) {
+      if (suppliesChoices) {
+        setPendingSuppliesChoices(suppliesChoices);
+      }
+      if (dehydrationSaveRolls) {
+        setPendingDehydrationRolls(dehydrationSaveRolls);
+      }
+      setSoulmongerModalOpen(true);
+      return;
+    }
+
+    void runAdvanceDay(suppliesChoices, dehydrationSaveRolls);
+  }
+
   function onSuppliesConfirm(choices: DmEndOfDaySuppliesByCharacterId) {
     const needingSave = getCharactersNeedingDehydrationSave(choices);
 
@@ -105,12 +145,15 @@ export function CampaignDayAdvance({
       return;
     }
 
-    void runAdvanceDay(choices);
+    setSuppliesModalOpen(false);
+    openSoulmongerOrAdvance(choices);
   }
 
   function onDehydrationConfirm(rolls: DmEndOfDayDehydrationSaveRolls) {
     if (!pendingSuppliesChoices) return;
-    void runAdvanceDay(pendingSuppliesChoices, rolls);
+    setHadDehydrationStep(true);
+    setDehydrationModalOpen(false);
+    openSoulmongerOrAdvance(pendingSuppliesChoices, rolls);
   }
 
   function onDehydrationBack() {
@@ -120,13 +163,38 @@ export function CampaignDayAdvance({
     setSuppliesModalOpen(true);
   }
 
+  function onSoulmongerConfirm(rolls: DmSoulmongerRolls) {
+    void runAdvanceDay(
+      pendingSuppliesChoices ?? undefined,
+      pendingDehydrationRolls ?? undefined,
+      rolls
+    );
+  }
+
+  function onSoulmongerBack() {
+    if (advancing) return;
+    setSoulmongerModalOpen(false);
+
+    if (hadDehydrationStep && pendingSuppliesChoices) {
+      setDehydrationModalOpen(true);
+      return;
+    }
+
+    if (pendingSuppliesChoices) {
+      setSuppliesModalOpen(true);
+      return;
+    }
+
+    resetAdvanceFlow();
+  }
+
   function advanceDay() {
     if (charactersNeedingDmSupplies.length > 0) {
       setSuppliesModalOpen(true);
       return;
     }
 
-    void runAdvanceDay();
+    openSoulmongerOrAdvance();
   }
 
   return (
@@ -168,6 +236,20 @@ export function CampaignDayAdvance({
           saving={advancing}
           onCancel={onDehydrationBack}
           onConfirm={onDehydrationConfirm}
+        />
+      ) : null}
+      {soulmongerModalOpen && activeSouls.length > 0 ? (
+        <DmSoulmongerRollModal
+          souls={activeSouls}
+          endingDate={today}
+          saving={advancing}
+          onCancel={() => {
+            if (!advancing) {
+              resetAdvanceFlow();
+            }
+          }}
+          onBack={onSoulmongerBack}
+          onConfirm={onSoulmongerConfirm}
         />
       ) : null}
     </>

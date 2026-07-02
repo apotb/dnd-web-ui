@@ -25,6 +25,7 @@ import type { PartyData } from "@/lib/schemas/party";
 import type { WorldData } from "@/lib/schemas/world";
 import type { MapsData } from "@/lib/schemas/maps";
 import type { NotablesData } from "@/lib/schemas/notables";
+import type { SoulmongerData } from "@/lib/schemas/soulmonger";
 
 const OVERVIEW_TABS = [
   { id: "party", label: "Party" },
@@ -56,6 +57,7 @@ interface CampaignOverviewProps {
   initialWorldData: WorldData;
   initialMapsData: MapsData;
   initialNotablesData: NotablesData;
+  initialSoulmongerData: SoulmongerData;
   initialCalendarEvents: ParsedCalendarEvent[];
   initialCharacters: ParsedCharacter[];
   isDm: boolean;
@@ -70,6 +72,7 @@ export function CampaignOverview({
   initialWorldData,
   initialMapsData,
   initialNotablesData,
+  initialSoulmongerData,
   initialCalendarEvents,
   initialCharacters,
   isDm,
@@ -186,6 +189,7 @@ export function CampaignOverview({
             <CampaignDayAdvance
               campaignId={campaignId}
               initialWorldData={initialWorldData}
+              initialSoulmongerData={initialSoulmongerData}
               characters={characters}
               userId={userId}
             />

@@ -1190,6 +1190,72 @@ html.campaign-bg-active .retro-back-link {
   margin-top: 16px;
 }
 
+.soulmonger-section {
+  margin-top: 20px;
+}
+
+.soulmonger-intro {
+  margin: 0 0 12px;
+  font-size: 0.92em;
+  line-height: 1.45;
+}
+
+.soulmonger-active-list,
+.soulmonger-devoured-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.soulmonger-active-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.soulmonger-name-input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.soulmonger-remove-btn {
+  flex: 0 0 auto;
+}
+
+.soulmonger-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.soulmonger-devoured {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 2px solid var(--retro-border, #2a1810);
+}
+
+.soulmonger-devoured-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.soulmonger-devoured-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .calendar-events-section {
   margin-top: 12px;
 }
@@ -2712,6 +2778,10 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .dm-end-of-day-dehydration-row .dehydration-save-roll-row {
+  margin-top: 0;
+}
+
+.dm-soulmonger-roll-row .dehydration-save-roll-row {
   margin-top: 0;
 }
 
