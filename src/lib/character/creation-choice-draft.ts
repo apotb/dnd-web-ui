@@ -1,11 +1,25 @@
 import type { ConfigurableGrantedFeature } from "@/lib/character/feature-choices";
 import type { GrantConfigurableFeature } from "@/lib/character/feature-grant-features";
-import { TWO_HUMANOID_SPECIES_OPTION } from "@/lib/dnd/phb/favored-enemy-humanoids";
+import { getRangerPicksFromChoices } from "@/lib/dnd/phb/ranger-feature-slots";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 import type { CharacterData, FeatureChoices } from "@/lib/schemas/character";
 
 function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((value, index) => value === b[index]);
+}
+
+function enemyPicksEqual(
+  a: FeatureChoices["favoredEnemyPicks"],
+  b: FeatureChoices["favoredEnemyPicks"]
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((pick, index) => {
+    const other = b[index];
+    if (!other) return false;
+    if (pick.enemy !== other.enemy) return false;
+    return arraysEqual(pick.humanoidSpecies ?? [], other.humanoidSpecies ?? []);
+  });
 }
 
 function grantOwnedKeys(feature: GrantConfigurableFeature): {
@@ -69,7 +83,13 @@ export function isGrantFeatureDraftDirty(
     const savedVal = saved.featureChoices?.[key];
     const draftVal = draft.featureChoices?.[key];
     if (Array.isArray(savedVal) && Array.isArray(draftVal)) {
-      if (!arraysEqual(savedVal, draftVal)) return true;
+      const savedStrings = savedVal.every((item) => typeof item === "string");
+      const draftStrings = draftVal.every((item) => typeof item === "string");
+      if (savedStrings && draftStrings) {
+        if (!arraysEqual(savedVal, draftVal)) return true;
+      } else if (JSON.stringify(savedVal) !== JSON.stringify(draftVal)) {
+        return true;
+      }
     } else if (savedVal !== draftVal) {
       return true;
     }
@@ -148,17 +168,21 @@ export function isConfigurableFeatureDraftDirty(
   const savedChoices = saved.featureChoices ?? {};
   const draftChoices = draft.featureChoices ?? {};
 
-  if (savedChoices[feature.choiceKey] !== draftChoices[feature.choiceKey]) {
-    return true;
+  if (feature.choiceKey === "favoredEnemy") {
+    const level = getCharacterLevel(draft);
+    const savedPicks = getRangerPicksFromChoices(savedChoices, level).enemyPicks;
+    const draftPicks = getRangerPicksFromChoices(draftChoices, level).enemyPicks;
+    return !enemyPicksEqual(savedPicks, draftPicks);
   }
 
-  if (
-    feature.choiceKey === "favoredEnemy" &&
-    !arraysEqual(
-      savedChoices.favoredHumanoidSpecies ?? [],
-      draftChoices.favoredHumanoidSpecies ?? []
-    )
-  ) {
+  if (feature.choiceKey === "favoredTerrain") {
+    const level = getCharacterLevel(draft);
+    const savedTerrains = getRangerPicksFromChoices(savedChoices, level).terrains;
+    const draftTerrains = getRangerPicksFromChoices(draftChoices, level).terrains;
+    return !arraysEqual(savedTerrains, draftTerrains);
+  }
+
+  if (savedChoices[feature.choiceKey] !== draftChoices[feature.choiceKey]) {
     return true;
   }
 
@@ -172,14 +196,21 @@ export function buildConfigurableFeatureCommitPatch(
 ): Partial<CharacterData> {
   const savedChoices = saved.featureChoices ?? {};
   const draftChoices = draft.featureChoices ?? {};
-  const nextChoices = { ...savedChoices, [feature.choiceKey]: draftChoices[feature.choiceKey] };
+  const nextChoices: FeatureChoices = { ...savedChoices };
 
   if (feature.choiceKey === "favoredEnemy") {
-    if (draftChoices.favoredEnemy !== TWO_HUMANOID_SPECIES_OPTION) {
-      nextChoices.favoredHumanoidSpecies = [];
-    } else {
-      nextChoices.favoredHumanoidSpecies = draftChoices.favoredHumanoidSpecies ?? [];
-    }
+    const level = getCharacterLevel(draft);
+    nextChoices.favoredEnemyPicks = getRangerPicksFromChoices(draftChoices, level).enemyPicks;
+    const primary = nextChoices.favoredEnemyPicks[0];
+    nextChoices.favoredEnemy = primary?.enemy ?? "";
+    nextChoices.favoredHumanoidSpecies = primary?.humanoidSpecies ?? [];
+  } else if (feature.choiceKey === "favoredTerrain") {
+    const level = getCharacterLevel(draft);
+    nextChoices.favoredTerrains = getRangerPicksFromChoices(draftChoices, level).terrains;
+    nextChoices.favoredTerrain = nextChoices.favoredTerrains[0] ?? "";
+  } else {
+    (nextChoices as Record<string, unknown>)[feature.choiceKey] =
+      draftChoices[feature.choiceKey];
   }
 
   if (feature.choiceKey === "variantHumanFeat") {

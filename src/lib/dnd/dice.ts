@@ -98,7 +98,6 @@ export interface DamageRollResult {
   notation: string;
 }
 
-/** Roll damage from notation like "1d8+3", "2d6", or "1d10-1". */
 export function rollDamage(notation: string): DamageRollResult | null {
   const trimmed = notation.trim();
   const match = trimmed.match(/^(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?$/i);
@@ -123,6 +122,30 @@ export function rollDamage(notation: string): DamageRollResult | null {
     total,
     notation: trimmed,
   };
+}
+
+const GWF_MINIMUM_DIE = 2;
+
+/** Reroll damage dice showing 1 or 2; must use the new roll (PHB Great Weapon Fighting). */
+export function applyGreatWeaponFightingRerolls(
+  rolls: number[],
+  dieSides: number[]
+): number[] {
+  return rolls.map((roll, index) => {
+    if (roll > GWF_MINIMUM_DIE) return roll;
+    const sides = dieSides[index] ?? 6;
+    return rollDie(sides);
+  });
+}
+
+export function rollDamageWithGreatWeaponFighting(notation: string): DamageRollResult | null {
+  const result = rollDamage(notation);
+  if (!result) return null;
+  const parsed = parseDamageNotation(notation);
+  if (!parsed) return result;
+  const rerolled = applyGreatWeaponFightingRerolls(result.rolls, parsed.dice);
+  const total = rerolled.reduce((sum, value) => sum + value, 0) + result.modifier;
+  return { ...result, rolls: rerolled, total };
 }
 
 export function formatDamageRoll(result: DamageRollResult): string {

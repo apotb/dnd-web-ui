@@ -16,7 +16,7 @@ import { abilityModifier } from "@/lib/dnd/calculations";
 import { removeConditionSlugs } from "@/lib/dnd/conditions";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 import type {
   ActionCost,
   CharacterData,
@@ -135,7 +135,7 @@ function buildContext(
     data,
     classes,
     speciesList: catalogs.species,
-    level: levelFromXp(data.basicInfo.xp ?? 0),
+    level: getCharacterLevel(data),
     cls,
     subclassId: subclassMatch?.subclass.id,
   };

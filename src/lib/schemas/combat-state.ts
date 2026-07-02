@@ -112,6 +112,10 @@ export const pendingAttackSchema = z.object({
   unlocksTwoWeaponFighting: z.boolean().optional(),
   /** Wield hand of the weapon used for an action attack (for TWF bonus routing). */
   weaponWieldOffHand: z.boolean().optional(),
+  /** Great Weapon Fighting rerolls 1s and 2s on this attack's damage dice. */
+  greatWeaponFighting: z.boolean().optional(),
+  /** Token ids that used Protection to impose disadvantage on this attack. */
+  protectionTokenIds: z.array(z.string()).optional(),
   isAoe: z.boolean().default(false),
   ammunitionInventoryItemId: z.string().optional(),
   ammunitionItemId: z.string().optional(),
@@ -165,6 +169,8 @@ export const combatTokenSchema = z.object({
   hidden: z.boolean().default(false),
   /** Active combat feature effects (e.g. shell-defense). Persists across turns until removed. */
   activeEffects: z.array(z.string()).default([]),
+  /** When true, this enemy token's XP has already been added to the DM xp pool. */
+  xpContributed: z.boolean().optional(),
 });
 
 export const pendingOpportunityAttacksSchema = z.object({
@@ -212,12 +218,18 @@ export const combatStateSchema = z.object({
   }),
   pendingAttacks: z.array(pendingAttackSchema).default([]),
   pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
+  /** Token ids that have spent their reaction since their last turn. */
+  reactionUsedTokenIds: z.array(z.string()).default([]),
   boardTitle: z.string().default(DEFAULT_BOARD_TITLE),
   savedEncounterId: z.string().uuid().nullable().default(null),
   /** When true, the DM client automatically approves player actions awaiting review. */
   autoApprove: z.boolean().default(false),
   /** When true, the DM client's own actions skip the approval tray. */
   autoApproveDm: z.boolean().default(true),
+  /** DM-only accumulated XP from defeated enemies, pending distribution. */
+  xpPool: z.number().int().min(0).default(0),
+  /** Party character IDs that were on the combat board at any point this encounter. */
+  battleParticipantCharacterIds: z.array(z.string()).default([]),
 });
 
 export type BlockedCell = z.infer<typeof blockedCellSchema>;
@@ -301,6 +313,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
     },
     pendingAttacks: state.pendingAttacks ?? [],
     pendingOpportunityAttacks: state.pendingOpportunityAttacks ?? null,
+    reactionUsedTokenIds: state.reactionUsedTokenIds ?? [],
   };
 }
 

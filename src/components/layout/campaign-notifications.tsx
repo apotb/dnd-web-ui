@@ -39,16 +39,19 @@ import { DehydrationSaveModal } from "@/components/layout/dehydration-save-modal
 import { DeathSceneModal } from "@/components/layout/death-scene-modal";
 import { InitiativeRollModal } from "@/components/layout/initiative-roll-modal";
 import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
+import { LevelUpModal } from "@/components/character/level-up-modal";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   getExhaustionDeathMessage,
   getExhaustionModifiers,
 } from "@/lib/dnd/exhaustion";
+import { canCharacterLevelUp, getCharacterNextLevelUpTarget } from "@/lib/dnd/xp";
 
 type SupplyKind = "food" | "water";
 
 const FOOD_NOTIFICATION_IMAGE = "/food-notification.png";
 const WATER_NOTIFICATION_IMAGE = "/water-notification.png";
+const LEVEL_UP_NOTIFICATION_IMAGE = "/level-up-notification.png";
 
 interface CampaignNotificationsProps {
   campaignId: string;
@@ -262,6 +265,7 @@ export function CampaignNotifications({
   const [initiativeRollOpen, setInitiativeRollOpen] = useState(false);
   const [shortRestHealOpen, setShortRestHealOpen] = useState(false);
   const [deathSceneOpen, setDeathSceneOpen] = useState(false);
+  const [levelUpOpen, setLevelUpOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -308,11 +312,28 @@ export function CampaignNotifications({
   const showWater = character
     ? needsWater(character.data, worldData)
     : false;
+  const showLevelUp = character ? canCharacterLevelUp(character.data) : false;
+  const nextLevelTarget = character
+    ? getCharacterNextLevelUpTarget(character.data)
+    : null;
 
   const notifications = useMemo(() => {
     if (!character) return [];
 
     const items: CampaignNotificationItem[] = [];
+
+    if (showLevelUp && nextLevelTarget) {
+      items.push({
+        id: "level-up",
+        category: "alert",
+        title: `Level up to ${nextLevelTarget}`,
+        ariaLabel: "Level up",
+        imageSrc: LEVEL_UP_NOTIFICATION_IMAGE,
+        imageClassName: "campaign-notification-btn-level-up",
+        alertLevel: "reminder",
+        onClick: () => setLevelUpOpen(true),
+      });
+    }
 
     if (showFood) {
       const foodInfo = getFoodNotificationInfo(character.data);
@@ -343,11 +364,11 @@ export function CampaignNotifications({
     }
 
     return groupNotificationsByCategory(items);
-  }, [character, showFood, showWater, worldData]);
+  }, [character, showFood, showWater, showLevelUp, nextLevelTarget, worldData]);
 
   if (!userId || !ownedCharacterId || !character) return null;
 
-  const showRail = showFood || showWater;
+  const showRail = showFood || showWater || showLevelUp;
 
   const foodItems = getFoodItems(character.data);
   const waterItems = getWaterItems(character.data);
@@ -388,7 +409,7 @@ export function CampaignNotifications({
     }
   }
 
-  if (!showRail && !dehydrationSaveOpen && !initiativeRollOpen && !shortRestHealOpen && !deathSceneOpen && !activePicker) return null;
+  if (!showRail && !dehydrationSaveOpen && !initiativeRollOpen && !shortRestHealOpen && !deathSceneOpen && !levelUpOpen && !activePicker) return null;
 
   const modals = (
     <>
@@ -440,6 +461,21 @@ export function CampaignNotifications({
             if (!next.combat.pendingShortRest) {
               setShortRestHealOpen(false);
             }
+          }}
+        />
+      ) : null}
+      {levelUpOpen && character ? (
+        <LevelUpModal
+          characterId={character.id}
+          data={character.data}
+          originalData={character.data}
+          onCancel={() => {
+            setLevelUpOpen(false);
+            setMessage(null);
+          }}
+          onComplete={() => {
+            setLevelUpOpen(false);
+            setMessage(null);
           }}
         />
       ) : null}

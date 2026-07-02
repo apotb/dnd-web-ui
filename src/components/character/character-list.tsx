@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LinkButton } from "@/components/ui/link-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 
 interface CharacterListProps {
   campaignId: string;
@@ -47,7 +48,7 @@ export function CharacterList({
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
                   <p>
-                    Level {character.data.basicInfo.level}{" "}
+                    Level {getCharacterLevel(character.data)}{" "}
                     {character.data.basicInfo.classes.join(" / ") ||
                       character.data.basicInfo.class ||
                       "Adventurer"}

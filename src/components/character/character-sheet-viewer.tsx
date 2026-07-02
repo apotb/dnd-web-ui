@@ -18,6 +18,7 @@ import { CreationChoiceUnsavedGuard } from "@/components/character/creation-choi
 import { JsonImportExport } from "@/components/character/json-import-export";
 import { ShortRestHealModal } from "@/components/character/short-rest-heal-modal";
 import { HpPoolModal } from "@/components/character/hp-pool-modal";
+import { LevelUpModal } from "@/components/character/level-up-modal";
 import { AlertModal } from "@/components/ui/alert-modal";
 import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { saveCharacterData } from "@/lib/character/save-character-data";
@@ -28,6 +29,7 @@ import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import { getCampaignCalendarDate, type WorldData } from "@/lib/schemas/world";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { PhbBackground, PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
+import { canCharacterLevelUp } from "@/lib/dnd/xp";
 
 /** Wait for rapid edits (e.g. equip toggles) to settle before persisting. */
 const SAVE_DEBOUNCE_MS = 900;
@@ -97,6 +99,7 @@ export const CharacterSheetViewer = forwardRef<
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [hpPoolFeatureId, setHpPoolFeatureId] = useState<string | null>(null);
+  const [levelUpOpen, setLevelUpOpen] = useState(false);
   const [navWaitOpen, setNavWaitOpen] = useState(false);
   const [navSaveComplete, setNavSaveComplete] = useState(false);
   const [navWaitError, setNavWaitError] = useState<string | null>(null);
@@ -464,6 +467,9 @@ export const CharacterSheetViewer = forwardRef<
     data.combat.pendingShortRest &&
     character.id !== ownedCharacterId;
 
+  const levelUpAvailable = canCharacterLevelUp(data);
+  const canStartLevelUp = showDmUi && canEdit && levelUpAvailable;
+
   const navWaitMessage = navWaitError ?? NAV_WAIT_MESSAGE;
 
   return (
@@ -507,6 +513,7 @@ export const CharacterSheetViewer = forwardRef<
           canRest={canEdit}
           hpPoolCombatPreferred={hpPoolCombatPreferred}
           onUseHpPool={canEdit ? (featureId) => setHpPoolFeatureId(featureId) : undefined}
+          onStartLevelUp={canStartLevelUp ? () => setLevelUpOpen(true) : undefined}
         />
       </CreationChoiceEditProvider>
       {mounted && hpPoolFeatureId
@@ -528,6 +535,23 @@ export const CharacterSheetViewer = forwardRef<
               data={data}
               classes={classes}
               onApply={handleShortRestApply}
+            />,
+            document.body
+          )
+        : null}
+      {mounted && levelUpOpen
+        ? createPortal(
+            <LevelUpModal
+              characterId={character.id}
+              data={data}
+              originalData={character.data}
+              isDm={showDmUi}
+              onCancel={() => setLevelUpOpen(false)}
+              onSaved={(next) => {
+                markLocalEdit(next);
+                lastSyncedRevisionRef.current = localRevisionRef.current;
+              }}
+              onComplete={() => setLevelUpOpen(false)}
             />,
             document.body
           )

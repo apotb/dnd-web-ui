@@ -112,6 +112,8 @@ export const combatStatsSchema = z.object({
   speed: z.number().int().min(0).default(30),
   passivePerceptionOverride: z.number().optional(),
   hitDice: z.string().default("1d8"),
+  /** HP gained at each level after 1st (one entry per level-up). */
+  levelUpHpGains: z.array(z.number().int().min(1)).default([]),
   /** Hit dice spent since the last long rest (remaining = level − spent). */
   hitDiceSpent: z.number().int().min(0).default(0),
   /** Last in-game calendar date this character finished a long rest. */
@@ -221,10 +223,21 @@ export const inventoryItemSchema = z.object({
 /** Player-selected options for class/species features with choices (not starting gear/languages). */
 export const featureChoicesSchema = z.object({
   fightingStyle: z.string().default(""),
+  /** @deprecated Use favoredEnemyPicks — migrated on load. */
   favoredEnemy: z.string().default(""),
-  /** When favoredEnemy is "Two humanoid species", stores up to two species ids. */
+  /** @deprecated Use favoredEnemyPicks — migrated on load. */
   favoredHumanoidSpecies: z.array(z.string()).max(2).default([]),
+  /** @deprecated Use favoredTerrains — migrated on load. */
   favoredTerrain: z.string().default(""),
+  favoredEnemyPicks: z
+    .array(
+      z.object({
+        enemy: z.string(),
+        humanoidSpecies: z.array(z.string()).max(2).default([]),
+      })
+    )
+    .default([]),
+  favoredTerrains: z.array(z.string()).default([]),
   /** Feat id (e.g. alert) for Variant Human. */
   variantHumanFeat: z.string().default(""),
   /** Magic Initiate feat — spell list and picks. */
@@ -443,6 +456,9 @@ export const characterDataSchema = z.preprocess(
   inventory: inventorySchema.default(() => inventorySchema.parse({})),
   supplies: suppliesSchema.default(() => suppliesSchema.parse({})),
   exhaustionLevels: z.array(exhaustionLevelSchema).max(6).default([]),
+  levelUpFeats: z.record(z.string(), z.string()).default({}),
+  /** Feats granted by the DM outside level-up / species progression. */
+  dmGrantedFeats: z.array(z.string()).default([]),
   featureChoices: featureChoicesSchema.default(() => featureChoicesSchema.parse({})),
   speciesChoices: speciesChoicesSchema.default(() => speciesChoicesSchema.parse({})),
   backgroundChoices: backgroundChoicesSchema.default(() => backgroundChoicesSchema.parse({})),

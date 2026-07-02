@@ -13,6 +13,7 @@ import {
 } from "@/lib/content/catalog-tooltip";
 import { resolveBackgroundToolProficiencies } from "@/lib/dnd/character-builder/build-character";
 import type { CharacterCreatorState } from "@/lib/dnd/character-builder/types";
+import { getAllCharacterFeatIds } from "@/lib/character/character-feats";
 import { getFeat } from "@/lib/dnd/phb/feats";
 import { hasTavernBrawler } from "@/lib/dnd/unarmed-mechanics";
 import { PHB_BACKGROUNDS } from "@/lib/dnd/phb/backgrounds";
@@ -188,8 +189,9 @@ export function getArmorProficienciesWithSources(
     trackSource(tracker, a, speciesLabel(data))
   );
 
-  const featId = data.featureChoices?.variantHumanFeat;
-  if (featId) {
+  const featIds = getAllCharacterFeatIds(data);
+
+  for (const featId of featIds) {
     const feat = getFeat(featId);
     const featLabel = feat ? `Feat (${feat.name})` : "Feat";
     if (featId === "lightly-armored") trackSource(tracker, "light armor", featLabel);

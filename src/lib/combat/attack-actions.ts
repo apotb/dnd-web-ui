@@ -108,12 +108,18 @@ async function finalizePendingAttack(
   campaignId: string,
   state: CombatState,
   pending: PendingAttack,
-  charactersById: Record<string, ParsedCharacter>
+  charactersById: Record<string, ParsedCharacter>,
+  enemiesBySlug: Record<string, { data: EnemyData }> = {}
 ): Promise<{ next: CombatState; characterUpdates: CharacterHpUpdate[]; error?: string }> {
   const stateWithPending = getPendingAttackById(state, pending.id)
     ? state
     : addPendingAttack(state, pending);
-  const { next, characterUpdates } = applyResolvedAttack(stateWithPending, pending, charactersById);
+  const { next, characterUpdates } = applyResolvedAttack(
+    stateWithPending,
+    pending,
+    charactersById,
+    enemiesBySlug
+  );
   const error = await persistCombatState(campaignId, next);
   if (error) {
     return { next: state, characterUpdates: [], error };
@@ -136,13 +142,14 @@ async function maybeFinalizeAfterSaves(
   campaignId: string,
   state: CombatState,
   pending: PendingAttack,
-  charactersById: Record<string, ParsedCharacter>
+  charactersById: Record<string, ParsedCharacter>,
+  enemiesBySlug: Record<string, { data: EnemyData }> = {}
 ): Promise<{ next: CombatState; characterUpdates: CharacterHpUpdate[]; error?: string } | null> {
   if (!shouldAutoApprovePendingAttack(state, pending)) {
     return null;
   }
   const stateWithPending = updatePendingAttack(state, pending.id, pending);
-  return finalizePendingAttack(campaignId, stateWithPending, pending, charactersById);
+  return finalizePendingAttack(campaignId, stateWithPending, pending, charactersById, enemiesBySlug);
 }
 
 export async function submitCombatAttack(
@@ -189,7 +196,13 @@ export async function submitCombatAttack(
   );
 
   if (skipDmReview && pending.status === "awaiting-dm-review") {
-    return finalizePendingAttack(campaignId, state, pending, options.charactersById);
+    return finalizePendingAttack(
+      campaignId,
+      state,
+      pending,
+      options.charactersById,
+      options.enemiesBySlug
+    );
   }
 
   const next = addPendingAttack(state, pending);
@@ -211,6 +224,7 @@ export async function submitCombatSpellCast(
     attacker: CombatToken;
     combatOption: CombatOption;
     charactersById: Record<string, ParsedCharacter>;
+    enemiesBySlug?: Record<string, { data: EnemyData }>;
   }
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   if (!options.combatOption.spellCast) {
@@ -237,7 +251,13 @@ export async function submitCombatSpellCast(
   }
 
   if (skipDmReview && pending.status === "awaiting-dm-review") {
-    return finalizePendingAttack(campaignId, state, pending, options.charactersById);
+    return finalizePendingAttack(
+      campaignId,
+      state,
+      pending,
+      options.charactersById,
+      options.enemiesBySlug ?? {}
+    );
   }
 
   const next = addPendingAttack(state, pending);
@@ -296,7 +316,13 @@ export async function submitCombatOpportunityAttack(
   );
 
   if (skipDmReview && pending.status === "awaiting-dm-review") {
-    return finalizePendingAttack(campaignId, state, pending, options.charactersById);
+    return finalizePendingAttack(
+      campaignId,
+      state,
+      pending,
+      options.charactersById,
+      options.enemiesBySlug
+    );
   }
 
   const next = addPendingAttack(state, pending);
@@ -327,6 +353,7 @@ export async function submitCombatSaveRoll(
     saveTotal: number;
     saveRoll2?: number | null;
     charactersById: Record<string, ParsedCharacter>;
+    enemiesBySlug?: Record<string, { data: EnemyData }>;
   }
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   const pending = getPendingAttackById(state, options.pendingAttackId);
@@ -347,7 +374,8 @@ export async function submitCombatSaveRoll(
     campaignId,
     next,
     updated,
-    options.charactersById
+    options.charactersById,
+    options.enemiesBySlug ?? {}
   );
   if (finalized) {
     return finalized;
@@ -370,7 +398,8 @@ export async function submitCombatDmSaveRolls(
   pendingAttackId: string,
   saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number; saveRoll2?: number | null }>,
   charactersById: Record<string, ParsedCharacter>,
-  isDm: boolean
+  isDm: boolean,
+  enemiesBySlug: Record<string, { data: EnemyData }> = {}
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   const pending = getPendingAttackById(state, pendingAttackId);
   if (!pending || !isDm) {
@@ -384,7 +413,8 @@ export async function submitCombatDmSaveRolls(
     campaignId,
     next,
     updated,
-    charactersById
+    charactersById,
+    enemiesBySlug
   );
   if (finalized) {
     return finalized;
@@ -399,13 +429,20 @@ export async function resolveCombatAttack(
   state: CombatState,
   pending: PendingAttack,
   charactersById: Record<string, ParsedCharacter>,
-  isDm: boolean
+  isDm: boolean,
+  enemiesBySlug: Record<string, { data: EnemyData }> = {}
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   if (!isDm) {
     return { next: state, error: "Only the DM can resolve attacks." };
   }
 
-  const result = await finalizePendingAttack(campaignId, state, pending, charactersById);
+  const result = await finalizePendingAttack(
+    campaignId,
+    state,
+    pending,
+    charactersById,
+    enemiesBySlug
+  );
   return {
     next: result.next,
     characterUpdates: result.characterUpdates,

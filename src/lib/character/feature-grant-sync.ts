@@ -13,7 +13,7 @@ import {
   findSpeciesByDisplayName,
   findSubclassByName,
 } from "@/lib/content/catalog-tooltip";
-import { getFeat } from "@/lib/dnd/phb/feats";
+import { getAllCharacterFeatIds, hasMagicInitiateFeat } from "@/lib/character/character-feats";
 import {
   resolveAllSpellGrants,
   type SpellGrantSpec,
@@ -513,12 +513,14 @@ export function getEffectiveToolProficiencies(
 }
 
 function resolveFeatArmorGrants(data: CharacterData): string[] {
-  const featId = data.featureChoices?.variantHumanFeat;
-  if (!featId) return [];
+  const featIds = getAllCharacterFeatIds(data);
+
   const armor: string[] = [];
-  if (featId === "lightly-armored") armor.push("light armor");
-  if (featId === "moderately-armored") armor.push("medium armor", "shield");
-  if (featId === "heavily-armored") armor.push("heavy armor");
+  for (const featId of featIds) {
+    if (featId === "lightly-armored") armor.push("light armor");
+    if (featId === "moderately-armored") armor.push("medium armor", "shield");
+    if (featId === "heavily-armored") armor.push("heavy armor");
+  }
   return armor;
 }
 
@@ -574,9 +576,22 @@ export function syncFeatureGrants(
 
 /** Clear Magic Initiate sub-choices when feat changes away from Magic Initiate. */
 export function clearMagicInitiateChoices(
-  featureChoices: CharacterData["featureChoices"]
+  featureChoices: CharacterData["featureChoices"],
+  data?: Pick<CharacterData, "levelUpFeats" | "dmGrantedFeats" | "featureChoices">
 ): CharacterData["featureChoices"] {
-  if (featureChoices.variantHumanFeat === "magic-initiate") return featureChoices;
+  if (
+    data &&
+    hasMagicInitiateFeat({
+      featureChoices,
+      levelUpFeats: data.levelUpFeats,
+      dmGrantedFeats: data.dmGrantedFeats,
+    } as CharacterData)
+  ) {
+    return featureChoices;
+  }
+  if (!data && featureChoices.variantHumanFeat === "magic-initiate") {
+    return featureChoices;
+  }
   return {
     ...featureChoices,
     magicInitiateClass: "",

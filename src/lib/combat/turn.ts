@@ -124,6 +124,9 @@ export function advanceTurn(state: CombatState): CombatState {
       ...TURN_RESET_FIELDS,
     },
     pendingOpportunityAttacks: null,
+    reactionUsedTokenIds: state.reactionUsedTokenIds.filter(
+      (tokenId) => tokenId !== order[nextIndex]
+    ),
   };
 }
 

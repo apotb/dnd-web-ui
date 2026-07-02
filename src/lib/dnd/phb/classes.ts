@@ -2,74 +2,229 @@ import type { PhbClass } from "./types";
 
 export const PHB_CLASSES: PhbClass[] = [
   {
-    id: "barbarian",
-    name: "Barbarian",
-    hitDie: 12,
-    savingThrows: ["str", "con"],
-    skillChoiceCount: 2,
-    skillOptions: [
+    "id": "barbarian",
+    "name": "Barbarian",
+    "hitDie": 12,
+    "savingThrows": [
+      "str",
+      "con"
+    ],
+    "skillChoiceCount": 2,
+    "skillOptions": [
       "animalHandling",
       "athletics",
       "intimidation",
       "nature",
       "perception",
-      "survival",
+      "survival"
     ],
-    armorProficiencies: ["light armor", "medium armor", "shields"],
-    weaponProficiencies: ["simple weapons", "martial weapons"],
-    startingGold: { dice: 2, sides: 4, multiplier: 10 },
-    fixedEquipment: ["explorer's pack", "four javelins"],
-    equipmentChoices: [
-      {
-        prompt: "Primary weapon",
-        options: [
-          { label: "(a) greataxe", items: ["greataxe"] },
-          { label: "(b) martial melee weapon", items: ["martial melee weapon"] },
-        ],
-      },
-      {
-        prompt: "Secondary weapon",
-        options: [
-          { label: "(a) two handaxes", items: ["handaxe", "handaxe"] },
-          { label: "(b) any simple weapon", items: ["simple weapon"] },
-        ],
-      },
+    "armorProficiencies": [
+      "light armor",
+      "medium armor",
+      "shields"
     ],
-    subclassLevel: 3,
-    subclasses: [
-      {
-        id: "berserker",
-        name: "Path of the Berserker",
-        features: [{ name: "Frenzy", description: "Bonus action to enter frenzy for bonus attack each turn; exhaustion after." }],
-      },
-      {
-        id: "totem-warrior",
-        name: "Path of the Totem Warrior",
-        features: [{ name: "Spirit Seeker", description: "Choose a totem spirit at 3rd level granting benefits while raging." }],
-      },
+    "weaponProficiencies": [
+      "simple weapons",
+      "martial weapons"
     ],
-    features: [
-      {
-        name: "Rage",
-        slug: "rage",
-        description:
-          "2 rages per long rest. +2 damage, advantage on Str checks/saves, resistance to bludgeoning/piercing/slashing.",
-        mechanics: {
-          kind: "uses",
-          max: 2,
-          restReset: "long",
-        },
-      },
-      { name: "Unarmored Defense", description: "AC = 10 + Dex + Con when not wearing armor." },
+    "startingGold": {
+      "dice": 2,
+      "sides": 4,
+      "multiplier": 10
+    },
+    "fixedEquipment": [
+      "explorer's pack",
+      "four javelins"
     ],
+    "equipmentChoices": [
+      {
+        "prompt": "Primary weapon",
+        "options": [
+          {
+            "label": "(a) greataxe",
+            "items": [
+              "greataxe"
+            ]
+          },
+          {
+            "label": "(b) martial melee weapon",
+            "items": [
+              "martial melee weapon"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Secondary weapon",
+        "options": [
+          {
+            "label": "(a) two handaxes",
+            "items": [
+              "handaxe",
+              "handaxe"
+            ]
+          },
+          {
+            "label": "(b) any simple weapon",
+            "items": [
+              "simple weapon"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 3,
+    "subclasses": [
+      {
+        "id": "berserker",
+        "name": "Primal Path: Berserker",
+        "features": [
+          {
+            "name": "Frenzy",
+            "description": "Starting when you choose this path at 3rd level, you can go into a frenzy when you rage. If you do so, for the duration of your rage you can make a single melee weapon attack as a bonus action on each of your turns after this one. When your rage ends, you suffer one level of exhaustion (as described in appendix A).",
+            "slug": "frenzy",
+            "minLevel": 3
+          },
+          {
+            "name": "Mindless Rage",
+            "description": "Beginning at 6th level, you can't be charmed or frightened while raging. If you are charmed or frightened when you enter your rage, the effect is suspended for the duration of the rage.",
+            "slug": "mindless-rage",
+            "minLevel": 6
+          },
+          {
+            "name": "Intimidating Presence",
+            "description": "Beginning at 10th level, you can use your action to frighten someone with your menacing presence. When you do so, choose one creature that you can see within 30 feet of you. If the creature can see or hear you, it must succeed on a Wisdom saving throw (DC equal to 8 + your proficiency bonus + your Charisma modifier) or be frightened of you until the end of your next turn. On subsequent turns, you can use your action to extend the duration of this effect on the frightened creature until the end of your next turn. This effect ends if the creature ends its turn out of line of sight or more than 60 feet away from you.\n\n If the creature succeeds on its saving throw, you can't use this feature on that creature again for 24 hours.",
+            "slug": "intimidating-presence",
+            "minLevel": 10
+          },
+          {
+            "name": "Retaliation",
+            "description": "Starting at 14th level, when you take damage from a creature that is within 5 feet of you, you can use your reaction to make a melee weapon Attack against that creature.",
+            "slug": "retaliation",
+            "minLevel": 14
+          }
+        ]
+      },
+      {
+        "id": "totem-warrior",
+        "name": "Path of the Totem Warrior",
+        "features": [
+          {
+            "name": "Spirit Seeker",
+            "description": "Choose a totem spirit at 3rd level granting benefits while raging.",
+            "minLevel": 3
+          }
+        ]
+      }
+    ],
+    "features": [
+      {
+        "name": "Unarmored Defense",
+        "description": "While you are not wearing any armor, your Armor Class equals 10 + your Dexterity modifier + your Constitution modifier. You can use a shield and still gain this benefit.",
+        "slug": "barbarian-unarmored-defense",
+        "minLevel": 1
+      },
+      {
+        "name": "Rage",
+        "description": "In battle, you fight with primal ferocity. On your turn, you can enter a rage as a bonus action. While raging, you gain the following benefits if you aren't wearing heavy armor:\n\n- You have advantage on Strength checks and Strength saving throws.\n\n- When you make a melee weapon Attack using Strength, you gain a +2 bonus to the damage roll. This bonus increases as you level.\n\n- You have Resistance to bludgeoning, piercing, and slashing damage.\n\nIf you are able to cast Spells, you can't cast them or concentrate on them while raging.\n\nYour rage lasts for 1 minute. It ends early if you are knocked Unconscious or if Your Turn ends and you haven't attacked a hostile creature since your last turn or taken damage since then. You can also end your rage on Your Turn as a Bonus Action.\n\nOnce you have raged the maximum number of times for your barbarian level, you must finish a Long Rest before you can rage again. You may rage 2 times at 1st level, 3 at 3rd, 4 at 6th, 5 at 12th, and 6 at 17th.",
+        "slug": "rage",
+        "minLevel": 1,
+        "mechanics": {
+          "kind": "uses",
+          "max": 2,
+          "restReset": "long"
+        }
+      },
+      {
+        "name": "Danger Sense",
+        "description": "At 2nd level, you gain an uncanny sense of when things nearby aren't as they should be, giving you an edge when you dodge away from danger. You have advantage on Dexterity saving throws against effects that you can see, such as traps and spells. To gain this benefit, you can't be blinded, deafened, or incapacitated.",
+        "slug": "danger-sense",
+        "minLevel": 2
+      },
+      {
+        "name": "Reckless Attack",
+        "description": "Starting at 2nd level, you can throw aside all concern for defense to attack with fierce desperation. When you make your first attack on your turn, you can decide to attack recklessly. Doing so gives you advantage on melee weapon attack rolls using Strength during this turn, but attack rolls against you have advantage until your next turn.",
+        "slug": "reckless-attack",
+        "minLevel": 2
+      },
+      {
+        "name": "Extra Attack",
+        "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn.",
+        "slug": "barbarian-extra-attack",
+        "minLevel": 5
+      },
+      {
+        "name": "Fast Movement",
+        "description": "Starting at 5th level, your speed increases by 10 feet while you aren't wearing heavy armor.",
+        "slug": "fast-movement",
+        "minLevel": 5
+      },
+      {
+        "name": "Path feature",
+        "description": "At 3rd level, you choose a path that shapes the nature of your rage. Choose the Path of the Berserker or the Path of the Totem Warrior, both detailed at the end of the class description. Your choice grants you features at 3rd level and again at 6th, 10th, and 14th levels.",
+        "slug": "primal-path-improvement-1",
+        "minLevel": 6
+      },
+      {
+        "name": "Feral Instinct",
+        "description": "By 7th level, your instincts are so honed that you have advantage on initiative rolls.\n\nAdditionally, if you are surprised at the beginning of combat and aren't incapacitated, you can act normally on your first turn, but only if you enter your rage before doing anything else on that turn.",
+        "slug": "feral-instinct",
+        "minLevel": 7
+      },
+      {
+        "name": "Brutal Critical (1 die)",
+        "description": "Beginning at 9th level, you can roll one additional weapon damage die when determining the extra damage for a critical hit with a melee attack. This increases to two additional dice at 13th level and three additional dice at 17th level.",
+        "slug": "brutal-critical-1-die",
+        "minLevel": 9
+      },
+      {
+        "name": "Relentless Rage",
+        "description": "Starting at 11th level, your rage can keep you fighting despite grievous wounds. If you drop to 0 hit points while you're raging and don't die outright, you can make a DC 10 Constitution saving throw. If you succeed, you drop to 1 hit point instead.\n\nEach time you use this feature after the first, the DC increases by 5. When you finish a short or long rest, the DC resets to 10.",
+        "slug": "relentless-rage",
+        "minLevel": 11
+      },
+      {
+        "name": "Brutal Critical (2 dice)",
+        "description": "Beginning at 9th level, you can roll one additional weapon damage die when determining the extra damage for a critical hit with a melee attack. This increases to two additional dice at 13th level and three additional dice at 17th level.",
+        "slug": "brutal-critical-2-dice",
+        "minLevel": 13
+      },
+      {
+        "name": "Persistent Rage",
+        "description": "Beginning at 15th level, your rage is so fierce that it ends early only if you fall unconscious or if you choose to end it.",
+        "slug": "persistent-rage",
+        "minLevel": 15
+      },
+      {
+        "name": "Brutal Critical (3 dice)",
+        "description": "Beginning at 9th level, you can roll one additional weapon damage die when determining the extra damage for a critical hit with a melee attack. This increases to two additional dice at 13th level and three additional dice at 17th level.",
+        "slug": "brutal-critical-3-dice",
+        "minLevel": 17
+      },
+      {
+        "name": "Indomitable Might",
+        "description": "Beginning at 18th level, if your total for a Strength check is less than your Strength score, you can use that score in place of the total.",
+        "slug": "indomitable-might",
+        "minLevel": 18
+      },
+      {
+        "name": "Primal Champion",
+        "description": "At 20th level, you embody the power of the wilds. Your Strength and Constitution scores increase by 4. Your maximum for those scores is now 24.",
+        "slug": "primal-champion",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "bard",
-    name: "Bard",
-    hitDie: 8,
-    savingThrows: ["dex", "cha"],
-    skillChoiceCount: 3,
-    skillOptions: [
+    "id": "bard",
+    "name": "Bard",
+    "hitDie": 8,
+    "savingThrows": [
+      "dex",
+      "cha"
+    ],
+    "skillChoiceCount": 3,
+    "skillOptions": [
       "acrobatics",
       "animalHandling",
       "arcana",
@@ -87,147 +242,630 @@ export const PHB_CLASSES: PhbClass[] = [
       "religion",
       "sleightOfHand",
       "stealth",
-      "survival",
+      "survival"
     ],
-    armorProficiencies: ["light armor"],
-    weaponProficiencies: ["simple weapons", "hand crossbows", "longswords", "rapiers", "shortswords"],
-    toolProficiencies: ["three musical instruments"],
-    startingGold: { dice: 5, sides: 4, multiplier: 10 },
-    fixedEquipment: ["leather armor", "dagger", "lute"],
-    equipmentChoices: [
-      {
-        prompt: "Weapon",
-        options: [
-          { label: "(a) rapier", items: ["rapier"] },
-          { label: "(b) longsword", items: ["longsword"] },
-          { label: "(c) any simple weapon", items: ["simple weapon"] },
-        ],
-      },
-      {
-        prompt: "Pack",
-        options: [
-          { label: "(a) diplomat's pack", items: ["diplomat's pack"] },
-          { label: "(b) entertainer's pack", items: ["entertainer's pack"] },
-        ],
-      },
-      {
-        prompt: "Instrument",
-        options: [
-          { label: "(a) lute", items: ["lute"] },
-          { label: "(b) any musical instrument", items: ["musical instrument"] },
-        ],
-      },
+    "armorProficiencies": [
+      "light armor"
     ],
-    subclassLevel: 3,
-    subclasses: [
-      {
-        id: "lore",
-        name: "College of Lore",
-        features: [{ name: "Bonus Proficiencies", description: "Proficiency with three additional skills of your choice." }],
-      },
-      {
-        id: "valor",
-        name: "College of Valor",
-        features: [{ name: "Bonus Proficiencies", description: "Proficiency with medium armor, shields, and martial weapons." }],
-      },
+    "weaponProficiencies": [
+      "simple weapons",
+      "hand crossbows",
+      "longswords",
+      "rapiers",
+      "shortswords"
     ],
-    spellcasting: {
-      ability: "cha",
-      cantripsKnown: 2,
-      spellsKnown: 4,
-      ritual: true,
-      spellListId: "bard",
+    "toolProficiencies": [
+      "three musical instruments"
+    ],
+    "startingGold": {
+      "dice": 5,
+      "sides": 4,
+      "multiplier": 10
     },
-    features: [
-      {
-        name: "Bardic Inspiration",
-        slug: "bardic-inspiration",
-        description: "d6 die, number of uses = Cha mod (min 1), recharge on long rest.",
-        mechanics: {
-          kind: "uses",
-          max: "chaMod",
-          restReset: "long",
-        },
-      },
-      { name: "Spellcasting", description: "Charisma-based spellcasting." },
-      {
-        name: "Ritual Casting",
-        slug: "ritual-casting",
-        description:
-          "Cast any bard spell you know with the ritual tag as a ritual (add 10 minutes; no spell slot).",
-      },
+    "fixedEquipment": [
+      "leather armor",
+      "dagger",
+      "lute"
     ],
+    "equipmentChoices": [
+      {
+        "prompt": "Weapon",
+        "options": [
+          {
+            "label": "(a) rapier",
+            "items": [
+              "rapier"
+            ]
+          },
+          {
+            "label": "(b) longsword",
+            "items": [
+              "longsword"
+            ]
+          },
+          {
+            "label": "(c) any simple weapon",
+            "items": [
+              "simple weapon"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) diplomat's pack",
+            "items": [
+              "diplomat's pack"
+            ]
+          },
+          {
+            "label": "(b) entertainer's pack",
+            "items": [
+              "entertainer's pack"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Instrument",
+        "options": [
+          {
+            "label": "(a) lute",
+            "items": [
+              "lute"
+            ]
+          },
+          {
+            "label": "(b) any musical instrument",
+            "items": [
+              "musical instrument"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 3,
+    "subclasses": [
+      {
+        "id": "lore",
+        "name": "Bard College: Lore",
+        "features": [
+          {
+            "name": "Bonus Proficiencies",
+            "description": "When you join the College of Lore at 3rd level, you gain proficiency with three skills of your choice.",
+            "slug": "bonus-proficiencies",
+            "minLevel": 3
+          },
+          {
+            "name": "Cutting Words",
+            "description": "Also at 3rd level, you learn how to use your wit to distract, confuse, and otherwise sap the confidence and competence of others.\n\nWhen a creature that you can see within 60 feet of you makes an attack roll, an ability check, or a damage roll, you can use your reaction to expend one of your uses of Bardic Inspiration, rolling a Bardic Inspiration die and subtracting the number rolled from the creature's roll.\n\nYou can choose to use this feature after the creature makes its roll, but before the GM determines whether the attack roll or ability check succeeds or fails, or before the creature deals its damage. The creature is immune if it can't hear you or if it's immune to being charmed.",
+            "slug": "cutting-words",
+            "minLevel": 3
+          },
+          {
+            "name": "Additional Magical Secrets",
+            "description": "At 6th level, you learn two spells of your choice from any class. A spell you choose must be of a level you can cast, as shown on the Bard table, or a cantrip. The chosen spells count as bard spells for you but don't count against the number of bard spells you know.",
+            "slug": "additional-magical-secrets",
+            "minLevel": 6
+          },
+          {
+            "name": "Peerless Skill",
+            "description": "Starting at 14th level, when you make an ability check, you can expend one use of Bardic Inspiration. Roll a Bardic Inspiration die and add the number rolled to your ability check. You can choose to do so after you roll the die for the ability check, but before the GM tells you whether you succeed or fail.",
+            "slug": "peerless-skill",
+            "minLevel": 14
+          }
+        ]
+      },
+      {
+        "id": "valor",
+        "name": "College of Valor",
+        "features": [
+          {
+            "name": "Combat Inspiration",
+            "description": "Bardic Inspiration can add to AC or weapon damage rolls.",
+            "minLevel": 3
+          }
+        ]
+      }
+    ],
+    "spellcasting": {
+      "ability": "cha",
+      "cantripsKnown": 2,
+      "spellsKnown": 4,
+      "ritual": true,
+      "spellListId": "bard"
+    },
+    "features": [
+      {
+        "name": "Bardic Inspiration (d6)",
+        "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the GM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time.\n\nYou can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest. \n\nYour Bardic Inspiration die changes when you reach certain levels in this class. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level.",
+        "slug": "bardic-inspiration",
+        "minLevel": 1,
+        "mechanics": {
+          "kind": "uses",
+          "max": "chaMod",
+          "restReset": "long"
+        }
+      },
+      {
+        "name": "Spellcasting",
+        "description": "Charisma-based spellcasting."
+      },
+      {
+        "name": "Ritual Casting",
+        "slug": "ritual-casting",
+        "description": "Cast any bard spell you know with the ritual tag as a ritual (add 10 minutes; no spell slot)."
+      },
+      {
+        "name": "Jack of All Trades",
+        "description": "Starting at 2nd level, you can add half your proficiency bonus, rounded down, to any ability check you make that doesn't already include your proficiency bonus.",
+        "slug": "jack-of-all-trades",
+        "minLevel": 2
+      },
+      {
+        "name": "Song of Rest (d6)",
+        "description": "Beginning at 2nd level, you can use soothing music or oration to help revitalize your wounded allies during a short rest. If you or any friendly creatures who can hear your performance regain hit points at the end of the short rest by spending one or more Hit Dice, each of those creatures regains an extra 1d6 hit points. \n\nThe extra hit points increase when you reach certain levels in this class: to 1d8 at 9th level, to 1d10 at 13th level, and to 1d12 at 17th level.",
+        "slug": "song-of-rest-d6",
+        "minLevel": 2
+      },
+      {
+        "name": "Expertise",
+        "description": "At 3rd level, choose two of your skill proficiencies. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies. At 10th level, you can choose another two skill proficiencies to gain this benefit.",
+        "slug": "bard-expertise-1",
+        "minLevel": 3
+      },
+      {
+        "name": "Bardic Inspiration (d8)",
+        "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the GM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time.\n\nYou can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest. \n\nYour Bardic Inspiration die changes when you reach certain levels in this class. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level.",
+        "slug": "bardic-inspiration",
+        "minLevel": 5,
+        "mechanics": {
+          "kind": "uses",
+          "max": "chaMod",
+          "restReset": "long"
+        }
+      },
+      {
+        "name": "Font of Inspiration",
+        "description": "Beginning when you reach 5th level, you regain all of your expended uses of Bardic Inspiration when you finish a short or long rest.",
+        "slug": "font-of-inspiration",
+        "minLevel": 5
+      },
+      {
+        "name": "Countercharm",
+        "description": "At 6th level, you gain the ability to use musical notes or words of power to disrupt mind-influencing effects. As an action, you can start a performance that lasts until the end of your next turn. During that time, you and any friendly creatures within 30 feet of you have advantage on saving throws against being frightened or charmed. A creature must be able to hear you to gain this benefit. The performance ends early if you are incapacitated or silenced or if you voluntarily end it (no action required).",
+        "slug": "countercharm",
+        "minLevel": 6
+      },
+      {
+        "name": "Bard College feature",
+        "description": "At 3rd level, you delve into the advanced techniques of a bard college of your choice, such as the College of Lore. Your choice grants you features at 3rd level and again at 6th and 14th level.",
+        "slug": "bard-college-improvement-1",
+        "minLevel": 6
+      },
+      {
+        "name": "Song of Rest (d8)",
+        "description": "Beginning at 2nd level, you can use soothing music or oration to help revitalize your wounded allies during a short rest. If you or any friendly creatures who can hear your performance regain hit points at the end of the short rest by spending one or more Hit Dice, each of those creatures regains an extra 1d6 hit points. \n\nThe extra hit points increase when you reach certain levels in this class: to 1d8 at 9th level, to 1d10 at 13th level, and to 1d12 at 17th level.",
+        "slug": "song-of-rest-d8",
+        "minLevel": 9
+      },
+      {
+        "name": "Expertise",
+        "description": "At 3rd level, choose two of your skill proficiencies. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies. At 10th level, you can choose another two skill proficiencies to gain this benefit.",
+        "slug": "bard-expertise-2",
+        "minLevel": 10
+      },
+      {
+        "name": "Bardic Inspiration (d10)",
+        "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the GM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time.\n\nYou can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest. \n\nYour Bardic Inspiration die changes when you reach certain levels in this class. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level.",
+        "slug": "bardic-inspiration",
+        "minLevel": 10,
+        "mechanics": {
+          "kind": "uses",
+          "max": "chaMod",
+          "restReset": "long"
+        }
+      },
+      {
+        "name": "Magical Secrets",
+        "description": "By 10th level, you have plundered magical knowledge from a wide spectrum of disciplines. Choose two spells from any class, including this one. A spell you choose must be of a level you can cast, as shown on the Bard table, or a cantrip. \n\nThe chosen spells count as bard spells for you and are included in the number in the Spells Known column of the Bard table. \n\nYou learn two additional spells from any class at 14th level and again at 18th level.",
+        "slug": "magical-secrets-1",
+        "minLevel": 10
+      },
+      {
+        "name": "Song of Rest (d10)",
+        "description": "Beginning at 2nd level, you can use soothing music or oration to help revitalize your wounded allies during a short rest. If you or any friendly creatures who can hear your performance regain hit points at the end of the short rest by spending one or more Hit Dice, each of those creatures regains an extra 1d6 hit points. \n\nThe extra hit points increase when you reach certain levels in this class: to 1d8 at 9th level, to 1d10 at 13th level, and to 1d12 at 17th level.",
+        "slug": "song-of-rest-d10",
+        "minLevel": 13
+      },
+      {
+        "name": "Magical Secrets",
+        "description": "By 10th level, you have plundered magical knowledge from a wide spectrum of disciplines. Choose two spells from any class, including this one. A spell you choose must be of a level you can cast, as shown on the Bard table, or a cantrip. \n\nThe chosen spells count as bard spells for you and are included in the number in the Spells Known column of the Bard table. \n\nYou learn two additional spells from any class at 14th level and again at 18th level.",
+        "slug": "magical-secrets-2",
+        "minLevel": 14
+      },
+      {
+        "name": "Bardic Inspiration (d12)",
+        "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the GM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time.\n\nYou can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest. \n\nYour Bardic Inspiration die changes when you reach certain levels in this class. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level.",
+        "slug": "bardic-inspiration",
+        "minLevel": 15,
+        "mechanics": {
+          "kind": "uses",
+          "max": "chaMod",
+          "restReset": "long"
+        }
+      },
+      {
+        "name": "Song of Rest (d12)",
+        "description": "Beginning at 2nd level, you can use soothing music or oration to help revitalize your wounded allies during a short rest. If you or any friendly creatures who can hear your performance regain hit points at the end of the short rest by spending one or more Hit Dice, each of those creatures regains an extra 1d6 hit points. \n\nThe extra hit points increase when you reach certain levels in this class: to 1d8 at 9th level, to 1d10 at 13th level, and to 1d12 at 17th level.",
+        "slug": "song-of-rest-d12",
+        "minLevel": 17
+      },
+      {
+        "name": "Magical Secrets",
+        "description": "By 10th level, you have plundered magical knowledge from a wide spectrum of disciplines. Choose two spells from any class, including this one. A spell you choose must be of a level you can cast, as shown on the Bard table, or a cantrip. \n\nThe chosen spells count as bard spells for you and are included in the number in the Spells Known column of the Bard table. \n\nYou learn two additional spells from any class at 14th level and again at 18th level.",
+        "slug": "magical-secrets-3",
+        "minLevel": 18
+      },
+      {
+        "name": "Superior Inspiration",
+        "description": "At 20th level, when you roll initiative and have no uses of Bardic Inspiration left, you regain one use.",
+        "slug": "superior-inspiration",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "cleric",
-    name: "Cleric",
-    hitDie: 8,
-    savingThrows: ["wis", "cha"],
-    skillChoiceCount: 2,
-    skillOptions: ["history", "insight", "medicine", "persuasion", "religion"],
-    armorProficiencies: ["light armor", "medium armor", "shields"],
-    weaponProficiencies: ["simple weapons"],
-    startingGold: { dice: 5, sides: 4, multiplier: 10 },
-    fixedEquipment: ["shield", "holy symbol"],
-    equipmentChoices: [
-      {
-        prompt: "Weapon",
-        options: [
-          { label: "(a) mace", items: ["mace"] },
-          { label: "(b) warhammer (if proficient)", items: ["warhammer"] },
-          { label: "(c) any simple weapon", items: ["simple weapon"] },
-        ],
-      },
-      {
-        prompt: "Armor",
-        options: [
-          { label: "(a) scale mail", items: ["scale mail"] },
-          { label: "(b) leather armor", items: ["leather armor"] },
-          { label: "(c) chain mail (if proficient)", items: ["chain mail"] },
-        ],
-      },
-      {
-        prompt: "Pack",
-        options: [
-          { label: "(a) priest's pack", items: ["priest's pack"] },
-          { label: "(b) explorer's pack", items: ["explorer's pack"] },
-        ],
-      },
+    "id": "cleric",
+    "name": "Cleric",
+    "hitDie": 8,
+    "savingThrows": [
+      "wis",
+      "cha"
     ],
-    subclassLevel: 1,
-    subclasses: [
-      { id: "knowledge", name: "Knowledge Domain", features: [{ name: "Blessings of Knowledge", description: "Proficiency in two languages and two of Arcana, History, Nature, or Religion." }] },
-      { id: "life", name: "Life Domain", features: [{ name: "Bonus Proficiency", description: "Heavy armor proficiency." }, { name: "Disciple of Life", description: "Healing spells restore additional 2 + spell level HP." }] },
-      { id: "light", name: "Light Domain", features: [{ name: "Bonus Cantrip", description: "You learn the light cantrip." }, { name: "Warding Flare", description: "Impose disadvantage on attack against ally within 30 ft." }] },
-      { id: "nature", name: "Nature Domain", features: [{ name: "Acolyte of Nature", description: "One druid cantrip; proficiency in one of Animal Handling, Nature, or Survival." }] },
-      { id: "tempest", name: "Tempest Domain", features: [{ name: "Bonus Proficiencies", description: "Heavy armor and martial weapons." }, { name: "Wrath of the Storm", description: "Reaction to deal thunder/lightning damage to attacker." }] },
-      { id: "trickery", name: "Trickery Domain", features: [{ name: "Blessing of the Trickster", description: "Grant advantage on Stealth to ally within 30 ft." }] },
-      { id: "war", name: "War Domain", features: [{ name: "Bonus Proficiencies", description: "Heavy armor and martial weapons." }, { name: "War Priest", description: "Bonus weapon attack when casting a cleric spell." }] },
+    "skillChoiceCount": 2,
+    "skillOptions": [
+      "history",
+      "insight",
+      "medicine",
+      "persuasion",
+      "religion"
     ],
-    spellcasting: {
-      ability: "wis",
-      cantripsKnown: 3,
-      preparedCaster: true,
-      ritual: true,
-      spellListId: "cleric",
+    "armorProficiencies": [
+      "light armor",
+      "medium armor",
+      "shields"
+    ],
+    "weaponProficiencies": [
+      "simple weapons"
+    ],
+    "startingGold": {
+      "dice": 5,
+      "sides": 4,
+      "multiplier": 10
     },
-    features: [
-      { name: "Divine Domain", description: "Choose a domain at 1st level." },
-      {
-        name: "Ritual Casting",
-        slug: "ritual-casting",
-        description:
-          "Cast a prepared cleric spell with the ritual tag as a ritual (add 10 minutes; no spell slot).",
-      },
+    "fixedEquipment": [
+      "shield",
+      "holy symbol"
     ],
+    "equipmentChoices": [
+      {
+        "prompt": "Weapon",
+        "options": [
+          {
+            "label": "(a) mace",
+            "items": [
+              "mace"
+            ]
+          },
+          {
+            "label": "(b) warhammer (if proficient)",
+            "items": [
+              "warhammer"
+            ]
+          },
+          {
+            "label": "(c) any simple weapon",
+            "items": [
+              "simple weapon"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Armor",
+        "options": [
+          {
+            "label": "(a) scale mail",
+            "items": [
+              "scale mail"
+            ]
+          },
+          {
+            "label": "(b) leather armor",
+            "items": [
+              "leather armor"
+            ]
+          },
+          {
+            "label": "(c) chain mail (if proficient)",
+            "items": [
+              "chain mail"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) priest's pack",
+            "items": [
+              "priest's pack"
+            ]
+          },
+          {
+            "label": "(b) explorer's pack",
+            "items": [
+              "explorer's pack"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 1,
+    "subclasses": [
+      {
+        "id": "life",
+        "name": "Life Domain",
+        "features": [
+          {
+            "name": "Bonus Proficiency",
+            "description": "When you choose this domain at 1st level, you gain proficiency with heavy armor.",
+            "slug": "bonus-proficiency",
+            "minLevel": 1
+          },
+          {
+            "name": "Disciple of Life",
+            "description": "Also starting at 1st level, your healing spells are more effective. Whenever you use a spell of 1st level or higher to restore hit points to a creature, the creature regains additional hit points equal to 2 + the spell's level.",
+            "slug": "disciple-of-life",
+            "minLevel": 1
+          },
+          {
+            "name": "Channel Divinity: Preserve Life",
+            "description": "Starting at 2nd level, you can use your Channel Divinity to heal the badly injured.\n\nAs an action, you present your holy symbol and evoke healing energy that can restore a number of hit points equal to five times your cleric level.\n\nChoose any creatures within 30 feet of you, and divide those hit points among them. This feature can restore a creature to no more than half of its hit point maximum. You can't use this feature on an undead or a construct.",
+            "slug": "channel-divinity-preserve-life",
+            "minLevel": 2
+          },
+          {
+            "name": "Blessed Healer",
+            "description": "Beginning at 6th level, the healing spells you cast on others heal you as well. When you cast a spell of 1st level or higher that restores hit points to a creature other than you, you regain hit points equal to 2 + the spell's level.",
+            "slug": "blessed-healer",
+            "minLevel": 6
+          },
+          {
+            "name": "Divine Strike",
+            "description": "At 8th level, you gain the ability to infuse your weapon strikes with divine energy. Once on each of your turns when you hit a creature with a weapon attack, you can cause the attack to deal an extra 1d8 radiant damage to the target. When you reach 14th level, the extra damage increases to 2d8.",
+            "slug": "divine-strike",
+            "minLevel": 8
+          }
+        ]
+      },
+      {
+        "id": "knowledge",
+        "name": "Knowledge Domain",
+        "features": [
+          {
+            "name": "Blessings of Knowledge",
+            "description": "Proficiency in two languages and two of Arcana, History, Nature, or Religion.",
+            "minLevel": 1
+          }
+        ]
+      },
+      {
+        "id": "light",
+        "name": "Light Domain",
+        "features": [
+          {
+            "name": "Bonus Cantrip",
+            "description": "You learn the light cantrip.",
+            "minLevel": 1
+          },
+          {
+            "name": "Warding Flare",
+            "description": "Impose disadvantage on attack against ally within 30 ft.",
+            "minLevel": 1
+          }
+        ]
+      },
+      {
+        "id": "nature",
+        "name": "Nature Domain",
+        "features": [
+          {
+            "name": "Acolyte of Nature",
+            "description": "One druid cantrip; proficiency in one of Animal Handling, Nature, or Survival.",
+            "minLevel": 1
+          }
+        ]
+      },
+      {
+        "id": "tempest",
+        "name": "Tempest Domain",
+        "features": [
+          {
+            "name": "Bonus Proficiencies",
+            "description": "Heavy armor and martial weapons.",
+            "minLevel": 1
+          },
+          {
+            "name": "Wrath of the Storm",
+            "description": "Reaction to deal thunder/lightning damage to attacker.",
+            "minLevel": 1
+          }
+        ]
+      },
+      {
+        "id": "trickery",
+        "name": "Trickery Domain",
+        "features": [
+          {
+            "name": "Blessing of the Trickster",
+            "description": "Grant advantage on Stealth to ally within 30 ft.",
+            "minLevel": 1
+          }
+        ]
+      },
+      {
+        "id": "war",
+        "name": "War Domain",
+        "features": [
+          {
+            "name": "Bonus Proficiencies",
+            "description": "Heavy armor and martial weapons.",
+            "minLevel": 1
+          },
+          {
+            "name": "War Priest",
+            "description": "Bonus weapon attack when casting a cleric spell.",
+            "minLevel": 1
+          }
+        ]
+      }
+    ],
+    "spellcasting": {
+      "ability": "wis",
+      "cantripsKnown": 3,
+      "preparedCaster": true,
+      "ritual": true,
+      "spellListId": "cleric"
+    },
+    "features": [
+      {
+        "name": "Domain Spells",
+        "description": "Each domain has a list of spells--its domain spells--that you gain at the cleric levels noted in the domain description. Once you gain a domain spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day.\n\nIf you have a domain spell that doesn't appear on the cleric spell list, the spell is nonetheless a cleric spell for you.",
+        "slug": "domain-spells-1",
+        "minLevel": 1
+      },
+      {
+        "name": "Divine Domain",
+        "description": "Choose a domain at 1st level."
+      },
+      {
+        "name": "Ritual Casting",
+        "slug": "ritual-casting",
+        "description": "Cast a prepared cleric spell with the ritual tag as a ritual (add 10 minutes; no spell slot)."
+      },
+      {
+        "name": "Channel Divinity (1/rest)",
+        "description": "At 2nd level, you gain the ability to channel divine energy directly from your deity, using that energy to fuel magical effects. You start with two such effects: Turn Undead and an effect determined by your domain. Some domains grant you additional effects as you advance in levels, as noted in the domain description.\n\nWhen you use your Channel Divinity, you choose which effect to create. You must then finish a short or long rest to use your Channel Divinity again.\n\nSome Channel Divinity effects require saving throws. When you use such an effect from this class, the DC equals your cleric spell save DC.\n\nBeginning at 6th level, you can use your Channel Divinity twice between rests, and beginning at 18th level, you can use it three times between rests. When you finish a short or long rest, you regain your expended uses.",
+        "slug": "channel-divinity-1-rest",
+        "minLevel": 2
+      },
+      {
+        "name": "Channel Divinity: Turn Undead",
+        "description": "As an action, you present your holy symbol and speak a prayer censuring the undead. Each undead that can see or hear you within 30 feet of you must make a Wisdom saving throw. If the creature fails its saving throw, it is turned for 1 minute or until it takes any damage.\n\nA turned creature must spend its turns trying to move as far away from you as it can, and it can't willingly move to a space within 30 feet of you. It also can't take reactions. For its action, it can use only the Dash action or try to escape from an effect that prevents it from moving. If there's nowhere to move, the creature can use the Dodge action.",
+        "slug": "channel-divinity-turn-undead",
+        "minLevel": 2
+      },
+      {
+        "name": "Domain Spells",
+        "description": "Each domain has a list of spells--its domain spells--that you gain at the cleric levels noted in the domain description. Once you gain a domain spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day.\n\nIf you have a domain spell that doesn't appear on the cleric spell list, the spell is nonetheless a cleric spell for you.",
+        "slug": "domain-spells-2",
+        "minLevel": 3
+      },
+      {
+        "name": "Destroy Undead (CR 1/2 or below)",
+        "description": "Starting at 5th level, when an undead fails its saving throw against your Turn Undead feature, the creature is instantly destroyed if its challenge rating is at or below a certain threshold.",
+        "slug": "destroy-undead-cr-1-2-or-below",
+        "minLevel": 5
+      },
+      {
+        "name": "Domain Spells",
+        "description": "Each domain has a list of spells--its domain spells--that you gain at the cleric levels noted in the domain description. Once you gain a domain spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day.\n\nIf you have a domain spell that doesn't appear on the cleric spell list, the spell is nonetheless a cleric spell for you.",
+        "slug": "domain-spells-3",
+        "minLevel": 5
+      },
+      {
+        "name": "Channel Divinity (2/rest)",
+        "description": "Beginning at 6th level, you can use your Channel Divinity twice between rests, and beginning at 18th level, you can use it three times between rests. When you finish a short or long rest, you regain your expended uses.",
+        "slug": "channel-divinity-2-rest",
+        "minLevel": 6
+      },
+      {
+        "name": "Domain Spells",
+        "description": "Each domain has a list of spells--its domain spells--that you gain at the cleric levels noted in the domain description. Once you gain a domain spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day.\n\nIf you have a domain spell that doesn't appear on the cleric spell list, the spell is nonetheless a cleric spell for you.",
+        "slug": "domain-spells-4",
+        "minLevel": 7
+      },
+      {
+        "name": "Destroy Undead (CR 1 or below)",
+        "description": "Starting at 5th level, when an undead fails its saving throw against your Turn Undead feature, the creature is instantly destroyed if its challenge rating is at or below a certain threshold.",
+        "slug": "destroy-undead-cr-1-or-below",
+        "minLevel": 8
+      },
+      {
+        "name": "Domain Spells",
+        "description": "Each domain has a list of spells--its domain spells--that you gain at the cleric levels noted in the domain description. Once you gain a domain spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day.\n\nIf you have a domain spell that doesn't appear on the cleric spell list, the spell is nonetheless a cleric spell for you.",
+        "slug": "domain-spells-5",
+        "minLevel": 9
+      },
+      {
+        "name": "Divine Intervention",
+        "description": "Beginning at 10th level, you can call on your deity to intervene on your behalf when your need is great.\n\nImploring your deity's aid requires you to use your action. Describe the assistance you seek, and roll percentile dice. If you roll a number equal to or lower than your cleric level, your deity intervenes. The GM chooses the nature of the intervention; the effect of any cleric spell or cleric domain spell would be appropriate.\n\nIf your deity intervenes, you can't use this feature again for 7 days. Otherwise, you can use it again after you finish a long rest.\n\nAt 20th level, your call for intervention succeeds automatically, no roll required.",
+        "slug": "divine-intervention",
+        "minLevel": 10
+      },
+      {
+        "name": "Destroy Undead (CR 2 or below)",
+        "description": "Starting at 5th level, when an undead fails its saving throw against your Turn Undead feature, the creature is instantly destroyed if its challenge rating is at or below a certain threshold.",
+        "slug": "destroy-undead-cr-2-or-below",
+        "minLevel": 11
+      },
+      {
+        "name": "Destroy Undead (CR 3 or below)",
+        "description": "Starting at 5th level, when an undead fails its saving throw against your Turn Undead feature, the creature is instantly destroyed if its challenge rating is at or below a certain threshold.",
+        "slug": "destroy-undead-cr-3-or-below",
+        "minLevel": 14
+      },
+      {
+        "name": "Destroy Undead (CR 4 or below)",
+        "description": "Starting at 5th level, when an undead fails its saving throw against your Turn Undead feature, the creature is instantly destroyed if its challenge rating is at or below a certain threshold.",
+        "slug": "destroy-undead-cr-4-or-below",
+        "minLevel": 17
+      },
+      {
+        "name": "Supreme Healing",
+        "description": "Starting at 17th level, when you would normally roll one or more dice to restore hit points with a spell, you instead use the highest number possible for each die. For example, instead of restoring 2d6 hit points to a creature, you restore 12.",
+        "slug": "supreme-healing",
+        "minLevel": 17
+      },
+      {
+        "name": "Channel Divinity (3/rest)",
+        "description": "Beginning at 6th level, you can use your Channel Divinity twice between rests, and beginning at 18th level, you can use it three times between rests. When you finish a short or long rest, you regain your expended uses.",
+        "slug": "channel-divinity-3-rest",
+        "minLevel": 18
+      },
+      {
+        "name": "Divine Intervention Improvement",
+        "description": "At 20th level, your call for intervention succeeds automatically, no roll required.",
+        "slug": "divine-intervention-improvement",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "druid",
-    name: "Druid",
-    hitDie: 8,
-    savingThrows: ["int", "wis"],
-    skillChoiceCount: 2,
-    skillOptions: [
+    "id": "druid",
+    "name": "Druid",
+    "hitDie": 8,
+    "savingThrows": [
+      "int",
+      "wis"
+    ],
+    "skillChoiceCount": 2,
+    "skillOptions": [
       "arcana",
       "animalHandling",
       "insight",
@@ -235,10 +873,14 @@ export const PHB_CLASSES: PhbClass[] = [
       "nature",
       "perception",
       "religion",
-      "survival",
+      "survival"
     ],
-    armorProficiencies: ["light armor", "medium armor", "shields (nonmetal)"],
-    weaponProficiencies: [
+    "armorProficiencies": [
+      "light armor",
+      "medium armor",
+      "shields (nonmetal)"
+    ],
+    "weaponProficiencies": [
       "clubs",
       "daggers",
       "darts",
@@ -248,56 +890,252 @@ export const PHB_CLASSES: PhbClass[] = [
       "scimitars",
       "sickles",
       "slings",
-      "spears",
+      "spears"
     ],
-    toolProficiencies: ["herbalism kit"],
-    startingGold: { dice: 2, sides: 4, multiplier: 10 },
-    fixedEquipment: ["leather armor", "explorer's pack", "druidic focus"],
-    equipmentChoices: [
-      {
-        prompt: "Weapon",
-        options: [
-          { label: "(a) wooden shield", items: ["shield"] },
-          { label: "(b) any simple weapon", items: ["simple weapon"] },
-        ],
-      },
-      {
-        prompt: "Secondary",
-        options: [
-          { label: "(a) scimitar", items: ["scimitar"] },
-          { label: "(b) any simple melee weapon", items: ["simple melee weapon"] },
-        ],
-      },
+    "toolProficiencies": [
+      "herbalism kit"
     ],
-    subclassLevel: 2,
-    subclasses: [
-      { id: "land", name: "Circle of the Land", features: [{ name: "Bonus Cantrip", description: "Learn one additional druid cantrip." }, { name: "Natural Recovery", description: "Recover spell slots on short rest once per day." }] },
-      { id: "moon", name: "Circle of the Moon", features: [{ name: "Combat Wild Shape", description: "Bonus action wild shape; higher CR forms at 1st level." }] },
-    ],
-    spellcasting: {
-      ability: "wis",
-      cantripsKnown: 2,
-      preparedCaster: true,
-      ritual: true,
-      spellListId: "druid",
+    "startingGold": {
+      "dice": 2,
+      "sides": 4,
+      "multiplier": 10
     },
-    features: [
-      { name: "Druidic", description: "Secret language of druids." },
-      {
-        name: "Ritual Casting",
-        slug: "ritual-casting",
-        description:
-          "Cast a prepared druid spell with the ritual tag as a ritual (add 10 minutes; no spell slot).",
-      },
+    "fixedEquipment": [
+      "leather armor",
+      "explorer's pack",
+      "druidic focus"
     ],
+    "equipmentChoices": [
+      {
+        "prompt": "Weapon",
+        "options": [
+          {
+            "label": "(a) wooden shield",
+            "items": [
+              "shield"
+            ]
+          },
+          {
+            "label": "(b) any simple weapon",
+            "items": [
+              "simple weapon"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Secondary",
+        "options": [
+          {
+            "label": "(a) scimitar",
+            "items": [
+              "scimitar"
+            ]
+          },
+          {
+            "label": "(b) any simple melee weapon",
+            "items": [
+              "simple melee weapon"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 2,
+    "subclasses": [
+      {
+        "id": "land",
+        "name": "Druid Circle: Land",
+        "features": [
+          {
+            "name": "Bonus Cantrip",
+            "description": "When you choose this circle at 2nd level, you learn one additional druid cantrip of your choice.",
+            "slug": "bonus-cantrip",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle of the Land",
+            "description": "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. These druids meet within sacred circles of trees or standing stones to whisper primal secrets in Druidic. The circle's wisest members preside as the chief priests of communities that hold to the Old Faith and serve as advisors to the rulers of those folk. As a member of this circle, your magic is influenced by the land where you were initiated into the circle's mysterious rites.",
+            "slug": "circle-of-the-land",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle of the Land: Arctic",
+            "description": "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. These druids meet within sacred circles of trees or standing stones to whisper primal secrets in Druidic. The circle's wisest members preside as the chief priests of communities that hold to the Old Faith and serve as advisors to the rulers of those folk. As a member of this circle, your magic is influenced by the land where you were initiated into the circle's mysterious rites.",
+            "slug": "circle-of-the-land-arctic",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle of the Land: Coast",
+            "description": "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. These druids meet within sacred circles of trees or standing stones to whisper primal secrets in Druidic. The circle's wisest members preside as the chief priests of communities that hold to the Old Faith and serve as advisors to the rulers of those folk. As a member of this circle, your magic is influenced by the land where you were initiated into the circle's mysterious rites.",
+            "slug": "circle-of-the-land-coast",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle of the Land: Desert",
+            "description": "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. These druids meet within sacred circles of trees or standing stones to whisper primal secrets in Druidic. The circle's wisest members preside as the chief priests of communities that hold to the Old Faith and serve as advisors to the rulers of those folk. As a member of this circle, your magic is influenced by the land where you were initiated into the circle's mysterious rites.",
+            "slug": "circle-of-the-land-desert",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle of the Land: Forest",
+            "description": "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. These druids meet within sacred circles of trees or standing stones to whisper primal secrets in Druidic. The circle's wisest members preside as the chief priests of communities that hold to the Old Faith and serve as advisors to the rulers of those folk. As a member of this circle, your magic is influenced by the land where you were initiated into the circle's mysterious rites.",
+            "slug": "circle-of-the-land-forest",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle of the Land: Grassland",
+            "description": "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. These druids meet within sacred circles of trees or standing stones to whisper primal secrets in Druidic. The circle's wisest members preside as the chief priests of communities that hold to the Old Faith and serve as advisors to the rulers of those folk. As a member of this circle, your magic is influenced by the land where you were initiated into the circle's mysterious rites.",
+            "slug": "circle-of-the-land-grassland",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle of the Land: Mountain",
+            "description": "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. These druids meet within sacred circles of trees or standing stones to whisper primal secrets in Druidic. The circle's wisest members preside as the chief priests of communities that hold to the Old Faith and serve as advisors to the rulers of those folk. As a member of this circle, your magic is influenced by the land where you were initiated into the circle's mysterious rites.",
+            "slug": "circle-of-the-land-mountain",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle of the Land: Swamp",
+            "description": "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. These druids meet within sacred circles of trees or standing stones to whisper primal secrets in Druidic. The circle's wisest members preside as the chief priests of communities that hold to the Old Faith and serve as advisors to the rulers of those folk. As a member of this circle, your magic is influenced by the land where you were initiated into the circle's mysterious rites.",
+            "slug": "circle-of-the-land-swamp",
+            "minLevel": 2
+          },
+          {
+            "name": "Natural Recovery",
+            "description": "Starting at 2nd level, you can regain some of your magical energy by sitting in meditation and communing with nature. During a short rest, you choose expended spell slots to recover. The spell slots can have a combined level that is equal to or less than half your druid level (rounded up), and none of the slots can be 6th level or higher. You can't use this feature again until you finish a long rest.\n\nFor example, when you are a 4th-level druid, you can recover up to two levels worth of spell slots. You can recover either a 2nd-level slot or two 1st-level slots.",
+            "slug": "natural-recovery",
+            "minLevel": 2
+          },
+          {
+            "name": "Circle Spells",
+            "description": "Your mystical connection to the land infuses you with the ability to cast certain spells. At 3rd, 5th, 7th, and 9th level you gain access to circle spells connected to the land where you became a druid.\n\nChoose that land--arctic, coast, desert, forest, grassland, mountain, or swamp--and consult the associated list of spells.\n\nOnce you gain access to a circle spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day. If you gain access to a spell that doesn't appear on the druid spell list, the spell is nonetheless a druid spell for you.",
+            "slug": "circle-spells-1",
+            "minLevel": 3
+          },
+          {
+            "name": "Circle Spells",
+            "description": "Your mystical connection to the land infuses you with the ability to cast certain spells. At 3rd, 5th, 7th, and 9th level you gain access to circle spells connected to the land where you became a druid.\n\nChoose that land--arctic, coast, desert, forest, grassland, mountain, or swamp--and consult the associated list of spells.\n\nOnce you gain access to a circle spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day. If you gain access to a spell that doesn't appear on the druid spell list, the spell is nonetheless a druid spell for you.",
+            "slug": "circle-spells-2",
+            "minLevel": 5
+          },
+          {
+            "name": "Land's Stride",
+            "description": "Starting at 6th level, moving through nonmagical difficult terrain costs you no extra movement. You can also pass through nonmagical plants without being slowed by them and without taking damage from them if they have thorns, spines, or a similar hazard.\n\nIn addition, you have advantage on saving throws against plants that are magically created or manipulated to impede movement, such those created by the entangle spell.",
+            "slug": "druid-lands-stride",
+            "minLevel": 6
+          },
+          {
+            "name": "Circle Spells",
+            "description": "Your mystical connection to the land infuses you with the ability to cast certain spells. At 3rd, 5th, 7th, and 9th level you gain access to circle spells connected to the land where you became a druid.\n\nChoose that land--arctic, coast, desert, forest, grassland, mountain, or swamp--and consult the associated list of spells.\n\nOnce you gain access to a circle spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day. If you gain access to a spell that doesn't appear on the druid spell list, the spell is nonetheless a druid spell for you.",
+            "slug": "circle-spells-3",
+            "minLevel": 7
+          },
+          {
+            "name": "Circle Spells",
+            "description": "Your mystical connection to the land infuses you with the ability to cast certain spells. At 3rd, 5th, 7th, and 9th level you gain access to circle spells connected to the land where you became a druid.\n\nChoose that land--arctic, coast, desert, forest, grassland, mountain, or swamp--and consult the associated list of spells.\n\nOnce you gain access to a circle spell, you always have it prepared, and it doesn't count against the number of spells you can prepare each day. If you gain access to a spell that doesn't appear on the druid spell list, the spell is nonetheless a druid spell for you.",
+            "slug": "circle-spells-4",
+            "minLevel": 9
+          },
+          {
+            "name": "Nature's Ward",
+            "description": "When you reach 10th level, you can't be charmed or frightened by elementals or fey, and you are immune to poison and disease.",
+            "slug": "natures-ward",
+            "minLevel": 10
+          },
+          {
+            "name": "Nature's Sanctuary",
+            "description": "When you reach 14th level, creatures of the natural world sense your connection to nature and become hesitant to attack you. When a beast or plant creature attacks you, that creature must make a Wisdom saving throw against your druid spell save DC. On a failed save, the creature must choose a different target, or the attack automatically misses. On a successful save, the creature is immune to this effect for 24 hours. The creature is aware of this effect before it makes its attack against you.",
+            "slug": "natures-sanctuary",
+            "minLevel": 14
+          }
+        ]
+      },
+      {
+        "id": "moon",
+        "name": "Circle of the Moon",
+        "features": [
+          {
+            "name": "Combat Wild Shape",
+            "description": "Bonus action wild shape; higher CR forms at 1st level.",
+            "minLevel": 2
+          }
+        ]
+      }
+    ],
+    "spellcasting": {
+      "ability": "wis",
+      "cantripsKnown": 2,
+      "preparedCaster": true,
+      "ritual": true,
+      "spellListId": "druid"
+    },
+    "features": [
+      {
+        "name": "Druidic",
+        "description": "You know Druidic, the secret language of druids. You can speak the language and use it to leave hidden messages. You and others who know this language automatically spot such a message. Others spot the message's presence with a successful DC 15 Wisdom (Perception) check but can't decipher it without magic.",
+        "slug": "druidic",
+        "minLevel": 1
+      },
+      {
+        "name": "Ritual Casting",
+        "slug": "ritual-casting",
+        "description": "Cast a prepared druid spell with the ritual tag as a ritual (add 10 minutes; no spell slot)."
+      },
+      {
+        "name": "Wild Shape (CR 1/4 or below, no flying or swim speed)",
+        "description": "Starting at 2nd level, you can use your action to magically assume the shape of a beast that you have seen before. You can use this feature twice. You regain expended uses when you finish a short or long rest.\n\nYour druid level determines the beasts you can transform into, as shown in the Beast Shapes table. At 2nd level, for example, you can transform into any beast that has a challenge rating of 1/4 or lower that doesn't have a flying or swimming speed.\n\nYou can stay in a beast shape for a number of hours equal to half your druid level (rounded down). You then revert to your normal form unless you expend another use of this feature. You can revert to your normal form earlier by using a bonus action on your turn. You automatically revert if you fall unconscious, drop to 0 hit points, or die.\n\nWhile you are transformed, the following rules apply:\n\n- Your game statistics are replaced by the statistics of the beast, but you retain your alignment, personality, and Intelligence, Wisdom, and Charisma scores. You also retain all of your skill and saving throw proficiencies, in addition to gaining those of the creature. If the creature has the same proficiency as you and the bonus in its stat block is higher than yours, use the creature's bonus instead of yours. If the creature has any legendary or lair actions, you can't use them.\n\n- When you transform, you assume the beast's hit points and Hit Dice. When you revert to your normal form, you return to the number of hit points you had before you transformed. However, if you revert as a result of dropping to 0 hit points, any excess damage carries over to your normal form. For example, if you take 10 damage in animal form and have only 1 hit point left, you revert and take 9 damage. As long as the excess damage doesn't reduce your normal form to 0 hit points, you aren't knocked unconscious.\n\n- You can't cast spells, and your ability to speak or take any action that requires hands is limited to the capabilities of your beast form. Transforming doesn't break your concentration on a spell you've already cast, however, or prevent you from taking actions that are part of a spell, such as call lightning, that you've already cast.\n\n- You retain the benefit of any features from your class, race, or other source and can use them if the new form is physically capable of doing so. However, you can't use any of your special senses, such as darkvision, unless your new form also has that sense.\n\n- You choose whether your equipment falls to the ground in your space, merges into your new form, or is worn by it. Worn equipment functions as normal, but the GM decides whether it is practical for the new form to wear a piece of equipment, based on the creature's shape and size. Your equipment doesn't change size or shape to match the new form, and any equipment that the new form can't wear must either fall to the ground or merge with it. Equipment that merges with the form has no effect until you leave the form.",
+        "slug": "wild-shape-cr-1-4-or-below-no-flying-or-swim-speed",
+        "minLevel": 2
+      },
+      {
+        "name": "Wild Shape (CR 1/2 or below, no flying speed)",
+        "description": "Starting at 2nd level, you can use your action to magically assume the shape of a beast that you have seen before. You can use this feature twice. You regain expended uses when you finish a short or long rest.\n\nYour druid level determines the beasts you can transform into, as shown in the Beast Shapes table. At 2nd level, for example, you can transform into any beast that has a challenge rating of 1/4 or lower that doesn't have a flying or swimming speed.\n\nYou can stay in a beast shape for a number of hours equal to half your druid level (rounded down). You then revert to your normal form unless you expend another use of this feature. You can revert to your normal form earlier by using a bonus action on your turn. You automatically revert if you fall unconscious, drop to 0 hit points, or die.\n\nWhile you are transformed, the following rules apply:\n\n- Your game statistics are replaced by the statistics of the beast, but you retain your alignment, personality, and Intelligence, Wisdom, and Charisma scores. You also retain all of your skill and saving throw proficiencies, in addition to gaining those of the creature. If the creature has the same proficiency as you and the bonus in its stat block is higher than yours, use the creature's bonus instead of yours. If the creature has any legendary or lair actions, you can't use them.\n\n- When you transform, you assume the beast's hit points and Hit Dice. When you revert to your normal form, you return to the number of hit points you had before you transformed. However, if you revert as a result of dropping to 0 hit points, any excess damage carries over to your normal form. For example, if you take 10 damage in animal form and have only 1 hit point left, you revert and take 9 damage. As long as the excess damage doesn't reduce your normal form to 0 hit points, you aren't knocked unconscious.\n\n- You can't cast spells, and your ability to speak or take any action that requires hands is limited to the capabilities of your beast form. Transforming doesn't break your concentration on a spell you've already cast, however, or prevent you from taking actions that are part of a spell, such as call lightning, that you've already cast.\n\n- You retain the benefit of any features from your class, race, or other source and can use them if the new form is physically capable of doing so. However, you can't use any of your special senses, such as darkvision, unless your new form also has that sense.\n\n- You choose whether your equipment falls to the ground in your space, merges into your new form, or is worn by it. Worn equipment functions as normal, but the GM decides whether it is practical for the new form to wear a piece of equipment, based on the creature's shape and size. Your equipment doesn't change size or shape to match the new form, and any equipment that the new form can't wear must either fall to the ground or merge with it. Equipment that merges with the form has no effect until you leave the form.",
+        "slug": "wild-shape-cr-1-2-or-below-no-flying-speed",
+        "minLevel": 4
+      },
+      {
+        "name": "Druid Circle feature",
+        "description": "At 2nd level, you choose to identify with a circle of druids, such as the Circle of the Land. Your choice grants you features at 2nd level and again at 6th, 10th, and 14th level.",
+        "slug": "druid-circle-improvement-1",
+        "minLevel": 6
+      },
+      {
+        "name": "Wild Shape (CR 1 or below)",
+        "description": "Starting at 2nd level, you can use your action to magically assume the shape of a beast that you have seen before. You can use this feature twice. You regain expended uses when you finish a short or long rest.\n\nYour druid level determines the beasts you can transform into, as shown in the Beast Shapes table. At 2nd level, for example, you can transform into any beast that has a challenge rating of 1/4 or lower that doesn't have a flying or swimming speed.\n\nYou can stay in a beast shape for a number of hours equal to half your druid level (rounded down). You then revert to your normal form unless you expend another use of this feature. You can revert to your normal form earlier by using a bonus action on your turn. You automatically revert if you fall unconscious, drop to 0 hit points, or die.\n\nWhile you are transformed, the following rules apply:\n\n- Your game statistics are replaced by the statistics of the beast, but you retain your alignment, personality, and Intelligence, Wisdom, and Charisma scores. You also retain all of your skill and saving throw proficiencies, in addition to gaining those of the creature. If the creature has the same proficiency as you and the bonus in its stat block is higher than yours, use the creature's bonus instead of yours. If the creature has any legendary or lair actions, you can't use them.\n\n- When you transform, you assume the beast's hit points and Hit Dice. When you revert to your normal form, you return to the number of hit points you had before you transformed. However, if you revert as a result of dropping to 0 hit points, any excess damage carries over to your normal form. For example, if you take 10 damage in animal form and have only 1 hit point left, you revert and take 9 damage. As long as the excess damage doesn't reduce your normal form to 0 hit points, you aren't knocked unconscious.\n\n- You can't cast spells, and your ability to speak or take any action that requires hands is limited to the capabilities of your beast form. Transforming doesn't break your concentration on a spell you've already cast, however, or prevent you from taking actions that are part of a spell, such as call lightning, that you've already cast.\n\n- You retain the benefit of any features from your class, race, or other source and can use them if the new form is physically capable of doing so. However, you can't use any of your special senses, such as darkvision, unless your new form also has that sense.\n\n- You choose whether your equipment falls to the ground in your space, merges into your new form, or is worn by it. Worn equipment functions as normal, but the GM decides whether it is practical for the new form to wear a piece of equipment, based on the creature's shape and size. Your equipment doesn't change size or shape to match the new form, and any equipment that the new form can't wear must either fall to the ground or merge with it. Equipment that merges with the form has no effect until you leave the form.",
+        "slug": "wild-shape-cr-1-or-below",
+        "minLevel": 8
+      },
+      {
+        "name": "Beast Spells",
+        "description": "Beginning at 18th level, you can cast many of your druid spells in any shape you assume using Wild Shape. You can perform the somatic and verbal components of a druid spell while in a beast shape, but you aren't able to provide material components.",
+        "slug": "beast-spells",
+        "minLevel": 18
+      },
+      {
+        "name": "Timeless Body",
+        "description": "Starting at 18th level, the primal magic that you wield causes you to age more slowly. For every 10 years that pass, your body ages only 1 year.",
+        "slug": "druid-timeless-body",
+        "minLevel": 18
+      },
+      {
+        "name": "Archdruid",
+        "description": "At 20th level, you can use your Wild Shape an unlimited number of times.\n\nAdditionally, you can ignore the verbal and somatic components of your druid spells, as well as any material components that lack a cost and aren't consumed by a spell. You gain this benefit in both your normal shape and your beast shape from Wild Shape.",
+        "slug": "archdruid",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "fighter",
-    name: "Fighter",
-    hitDie: 10,
-    savingThrows: ["str", "con"],
-    skillChoiceCount: 2,
-    skillOptions: [
+    "id": "fighter",
+    "name": "Fighter",
+    "hitDie": 10,
+    "savingThrows": [
+      "str",
+      "con"
+    ],
+    "skillChoiceCount": 2,
+    "skillOptions": [
       "acrobatics",
       "animalHandling",
       "athletics",
@@ -305,172 +1143,910 @@ export const PHB_CLASSES: PhbClass[] = [
       "insight",
       "intimidation",
       "perception",
-      "survival",
+      "survival"
     ],
-    armorProficiencies: ["all armor", "shields"],
-    weaponProficiencies: ["simple weapons", "martial weapons"],
-    startingGold: { dice: 5, sides: 4, multiplier: 10 },
-    fixedEquipment: [],
-    equipmentChoices: [
+    "armorProficiencies": [
+      "all armor",
+      "shields"
+    ],
+    "weaponProficiencies": [
+      "simple weapons",
+      "martial weapons"
+    ],
+    "startingGold": {
+      "dice": 5,
+      "sides": 4,
+      "multiplier": 10
+    },
+    "fixedEquipment": [],
+    "equipmentChoices": [
       {
-        prompt: "Armor",
-        options: [
-          { label: "(a) chain mail", items: ["chain mail"] },
-          { label: "(b) leather armor, longbow, and 20 arrows", items: ["leather armor", "longbow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow"] },
-        ],
+        "prompt": "Armor",
+        "options": [
+          {
+            "label": "(a) chain mail",
+            "items": [
+              "chain mail"
+            ]
+          },
+          {
+            "label": "(b) leather armor, longbow, and 20 arrows",
+            "items": [
+              "leather armor",
+              "longbow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow"
+            ]
+          }
+        ]
       },
       {
-        prompt: "Weapon & shield",
-        options: [
-          { label: "(a) martial weapon and shield", items: ["martial weapon", "shield"] },
-          { label: "(b) two martial weapons", items: ["martial weapon", "martial weapon"] },
-        ],
+        "prompt": "Weapon & shield",
+        "options": [
+          {
+            "label": "(a) martial weapon and shield",
+            "items": [
+              "martial weapon",
+              "shield"
+            ]
+          },
+          {
+            "label": "(b) two martial weapons",
+            "items": [
+              "martial weapon",
+              "martial weapon"
+            ]
+          }
+        ]
       },
       {
-        prompt: "Ranged or sidearm",
-        options: [
-          { label: "(a) light crossbow and 20 bolts", items: ["light crossbow", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt"] },
-          { label: "(b) two handaxes", items: ["handaxe", "handaxe"] },
-        ],
+        "prompt": "Ranged or sidearm",
+        "options": [
+          {
+            "label": "(a) light crossbow and 20 bolts",
+            "items": [
+              "light crossbow",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt"
+            ]
+          },
+          {
+            "label": "(b) two handaxes",
+            "items": [
+              "handaxe",
+              "handaxe"
+            ]
+          }
+        ]
       },
       {
-        prompt: "Pack",
-        options: [
-          { label: "(a) dungeoneer's pack", items: ["dungeoneer's pack"] },
-          { label: "(b) explorer's pack", items: ["explorer's pack"] },
-        ],
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) dungeoneer's pack",
+            "items": [
+              "dungeoneer's pack"
+            ]
+          },
+          {
+            "label": "(b) explorer's pack",
+            "items": [
+              "explorer's pack"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 3,
+    "subclasses": [
+      {
+        "id": "champion",
+        "name": "Martial Archetype: Champion",
+        "features": [
+          {
+            "name": "Improved Critical",
+            "description": "Beginning when you choose this archetype at 3rd level, your weapon attacks score a critical hit on a roll of 19 or 20.",
+            "slug": "improved-critical",
+            "minLevel": 3
+          },
+          {
+            "name": "Remarkable Athlete",
+            "description": "Starting at 7th level, you can add half your proficiency bonus (round up) to any Strength, Dexterity, or Constitution check you make that doesn't already use your proficiency bonus. In addition, when you make a running long jump, the distance you can cover increases by a number of feet equal to your Strength modifier.",
+            "slug": "remarkable-athlete",
+            "minLevel": 7
+          },
+          {
+            "name": "Additional Fighting Style",
+            "description": "At 10th level, you can choose a second option from the Fighting Style class feature.",
+            "slug": "additional-fighting-style",
+            "minLevel": 10
+          },
+          {
+            "name": "Superior Critical",
+            "description": "Starting at 15th level, your weapon attacks score a critical hit on a roll of 18-20.",
+            "slug": "superior-critical",
+            "minLevel": 15
+          },
+          {
+            "name": "Survivor",
+            "description": "At 18th level, you attain the pinnacle of resilience in battle. At the start of each of your turns, you regain hit points equal to 5 + your Constitution modifier if you have no more than half of your hit points left. You don't gain this benefit if you have 0 hit points.",
+            "slug": "survivor",
+            "minLevel": 18
+          }
+        ]
       },
+      {
+        "id": "battle-master",
+        "name": "Battle Master",
+        "features": [
+          {
+            "name": "Combat Superiority",
+            "description": "Four superiority dice (d8) for maneuvers.",
+            "minLevel": 3
+          }
+        ]
+      },
+      {
+        "id": "eldritch-knight",
+        "name": "Eldritch Knight",
+        "features": [
+          {
+            "name": "Spellcasting",
+            "description": "Intelligence-based wizard spells from abjuration and evocation.",
+            "minLevel": 3
+          }
+        ]
+      }
     ],
-    subclassLevel: 3,
-    subclasses: [
-      { id: "champion", name: "Champion", features: [{ name: "Improved Critical", description: "Critical hits on 19–20." }] },
-      { id: "battle-master", name: "Battle Master", features: [{ name: "Combat Superiority", description: "Four superiority dice (d8) for maneuvers." }] },
-      { id: "eldritch-knight", name: "Eldritch Knight", features: [{ name: "Spellcasting", description: "Intelligence-based wizard spells from abjuration and evocation." }] },
-    ],
-    features: [
-      { name: "Fighting Style", description: "Choose a fighting style." },
-      { name: "Second Wind", description: "Regain 1d10 + fighter level HP once per short rest." },
-    ],
+    "features": [
+      {
+        "name": "Fighting Style",
+        "description": "You adopt a particular style of fighting as your specialty. Choose one of the following options. You can't take a Fighting Style option more than once, even if you later get to choose again.",
+        "slug": "fighter-fighting-style",
+        "minLevel": 1
+      },
+      {
+        "name": "Second Wind",
+        "description": "You have a limited well of stamina that you can draw on to protect yourself from harm. On your turn, you can use a bonus action to regain hit points equal to 1d10 + your fighter level. Once you use this feature, you must finish a short or long rest before you can use it again.",
+        "slug": "second-wind",
+        "minLevel": 1
+      },
+      {
+        "name": "Fighting Style: Archery",
+        "description": "You gain a +2 bonus to attack rolls you make with ranged weapons.",
+        "slug": "fighter-fighting-style-archery",
+        "minLevel": 1
+      },
+      {
+        "name": "Fighting Style: Defense",
+        "description": "While you are wearing armor, you gain a +1 bonus to AC.",
+        "slug": "fighter-fighting-style-defense",
+        "minLevel": 1
+      },
+      {
+        "name": "Fighting Style: Dueling",
+        "description": "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon.",
+        "slug": "fighter-fighting-style-dueling",
+        "minLevel": 1
+      },
+      {
+        "name": "Fighting Style: Great Weapon Fighting",
+        "description": "When you roll a 1 or 2 on a damage die for an attack you make with a melee weapon that you are wielding with two hands, you can reroll the die and must use the new roll, even if the new roll is a 1 or a 2. The weapon must have the two-handed or versatile property for you to gain this benefit.",
+        "slug": "fighter-fighting-style-great-weapon-fighting",
+        "minLevel": 1
+      },
+      {
+        "name": "Fighting Style: Protection",
+        "description": "When a creature you can see attacks a target other than you that is within 5 feet of you, you can use your reaction to impose disadvantage on the attack roll. You must be wielding a shield.",
+        "slug": "fighter-fighting-style-protection",
+        "minLevel": 1
+      },
+      {
+        "name": "Fighting Style: Two-Weapon Fighting",
+        "description": "When you engage in two-weapon fighting, you can add your ability modifier to the damage of the second attack.",
+        "slug": "fighter-fighting-style-two-weapon-fighting",
+        "minLevel": 1
+      },
+      {
+        "name": "Action Surge (1 use)",
+        "description": "Starting at 2nd level, you can push yourself beyond your normal limits for a moment. On your turn, you can take one additional action on top of your regular action and a possible bonus action.\n\nOnce you use this feature, you must finish a short or long rest before you can use it again. Starting at 17th level, you can use it twice before a rest, but only once on the same turn.",
+        "slug": "action-surge-1-use",
+        "minLevel": 2
+      },
+      {
+        "name": "Extra Attack",
+        "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn. The number of attacks increases to three when you reach 11th level in this class and to four when you reach 20th level in this class.",
+        "slug": "extra-attack-1",
+        "minLevel": 5
+      },
+      {
+        "name": "Martial Archetype feature",
+        "description": "At 3rd level, you choose an archetype that you strive to emulate in your combat styles and techniques, such as Champion. The archetype you choose grants you features at 3rd level and again at 7th, 10th, 15th, and 18th level.",
+        "slug": "martial-archetype-improvement-1",
+        "minLevel": 7
+      },
+      {
+        "name": "Indomitable (1 use)",
+        "description": "Beginning at 9th level, you can reroll a saving throw that you fail. If you do so, you must use the new roll, and you can't use this feature again until you finish a long rest. You can use this feature twice between long rests starting at 13th level and three times between long rests starting at 17th level.",
+        "slug": "indomitable-1-use",
+        "minLevel": 9
+      },
+      {
+        "name": "Extra Attack (2)",
+        "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn. The number of attacks increases to three when you reach 11th level in this class and to four when you reach 20th level in this class.",
+        "slug": "extra-attack-2",
+        "minLevel": 11
+      },
+      {
+        "name": "Indomitable (2 uses)",
+        "description": "Beginning at 9th level, you can reroll a saving throw that you fail. If you do so, you must use the new roll, and you can't use this feature again until you finish a long rest. You can use this feature twice between long rests starting at 13th level and three times between long rests starting at 17th level.",
+        "slug": "indomitable-2-uses",
+        "minLevel": 13
+      },
+      {
+        "name": "Action Surge (2 uses)",
+        "description": "Starting at 2nd level, you can push yourself beyond your normal limits for a moment. On your turn, you can take one additional action on top of your regular action and a possible bonus action.\n\nOnce you use this feature, you must finish a short or long rest before you can use it again. Starting at 17th level, you can use it twice before a rest, but only once on the same turn.",
+        "slug": "action-surge-2-uses",
+        "minLevel": 17
+      },
+      {
+        "name": "Indomitable (3 uses)",
+        "description": "Beginning at 9th level, you can reroll a saving throw that you fail. If you do so, you must use the new roll, and you can't use this feature again until you finish a long rest. You can use this feature twice between long rests starting at 13th level and three times between long rests starting at 17th level.",
+        "slug": "indomitable-3-uses",
+        "minLevel": 17
+      },
+      {
+        "name": "Extra Attack (3)",
+        "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn. The number of attacks increases to three when you reach 11th level in this class and to four when you reach 20th level in this class.",
+        "slug": "extra-attack-3",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "monk",
-    name: "Monk",
-    hitDie: 8,
-    savingThrows: ["str", "dex"],
-    skillChoiceCount: 2,
-    skillOptions: [
+    "id": "monk",
+    "name": "Monk",
+    "hitDie": 8,
+    "savingThrows": [
+      "str",
+      "dex"
+    ],
+    "skillChoiceCount": 2,
+    "skillOptions": [
       "acrobatics",
       "athletics",
       "history",
       "insight",
       "religion",
-      "stealth",
+      "stealth"
     ],
-    armorProficiencies: [],
-    weaponProficiencies: ["simple weapons", "shortswords"],
-    toolProficiencies: ["one artisan's tool or musical instrument"],
-    startingGold: { dice: 5, sides: 4, multiplier: 1 },
-    fixedEquipment: ["10 darts"],
-    equipmentChoices: [
+    "armorProficiencies": [],
+    "weaponProficiencies": [
+      "simple weapons",
+      "shortswords"
+    ],
+    "toolProficiencies": [
+      "one artisan's tool or musical instrument"
+    ],
+    "startingGold": {
+      "dice": 5,
+      "sides": 4,
+      "multiplier": 1
+    },
+    "fixedEquipment": [
+      "10 darts"
+    ],
+    "equipmentChoices": [
       {
-        prompt: "Weapon",
-        options: [
-          { label: "(a) shortsword", items: ["shortsword"] },
-          { label: "(b) any simple weapon", items: ["simple weapon"] },
-        ],
+        "prompt": "Weapon",
+        "options": [
+          {
+            "label": "(a) shortsword",
+            "items": [
+              "shortsword"
+            ]
+          },
+          {
+            "label": "(b) any simple weapon",
+            "items": [
+              "simple weapon"
+            ]
+          }
+        ]
       },
       {
-        prompt: "Pack",
-        options: [
-          { label: "(a) dungeoneer's pack", items: ["dungeoneer's pack"] },
-          { label: "(b) explorer's pack", items: ["explorer's pack"] },
-        ],
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) dungeoneer's pack",
+            "items": [
+              "dungeoneer's pack"
+            ]
+          },
+          {
+            "label": "(b) explorer's pack",
+            "items": [
+              "explorer's pack"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 3,
+    "subclasses": [
+      {
+        "id": "open-hand",
+        "name": "Monastic Tradition: Open Hand",
+        "features": [
+          {
+            "name": "Open Hand Technique",
+            "description": "Starting when you choose this tradition at 3rd level, you can manipulate your enemy's ki when you harness your own. Whenever you hit a creature with one of the attacks granted by your Flurry of Blows, you can impose one of the following effects on that target:\n\n- It must succeed on a Dexterity saving throw or be knocked prone.\n\n- It must make a Strength saving throw. If it fails, you can push it up to 15 feet away from you.\n\n- It can't take reactions until the end of your next turn.",
+            "slug": "open-hand-technique",
+            "minLevel": 3
+          },
+          {
+            "name": "Wholeness of Body",
+            "description": "At 6th level, you gain the ability to heal yourself. As an action, you can regain hit points equal to three times your monk level. You must finish a long rest before you can use this feature again.",
+            "slug": "wholeness-of-body",
+            "minLevel": 6
+          },
+          {
+            "name": "Tranquility",
+            "description": "Beginning at 11th level, you can enter a special meditation that surrounds you with an aura of peace. At the end of a long rest, you gain the effect of a sanctuary spell that lasts until the start of your next long rest (the spell can end early as normal). The saving throw DC for the spell equals 8 + your Wisdom modifier + your proficiency bonus.",
+            "slug": "tranquility",
+            "minLevel": 11
+          },
+          {
+            "name": "Quivering Palm",
+            "description": "At 17th level, you gain the ability to set up lethal vibrations in someone's body. When you hit a creature with an unarmed strike, you can spend 3 ki points to start these imperceptible vibrations, which last for a number of days equal to your monk level. The vibrations are harmless unless you use your action to end them. To do so, you and the target must be on the same plane of existence. When you use this action, the creature must make a Constitution saving throw. If it fails, it is reduced to 0 hit points. If it succeeds, it takes 10d10 necrotic damage.\n\nYou can have only one creature under the effect of this feature at a time. You can choose to end the vibrations harmlessly without using an action.",
+            "slug": "quivering-palm",
+            "minLevel": 17
+          }
+        ]
       },
+      {
+        "id": "shadow",
+        "name": "Way of Shadow",
+        "features": [
+          {
+            "name": "Shadow Arts",
+            "description": "Use ki to cast darkness, darkvision, pass without trace, or silence.",
+            "minLevel": 3
+          }
+        ]
+      },
+      {
+        "id": "four-elements",
+        "name": "Way of the Four Elements",
+        "features": [
+          {
+            "name": "Disciple of the Elements",
+            "description": "Learn elemental disciplines using ki.",
+            "minLevel": 3
+          }
+        ]
+      }
     ],
-    subclassLevel: 3,
-    subclasses: [
-      { id: "open-hand", name: "Way of the Open Hand", features: [{ name: "Open Hand Technique", description: "Knock prone, push, or prevent reactions on Flurry hits." }] },
-      { id: "shadow", name: "Way of Shadow", features: [{ name: "Shadow Arts", description: "Use ki to cast darkness, darkvision, pass without trace, or silence." }] },
-      { id: "four-elements", name: "Way of the Four Elements", features: [{ name: "Disciple of the Elements", description: "Learn elemental disciplines using ki." }] },
-    ],
-    features: [
-      { name: "Unarmored Defense", description: "AC = 10 + Dex + Wis without armor." },
-      { name: "Martial Arts", description: "Use Dex for unarmed strikes and monk weapons; bonus unarmed strike." },
-    ],
+    "features": [
+      {
+        "name": "Martial Arts",
+        "description": "At 1st level, your practice of martial arts gives you mastery of combat styles that use unarmed strikes and monk weapons, which are shortswords and any simple melee weapons that don't have the two- handed or heavy property.\n\nYou gain the following benefits while you are unarmed or wielding only monk weapons and you aren't wearing armor or wielding a shield:\n\n- You can use Dexterity instead of Strength for the attack and damage rolls of your unarmed strikes and monk weapons.\n\n- You can roll a d4 in place of the normal damage of your unarmed strike or monk weapon. This die changes as you gain monk levels, as shown in the Martial Arts column of Table: The Monk.\n\n- When you use the Attack action with an unarmed strike or a monk weapon on your turn, you can make one unarmed strike as a bonus action. For example, if you take the Attack action and attack with a quarterstaff, you can also make an unarmed strike as a bonus action, assuming you haven't already taken a bonus action this turn.\n\nCertain monasteries use specialized forms of the monk weapons. For example, you might use a club that is two lengths of wood connected by a short chain (called a nunchaku) or a sickle with a shorter, straighter blade (called a kama). Whatever name you use for a monk weapon, you can use the game statistics provided for the weapon.",
+        "slug": "martial-arts",
+        "minLevel": 1
+      },
+      {
+        "name": "Unarmored Defense",
+        "description": "Beginning at 1st level, while you are wearing no armor and not wielding a shield, your AC equals 10 + your Dexterity modifier + your Wisdom modifier.",
+        "slug": "monk-unarmored-defense",
+        "minLevel": 1
+      },
+      {
+        "name": "Flurry of Blows",
+        "description": "Immediately after you take the Attack action on your turn, you can spend 1 ki point to make two unarmed strikes as a bonus action.",
+        "slug": "flurry-of-blows",
+        "minLevel": 2
+      },
+      {
+        "name": "Ki",
+        "description": "Starting at 2nd level, your training allows you to harness the mystic energy of ki. Your access to this energy is represented by a number of ki points. Your monk level determines the number of points you have, as shown in the Ki Points column of Table: The Monk.\n\nYou can spend these points to fuel various ki features. You start knowing three such features: Flurry of Blows, Patient Defense, and Step of the Wind. You learn more ki features as you gain levels in this class.\n\nWhen you spend a ki point, it is unavailable until you finish a short or long rest, at the end of which you draw all of your expended ki back into yourself. You must spend at least 30 minutes of the rest meditating to regain your ki points.\n\nSome of your ki features require your target to make a saving throw to resist the feature's effects. The saving throw DC is calculated as follows:\n\nKi save DC = 8 + your proficiency bonus + your Wisdom modifier",
+        "slug": "ki",
+        "minLevel": 2
+      },
+      {
+        "name": "Patient Defense",
+        "description": "You can spend 1 ki point to take the Dodge action as a bonus action on your turn.",
+        "slug": "patient-defense",
+        "minLevel": 2
+      },
+      {
+        "name": "Step of the Wind",
+        "description": "You can spend 1 ki point to take the Disengage or Dash action as a bonus action on your turn, and your jump distance is doubled for the turn.",
+        "slug": "step-of-the-wind",
+        "minLevel": 2
+      },
+      {
+        "name": "Unarmored Movement",
+        "description": "Starting at 2nd level, your speed increases by 10 feet while you are not wearing armor or wielding a shield. This bonus increases when you reach certain monk levels, as shown in Table: The Monk.\n\nAt 9th level, you gain the ability to move along vertical surfaces and across liquids on your turn without falling during the move.",
+        "slug": "unarmored-movement-1",
+        "minLevel": 2
+      },
+      {
+        "name": "Deflect Missiles",
+        "description": "Starting at 3rd level, you can use your reaction to deflect or catch the missile when you are hit by a ranged weapon attack. When you do so, the damage you take from the attack is reduced by 1d10 + your Dexterity modifier + your monk level.\n\nIf you reduce the damage to 0, you can catch the missile if it is small enough for you to hold in one hand and you have at least one hand free. If you catch a missile in this way, you can spend 1 ki point to make a ranged attack with the weapon or piece of ammunition you just caught, as part of the same reaction. You make this attack with proficiency, regardless of your weapon proficiencies, and the missile counts as a monk weapon for the attack, which has a normal range of 20 feet and a long range of 60 feet.",
+        "slug": "deflect-missiles",
+        "minLevel": 3
+      },
+      {
+        "name": "Slow Fall",
+        "description": "Beginning at 4th level, you can use your reaction when you fall to reduce any falling damage you take by an amount equal to five times your monk level.",
+        "slug": "slow-fall",
+        "minLevel": 4
+      },
+      {
+        "name": "Extra Attack",
+        "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn.",
+        "slug": "monk-extra-attack",
+        "minLevel": 5
+      },
+      {
+        "name": "Stunning Strike",
+        "description": "Starting at 5th level, you can interfere with the flow of ki in an opponent's body. When you hit another creature with a melee weapon attack, you can spend 1 ki point to attempt a stunning strike. The target must succeed on a Constitution saving throw or be stunned until the end of your next turn.",
+        "slug": "stunning-strike",
+        "minLevel": 5
+      },
+      {
+        "name": "Ki Empowered Strikes",
+        "description": "Starting at 6th level, your unarmed strikes count as magical for the purpose of overcoming resistance and immunity to nonmagical attacks and damage.",
+        "slug": "ki-empowered-strikes",
+        "minLevel": 6
+      },
+      {
+        "name": "Monastic Tradition feature",
+        "description": "When you reach 3rd level, you commit yourself to a monastic tradition, such as the Way of the Open Hand. Your tradition grants you features at 3rd level and again at 6th, 11th, and 17th level.",
+        "slug": "monastic-tradition-improvement-1",
+        "minLevel": 6
+      },
+      {
+        "name": "Evasion",
+        "description": "At 7th level, your instinctive agility lets you dodge out of the way of certain area effects, such as a blue dragon's lightning breath or a fireball spell. When you are subjected to an effect that allows you to make a Dexterity saving throw to take only half damage, you instead take no damage if you succeed on the saving throw, and only half damage if you fail.",
+        "slug": "monk-evasion",
+        "minLevel": 7
+      },
+      {
+        "name": "Stillness of Mind",
+        "description": "Starting at 7th level, you can use your action to end one effect on yourself that is causing you to be charmed or frightened.",
+        "slug": "stillness-of-mind",
+        "minLevel": 7
+      },
+      {
+        "name": "Unarmored Movement",
+        "description": "Starting at 2nd level, your speed increases by 10 feet while you are not wearing armor or wielding a shield. This bonus increases when you reach certain monk levels, as shown in Table: The Monk.\n\nAt 9th level, you gain the ability to move along vertical surfaces and across liquids on your turn without falling during the move.",
+        "slug": "unarmored-movement-2",
+        "minLevel": 9
+      },
+      {
+        "name": "Purity of Body",
+        "description": "At 10th level, your mastery of the ki flowing through you makes you immune to disease and poison.",
+        "slug": "purity-of-body",
+        "minLevel": 10
+      },
+      {
+        "name": "Tongue of the Sun and Moon",
+        "description": "Starting at 13th level, you learn to touch the ki of other minds so that you understand all spoken languages. Moreover, any creature that can understand a language can understand what you say.",
+        "slug": "tongue-of-the-sun-and-moon",
+        "minLevel": 13
+      },
+      {
+        "name": "Diamond Soul",
+        "description": "Beginning at 14th level, your mastery of ki grants you proficiency in all saving throws.\n\nAdditionally, whenever you make a saving throw and fail, you can spend 1 ki point to reroll it and take the second result.",
+        "slug": "diamond-soul",
+        "minLevel": 14
+      },
+      {
+        "name": "Timeless Body",
+        "description": "At 15th level, your ki sustains you so that you suffer none of the frailty of old age, and you can't be aged magically. You can still die of old age, however. In addition, you no longer need food or water.",
+        "slug": "monk-timeless-body",
+        "minLevel": 15
+      },
+      {
+        "name": "Empty Body",
+        "description": "Beginning at 18th level, you can use your action to spend 4 ki points to become invisible for 1 minute. During that time, you also have resistance to all damage but force damage.\n\nAdditionally, you can spend 8 ki points to cast the astral projection spell, without needing material components. When you do so, you can't take any other creatures with you.",
+        "slug": "empty-body",
+        "minLevel": 18
+      },
+      {
+        "name": "Perfect Self",
+        "description": "At 20th level, when you roll for initiative and have no ki points remaining, you regain 4 ki points.",
+        "slug": "perfect-self",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "paladin",
-    name: "Paladin",
-    hitDie: 10,
-    savingThrows: ["wis", "cha"],
-    skillChoiceCount: 2,
-    skillOptions: ["athletics", "insight", "intimidation", "medicine", "persuasion", "religion"],
-    armorProficiencies: ["all armor", "shields"],
-    weaponProficiencies: ["simple weapons", "martial weapons"],
-    startingGold: { dice: 5, sides: 4, multiplier: 10 },
-    fixedEquipment: ["holy symbol", "javelin", "javelin", "javelin", "javelin", "javelin"],
-    equipmentChoices: [
-      {
-        prompt: "Weapon",
-        options: [
-          { label: "(a) martial weapon and shield", items: ["martial weapon", "shield"] },
-          { label: "(b) two martial weapons", items: ["martial weapon", "martial weapon"] },
-        ],
-      },
-      {
-        prompt: "Sidearm",
-        options: [
-          { label: "(a) five javelins", items: ["javelin", "javelin", "javelin", "javelin", "javelin"] },
-          { label: "(b) any simple melee weapon", items: ["simple melee weapon"] },
-        ],
-      },
-      {
-        prompt: "Pack",
-        options: [
-          { label: "(a) priest's pack", items: ["priest's pack"] },
-          { label: "(b) explorer's pack", items: ["explorer's pack"] },
-        ],
-      },
-      {
-        prompt: "Mount option",
-        options: [
-          { label: "(a) chain mail", items: ["chain mail"] },
-          { label: "(b) leather armor, longbow, 20 arrows", items: ["leather armor", "longbow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow"] },
-        ],
-      },
+    "id": "paladin",
+    "name": "Paladin",
+    "hitDie": 10,
+    "savingThrows": [
+      "wis",
+      "cha"
     ],
-    subclassLevel: 3,
-    subclasses: [
-      { id: "devotion", name: "Oath of Devotion", features: [{ name: "Channel Divinity", description: "Sacred Weapon and Turn the Unholy." }] },
-      { id: "ancients", name: "Oath of the Ancients", features: [{ name: "Channel Divinity", description: "Nature's Wrath and Turn the Faithless." }] },
-      { id: "vengeance", name: "Oath of Vengeance", features: [{ name: "Channel Divinity", description: "Abjure Enemy and Vow of Enmity." }] },
+    "skillChoiceCount": 2,
+    "skillOptions": [
+      "athletics",
+      "insight",
+      "intimidation",
+      "medicine",
+      "persuasion",
+      "religion"
     ],
-    features: [
-      { name: "Divine Sense", description: "Detect celestials, fiends, and undead within 60 ft." },
+    "armorProficiencies": [
+      "all armor",
+      "shields"
+    ],
+    "weaponProficiencies": [
+      "simple weapons",
+      "martial weapons"
+    ],
+    "startingGold": {
+      "dice": 5,
+      "sides": 4,
+      "multiplier": 10
+    },
+    "fixedEquipment": [
+      "holy symbol",
+      "javelin",
+      "javelin",
+      "javelin",
+      "javelin",
+      "javelin"
+    ],
+    "equipmentChoices": [
       {
-        name: "Lay on Hands",
-        slug: "lay-on-hands",
-        description:
-          "As an action, touch a creature to restore HP from a pool of 5 × paladin level, or spend 5 pool HP to cure one poison or disease.",
-        mechanics: {
-          kind: "hp-pool",
-          restReset: "long",
-          maxFormula: "5 * level",
-          usesAction: true,
-          actionCost: "action",
-          heal: { touchRangeFt: 5, targets: "allies-and-self" },
-          cure: { cost: 5, conditions: ["poisoned"] },
-        },
+        "prompt": "Weapon",
+        "options": [
+          {
+            "label": "(a) martial weapon and shield",
+            "items": [
+              "martial weapon",
+              "shield"
+            ]
+          },
+          {
+            "label": "(b) two martial weapons",
+            "items": [
+              "martial weapon",
+              "martial weapon"
+            ]
+          }
+        ]
       },
+      {
+        "prompt": "Sidearm",
+        "options": [
+          {
+            "label": "(a) five javelins",
+            "items": [
+              "javelin",
+              "javelin",
+              "javelin",
+              "javelin",
+              "javelin"
+            ]
+          },
+          {
+            "label": "(b) any simple melee weapon",
+            "items": [
+              "simple melee weapon"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) priest's pack",
+            "items": [
+              "priest's pack"
+            ]
+          },
+          {
+            "label": "(b) explorer's pack",
+            "items": [
+              "explorer's pack"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Mount option",
+        "options": [
+          {
+            "label": "(a) chain mail",
+            "items": [
+              "chain mail"
+            ]
+          },
+          {
+            "label": "(b) leather armor, longbow, 20 arrows",
+            "items": [
+              "leather armor",
+              "longbow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow"
+            ]
+          }
+        ]
+      }
     ],
+    "subclassLevel": 3,
+    "subclasses": [
+      {
+        "id": "devotion",
+        "name": "Sacred Oath: Devotion",
+        "features": [
+          {
+            "name": "Channel Divinity: Sacred Weapon",
+            "description": "As an action, you can imbue one weapon that you are holding with positive energy, using your Channel Divinity. For 1 minute, you add your Charisma modifier to attack rolls made with that weapon (with a minimum bonus of +1). The weapon also emits bright light in a 20-foot radius and dim light 20 feet beyond that. If the weapon is not already magical, it becomes magical for the duration.\n\nYou can end this effect on your turn as part of any other action. If you are no longer holding or carrying this weapon, or if you fall unconscious, this effect ends.",
+            "slug": "channel-divinity-sacred-weapon",
+            "minLevel": 3
+          },
+          {
+            "name": "Channel Divinity: Turn the Unholy",
+            "description": "As an action, you present your holy symbol and speak a prayer censuring fiends and undead, using your Channel Divinity. Each fiend or undead that can see or hear you within 30 feet of you must make a Wisdom saving throw. If the creature fails its saving throw, it is turned for 1 minute or until it takes damage.\n\nA turned creature must spend its turns trying to move as far away from you as it can, and it can't willingly move to a space within 30 feet of you. It also can't take reactions. For its action, it can use only the Dash action or try to escape from an effect that prevents it from moving. If there's nowhere to move, the creature can use the Dodge action.",
+            "slug": "channel-divinity-turn-the-unholy",
+            "minLevel": 3
+          },
+          {
+            "name": "Aura of Devotion",
+            "description": "Starting at 7th level, you and friendly creatures within 10 feet of you can't be charmed while you are conscious.\n\nAt 18th level, the range of this aura increases to 30 feet.",
+            "slug": "aura-of-devotion",
+            "minLevel": 7
+          },
+          {
+            "name": "Purity of Spirit",
+            "description": "Beginning at 15th level, you are always under the effects of a protection from evil and good spell.",
+            "slug": "purity-of-spirit",
+            "minLevel": 15
+          },
+          {
+            "name": "Holy Nimbus",
+            "description": "At 20th level, as an action, you can emanate an aura of sunlight. For 1 minute, bright light shines from you in a 30-foot radius, and dim light shines 30 feet beyond that.\n\nWhenever an enemy creature starts its turn in the bright light, the creature takes 10 radiant damage.\n\nIn addition, for the duration, you have advantage on saving throws against spells cast by fiends or undead.",
+            "slug": "holy-nimbus",
+            "minLevel": 20
+          }
+        ]
+      },
+      {
+        "id": "ancients",
+        "name": "Oath of the Ancients",
+        "features": [
+          {
+            "name": "Channel Divinity",
+            "description": "Nature's Wrath and Turn the Faithless.",
+            "minLevel": 3
+          }
+        ]
+      },
+      {
+        "id": "vengeance",
+        "name": "Oath of Vengeance",
+        "features": [
+          {
+            "name": "Channel Divinity",
+            "description": "Abjure Enemy and Vow of Enmity.",
+            "minLevel": 3
+          }
+        ]
+      }
+    ],
+    "spellcasting": {
+      "ability": "cha",
+      "cantripsKnown": 0,
+      "preparedCaster": true,
+      "ritual": false,
+      "spellListId": "paladin",
+      "startsAtLevel": 2,
+      "halfCaster": true
+    },
+    "features": [
+      {
+        "name": "Divine Sense",
+        "description": "The presence of strong evil registers on your senses like a noxious odor, and powerful good rings like heavenly music in your ears. As an action, you can open your awareness to detect such forces. Until the end of your next turn, you know the location of any celestial, fiend, or undead within 60 feet of you that is not behind total cover. You know the type (celestial, fiend, or undead) of any being whose presence you sense, but not its identity. Within the same radius, you also detect the presence of any place or object that has been consecrated or desecrated, as with the hallow spell.\n\nYou can use this feature a number of times equal to 1 + your Charisma modifier. When you finish a long rest, you regain all expended uses.",
+        "slug": "divine-sense",
+        "minLevel": 1
+      },
+      {
+        "name": "Lay on Hands",
+        "description": "Your blessed touch can heal wounds. You have a pool of healing power that replenishes when you take a long rest. With that pool, you can restore a total number of hit points equal to your paladin level x 5.\n\nAs an action, you can touch a creature and draw power from the pool to restore a number of hit points to that creature, up to the maximum amount remaining in your pool.\n\nAlternatively, you can expend 5 hit points from your pool of healing to cure the target of one disease or neutralize one poison affecting it. You can cure multiple diseases and neutralize multiple poisons with a single use of Lay on Hands, expending hit points separately for each one.\n\nThis feature has no effect on undead and constructs.",
+        "slug": "lay-on-hands",
+        "minLevel": 1,
+        "mechanics": {
+          "kind": "hp-pool",
+          "restReset": "long",
+          "maxFormula": "5 * level",
+          "usesAction": true,
+          "actionCost": "action",
+          "heal": {
+            "touchRangeFt": 5,
+            "targets": "allies-and-self"
+          },
+          "cure": {
+            "cost": 5,
+            "conditions": [
+              "poisoned"
+            ]
+          }
+        }
+      },
+      {
+        "name": "Spellcasting",
+        "description": "By 2nd level, you have learned to draw on divine magic through meditation and prayer to cast spells as a cleric does.",
+        "slug": "paladin-spellcasting",
+        "minLevel": 2
+      },
+      {
+        "name": "Divine Smite",
+        "description": "Starting at 2nd level, when you hit a creature with a melee weapon attack, you can expend one spell slot to deal radiant damage to the target, in addition to the weapon's damage. The extra damage is 2d8 for a 1st-level spell slot, plus 1d8 for each spell level higher than 1st, to a maximum of 5d8. The damage increases by 1d8 if the target is an undead or a fiend.",
+        "slug": "divine-smite",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style",
+        "description": "At 2nd level, you adopt a style of fighting as your specialty. Choose one of the following options. You can't take a Fighting Style option more than once, even if you later get to choose again.",
+        "slug": "paladin-fighting-style",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style: Defense",
+        "description": "While you are wearing armor, you gain a +1 bonus to AC.",
+        "slug": "fighting-style-defense",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style: Dueling",
+        "description": "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon.",
+        "slug": "fighting-style-dueling",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style: Great Weapon Fighting",
+        "description": "When you roll a 1 or 2 on a damage die for an attack you make with a melee weapon that you are wielding with two hands, you can reroll the die and must use the new roll. The weapon must have the two-handed or versatile property for you to gain this benefit.",
+        "slug": "fighting-style-great-weapon-fighting",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style: Protection",
+        "description": "When a creature you can see attacks a target other than you that is within 5 feet of you, you can use your reaction to impose disadvantage on the attack roll. You must be wielding a shield.",
+        "slug": "fighting-style-protection",
+        "minLevel": 2
+      },
+      {
+        "name": "Channel Divinity",
+        "description": "Your oath allows you to channel divine energy to fuel magical effects. Each Channel Divinity option provided by your oath explains how to use it.\n\nWhen you use your Channel Divinity, you choose which option to use. You must then finish a short or long rest to use your Channel Divinity again.\n\nSome Channel Divinity effects require saving throws. When you use such an effect from this class, the DC equals your paladin spell save DC.",
+        "slug": "channel-divinity",
+        "minLevel": 3
+      },
+      {
+        "name": "Divine Health",
+        "description": "By 3rd level, the divine magic flowing through you makes you immune to disease.",
+        "slug": "divine-health",
+        "minLevel": 3
+      },
+      {
+        "name": "Oath Spells",
+        "description": "Each oath has a list of associated spells. You gain access to these spells at the levels specified in the oath description. Once you gain access to an oath spell, you always have it prepared. Oath spells don't count against the number of spells you can prepare each day.\n\nIf you gain an oath spell that doesn't appear on the paladin spell list, the spell is nonetheless a paladin spell for you.",
+        "slug": "oath-spells",
+        "minLevel": 3
+      },
+      {
+        "name": "Extra Attack",
+        "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn.",
+        "slug": "paladin-extra-attack",
+        "minLevel": 5
+      },
+      {
+        "name": "Aura of Protection",
+        "description": "Starting at 6th level, whenever you or a friendly creature within 10 feet of you must make a saving throw, the creature gains a bonus to the saving throw equal to your Charisma modifier (with a minimum bonus of +1). You must be conscious to grant this bonus.\n\nAt 18th level, the range of this aura increases to 30 feet.",
+        "slug": "aura-of-protection",
+        "minLevel": 6
+      },
+      {
+        "name": "Sacred Oath feature",
+        "description": "When you reach 3rd level, you swear the oath that binds you as a paladin forever. Up to this time you have been in a preparatory stage, committed to the path but not yet sworn to it. Now you choose an oath, such as the Oath of Devotion.\n\nYour choice grants you features at 3rd level and again at 7th, 15th, and 20th level. Those features include oath spells and the Channel Divinity feature.",
+        "slug": "sacred-oath-improvement-1",
+        "minLevel": 7
+      },
+      {
+        "name": "Aura of Courage",
+        "description": "Starting at 10th level, you and friendly creatures within 10 feet of you can't be frightened while you are conscious.\n\nAt 18th level, the range of this aura increases to 30 feet.",
+        "slug": "aura-of-courage",
+        "minLevel": 10
+      },
+      {
+        "name": "Improved Divine Smite",
+        "description": "By 11th level, you are so suffused with righteous might that all your melee weapon strikes carry divine power with them. Whenever you hit a creature with a melee weapon, the creature takes an extra 1d8 radiant damage. If you also use your Divine Smite with an attack, you add this damage to the extra damage of your Divine Smite.",
+        "slug": "improved-divine-smite",
+        "minLevel": 11
+      },
+      {
+        "name": "Cleansing Touch",
+        "description": "Beginning at 14th level, you can use your action to end one spell on yourself or on one willing creature that you touch.\n\nYou can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain expended uses when you finish a long rest.",
+        "slug": "cleansing-touch",
+        "minLevel": 14
+      },
+      {
+        "name": "Aura improvements",
+        "description": "At 18th level, the range of your auras increase to 30 feet.",
+        "slug": "aura-improvements",
+        "minLevel": 18
+      }
+    ]
   },
   {
-    id: "ranger",
-    name: "Ranger",
-    hitDie: 10,
-    savingThrows: ["str", "dex"],
-    skillChoiceCount: 3,
-    skillOptions: [
+    "id": "ranger",
+    "name": "Ranger",
+    "hitDie": 10,
+    "savingThrows": [
+      "str",
+      "dex"
+    ],
+    "skillChoiceCount": 3,
+    "skillOptions": [
       "animalHandling",
       "athletics",
       "insight",
@@ -478,69 +2054,369 @@ export const PHB_CLASSES: PhbClass[] = [
       "nature",
       "perception",
       "stealth",
-      "survival",
+      "survival"
     ],
-    armorProficiencies: ["light armor", "medium armor", "shields"],
-    weaponProficiencies: ["simple weapons", "martial weapons"],
-    startingGold: { dice: 5, sides: 4, multiplier: 10 },
-    fixedEquipment: [],
-    equipmentChoices: [
-      {
-        prompt: "Armor",
-        options: [
-          { label: "(a) scale mail", items: ["scale mail"] },
-          { label: "(b) leather armor", items: ["leather armor"] },
-        ],
-      },
-      {
-        prompt: "Weapons",
-        options: [
-          { label: "(a) two shortswords", items: ["shortsword", "shortsword"] },
-          { label: "(b) two simple melee weapons", items: ["simple melee weapon", "simple melee weapon"] },
-        ],
-      },
-      {
-        prompt: "Pack",
-        options: [
-          { label: "(a) dungeoneer's pack", items: ["dungeoneer's pack"] },
-          { label: "(b) explorer's pack", items: ["explorer's pack"] },
-        ],
-      },
-      {
-        prompt: "Ranged",
-        options: [
-          { label: "(a) longbow and 20 arrows", items: ["longbow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow"] },
-          { label: "(b) two handaxes", items: ["handaxe", "handaxe"] },
-        ],
-      },
+    "armorProficiencies": [
+      "light armor",
+      "medium armor",
+      "shields"
     ],
-    subclassLevel: 3,
-    subclasses: [
-      { id: "hunter", name: "Hunter", features: [{ name: "Hunter's Prey", description: "Choose Colossus Slayer, Giant Killer, or Horde Breaker at 3rd level." }] },
-      { id: "beast-master", name: "Beast Master", features: [{ name: "Ranger's Companion", description: "Bond with a beast companion." }] },
+    "weaponProficiencies": [
+      "simple weapons",
+      "martial weapons"
     ],
-    features: [
-      { name: "Favored Enemy", description: "Advantage on Survival checks to track and Intelligence to recall info about chosen enemy type." },
+    "startingGold": {
+      "dice": 5,
+      "sides": 4,
+      "multiplier": 10
+    },
+    "fixedEquipment": [],
+    "equipmentChoices": [
       {
-        name: "Natural Explorer",
-        description:
-          "While traveling for an hour or more in your favored terrain, you gain the following benefits:\n" +
-          "• Difficult terrain doesn't slow your group's travel.\n" +
-          "• Your group can't become lost except by magical means.\n" +
-          "• Even when engaged in another activity while traveling (such as foraging, navigating, or tracking), you remain alert to danger.\n" +
-          "• If you are traveling alone, you can move stealthily at a normal pace.\n" +
-          "• When you forage, you find twice as much food as you normally would.\n" +
-          "• While tracking other creatures, you learn their exact number, their sizes, and how long ago they passed through the area.",
+        "prompt": "Armor",
+        "options": [
+          {
+            "label": "(a) scale mail",
+            "items": [
+              "scale mail"
+            ]
+          },
+          {
+            "label": "(b) leather armor",
+            "items": [
+              "leather armor"
+            ]
+          }
+        ]
       },
+      {
+        "prompt": "Weapons",
+        "options": [
+          {
+            "label": "(a) two shortswords",
+            "items": [
+              "shortsword",
+              "shortsword"
+            ]
+          },
+          {
+            "label": "(b) two simple melee weapons",
+            "items": [
+              "simple melee weapon",
+              "simple melee weapon"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) dungeoneer's pack",
+            "items": [
+              "dungeoneer's pack"
+            ]
+          },
+          {
+            "label": "(b) explorer's pack",
+            "items": [
+              "explorer's pack"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Ranged",
+        "options": [
+          {
+            "label": "(a) longbow and 20 arrows",
+            "items": [
+              "longbow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow"
+            ]
+          },
+          {
+            "label": "(b) two handaxes",
+            "items": [
+              "handaxe",
+              "handaxe"
+            ]
+          }
+        ]
+      }
     ],
+    "subclassLevel": 3,
+    "subclasses": [
+      {
+        "id": "hunter",
+        "name": "Ranger Archetype: Hunter",
+        "features": [
+          {
+            "name": "Hunter's Prey",
+            "description": "At 3rd level, you gain one of the following features of your choice.\n\nColossus Slayer\n\nGiant Killer\n\nHorde Breaker",
+            "slug": "hunters-prey",
+            "minLevel": 3
+          },
+          {
+            "name": "Hunter's Prey: Colossus Slayer",
+            "description": "Your tenacity can wear down the most potent foes. When you hit a creature with a weapon attack, the creature takes an extra 1d8 damage if it's below its hit point maximum. You can deal this extra damage only once per turn.",
+            "slug": "hunters-prey-colossus-slayer",
+            "minLevel": 3
+          },
+          {
+            "name": "Hunter's Prey: Giant Killer",
+            "description": "When a Large or larger creature within 5 feet of you hits or misses you with an attack, you can use your reaction to attack that creature immediately after its attack, provided that you can see the creature.",
+            "slug": "hunters-prey-giant-killer",
+            "minLevel": 3
+          },
+          {
+            "name": "Hunter's Prey: Horde Breaker",
+            "description": "Once on each of your turns when you make a weapon attack, you can make another attack with the same weapon against a different creature that is within 5 feet of the original target and within range of your weapon.",
+            "slug": "hunters-prey-horde-breaker",
+            "minLevel": 3
+          },
+          {
+            "name": "Defensive Tactics",
+            "description": "At 7th level, you gain one of the following features of your choice.\n\nEscape the Horde\n\nMultiattack Defense\n\nSteel Will",
+            "slug": "defensive-tactics",
+            "minLevel": 7
+          },
+          {
+            "name": "Defensive Tactics: Escape the Horde",
+            "description": "Opportunity attacks against you are made with disadvantage.",
+            "slug": "defensive-tactics-escape-the-horde",
+            "minLevel": 7
+          },
+          {
+            "name": "Defensive Tactics: Multiattack Defense",
+            "description": "When a creature hits you with an attack, you gain a +4 bonus to AC against all subsequent attacks made by that creature for the rest of the turn.",
+            "slug": "defensive-tactics-multiattack-defense",
+            "minLevel": 7
+          },
+          {
+            "name": "Defensive Tactics: Steel Will",
+            "description": "You have advantage on saving throws against being frightened.",
+            "slug": "defensive-tactics-steel-will",
+            "minLevel": 7
+          },
+          {
+            "name": "Multiattack",
+            "description": "At 11th level, you gain one of the following features of your choice.\n\nVolley\n\nWhirlwind Attack",
+            "slug": "multiattack",
+            "minLevel": 11
+          },
+          {
+            "name": "Multiattack: Volley",
+            "description": "You can use your action to make a ranged attack against any number of creatures within 10 feet of a point you can see within your weapon's range. You must have ammunition for each target, as normal, and you make a separate attack roll for each target.",
+            "slug": "multiattack-volley",
+            "minLevel": 11
+          },
+          {
+            "name": "Multiattack: Whirlwind Attack",
+            "description": "You can use your action to make a melee attack against any number of creatures within 5 feet of you, with a separate attack roll for each target.",
+            "slug": "multiattack-whirlwind-attack",
+            "minLevel": 11
+          },
+          {
+            "name": "Superior Hunter's Defense",
+            "description": "At 15th level, you gain one of the following features of your choice.\n\nEvasion\n\nStand Against the Tide\n\nUncanny Dodge",
+            "slug": "superior-hunters-defense",
+            "minLevel": 15
+          },
+          {
+            "name": "Superior Hunter's Defense: Evasion",
+            "description": "When you are subjected to an effect, such as a red dragon's fiery breath or a lightning bolt spell, that allows you to make a Dexterity saving throw to take only half damage, you instead take no damage if you succeed on the saving throw, and only half damage if you fail.",
+            "slug": "superior-hunters-defense-evasion",
+            "minLevel": 15
+          },
+          {
+            "name": "Superior Hunter's Defense: Stand Against the Tide",
+            "description": "When a hostile creature misses you with a melee attack, you can use your reaction to force that creature to repeat the same attack against another creature (other than itself) of your choice.",
+            "slug": "superior-hunters-defense-stand-against-the-tide",
+            "minLevel": 15
+          },
+          {
+            "name": "Superior Hunter's Defense: Uncanny Dodge",
+            "description": "When an attacker that you can see hits you with an attack, you can use your reaction to halve the attack's damage against you.",
+            "slug": "superior-hunters-defense-uncanny-dodge",
+            "minLevel": 15
+          }
+        ]
+      },
+      {
+        "id": "beast-master",
+        "name": "Beast Master",
+        "features": [
+          {
+            "name": "Ranger's Companion",
+            "description": "Bond with a beast companion.",
+            "minLevel": 3
+          }
+        ]
+      }
+    ],
+    "spellcasting": {
+      "ability": "wis",
+      "cantripsKnown": 0,
+      "spellsKnown": 2,
+      "ritual": false,
+      "spellListId": "ranger",
+      "startsAtLevel": 2,
+      "halfCaster": true
+    },
+    "features": [
+      {
+        "name": "Favored Enemy (1 type)",
+        "description": "Beginning at 1st level, you have significant experience studying, tracking, hunting, and even talking to a certain type of enemy.\n\nChoose a type of favored enemy: aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, monstrosities, oozes, plants, or undead. Alternatively, you can select two races of humanoid (such as gnolls and orcs) as favored enemies.\n\nYou have advantage on Wisdom (Survival) checks to track your favored enemies, as well as on Intelligence checks to recall information about them.\n\nWhen you gain this feature, you also learn one language of your choice that is spoken by your favored enemies, if they speak one at all.\n\nYou choose one additional favored enemy, as well as an associated language, at 6th and 14th level. As you gain levels, your choices should reflect the types of monsters you have encountered on your adventures.",
+        "slug": "favored-enemy-1-type",
+        "minLevel": 1
+      },
+      {
+        "name": "Natural Explorer (1 terrain type)",
+        "description": "You are particularly familiar with one type of natural environment and are adept at traveling and surviving in such regions. Choose one type of favored terrain: arctic, coast, desert, forest, grassland, mountain, or swamp. When you make an Intelligence or Wisdom check related to your favored terrain, your proficiency bonus is doubled if you are using a skill that you're proficient in.\n\nWhile traveling for an hour or more in your favored terrain, you gain the following benefits:\n\n- Difficult terrain doesn't slow your group's travel.\n\n- Your group can't become lost except by magical means.\n\n- Even when you are engaged in another activity while traveling (such as foraging, navigating, or tracking), you remain alert to danger.\n\n- If you are traveling alone, you can move stealthily at a normal pace.\n\n- When you forage, you find twice as much food as you normally would.\n\n- While tracking other creatures, you also learn their exact number, their sizes, and how long ago they passed through the area.\n\nYou choose additional favored terrain types at 6th and 10th level.",
+        "slug": "natural-explorer-1-terrain-type",
+        "minLevel": 1
+      },
+      {
+        "name": "Fighting Style",
+        "description": "At 2nd level, you adopt a particular style of fighting as your specialty. Choose one of the following options. You can't take a Fighting Style option more than once, even if you later get to choose again.",
+        "slug": "ranger-fighting-style",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style: Archery",
+        "description": "You gain a +2 bonus to attack rolls you make with ranged weapons.",
+        "slug": "ranger-fighting-style-archery",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style: Defense",
+        "description": "While you are wearing armor, you gain a +1 bonus to AC.",
+        "slug": "ranger-fighting-style-defense",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style: Dueling",
+        "description": "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon.",
+        "slug": "ranger-fighting-style-dueling",
+        "minLevel": 2
+      },
+      {
+        "name": "Fighting Style: Two-Weapon Fighting",
+        "description": "When you engage in two-weapon fighting, you can add your ability modifier to the damage of the second attack.",
+        "slug": "ranger-fighting-style-two-weapon-fighting",
+        "minLevel": 2
+      },
+      {
+        "name": "Spellcasting",
+        "description": "By 2nd level, you have learned to use the magical essence of nature to cast spells, much as a druid does.",
+        "slug": "ranger-spellcasting",
+        "minLevel": 2
+      },
+      {
+        "name": "Primeval Awareness",
+        "description": "Beginning at 3rd level, you can use your action and expend one ranger spell slot to focus your awareness on the region around you. For 1 minute per level of the spell slot you expend, you can sense whether the following types of creatures are present within 1 mile of you (or within up to 6 miles if you are in your favored terrain): aberrations, celestials, dragons, elementals, fey, fiends, and undead. This feature doesn't reveal the creatures' location or number.",
+        "slug": "primeval-awareness",
+        "minLevel": 3
+      },
+      {
+        "name": "Extra Attack",
+        "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn.",
+        "slug": "ranger-extra-attack",
+        "minLevel": 5
+      },
+      {
+        "name": "Favored Enemy (2 types)",
+        "description": "Beginning at 1st level, you have significant experience studying, tracking, hunting, and even talking to a certain type of enemy.\n\nChoose a type of favored enemy: aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, monstrosities, oozes, plants, or undead. Alternatively, you can select two races of humanoid (such as gnolls and orcs) as favored enemies.\n\nYou have advantage on Wisdom (Survival) checks to track your favored enemies, as well as on Intelligence checks to recall information about them.\n\nWhen you gain this feature, you also learn one language of your choice that is spoken by your favored enemies, if they speak one at all.\n\nYou choose one additional favored enemy, as well as an associated language, at 6th and 14th level. As you gain levels, your choices should reflect the types of monsters you have encountered on your adventures.",
+        "slug": "favored-enemy-2-types",
+        "minLevel": 6
+      },
+      {
+        "name": "Natural Explorer (2 terrain types)",
+        "description": "You are particularly familiar with one type of natural environment and are adept at traveling and surviving in such regions. Choose one type of favored terrain: arctic, coast, desert, forest, grassland, mountain, or swamp. When you make an Intelligence or Wisdom check related to your favored terrain, your proficiency bonus is doubled if you are using a skill that you're proficient in.\n\nWhile traveling for an hour or more in your favored terrain, you gain the following benefits:\n\n- Difficult terrain doesn't slow your group's travel.\n\n- Your group can't become lost except by magical means.\n\n- Even when you are engaged in another activity while traveling (such as foraging, navigating, or tracking), you remain alert to danger.\n\n- If you are traveling alone, you can move stealthily at a normal pace.\n\n- When you forage, you find twice as much food as you normally would.\n\n- While tracking other creatures, you also learn their exact number, their sizes, and how long ago they passed through the area.\n\nYou choose additional favored terrain types at 6th and 10th level.",
+        "slug": "natural-explorer-2-terrain-types",
+        "minLevel": 6
+      },
+      {
+        "name": "Ranger Archetype feature",
+        "description": "At 3rd level, you choose an archetype that you strive to emulate, such as the Hunter. Your choice grants you features at 3rd level and again at 7th, 11th, and 15th level.",
+        "slug": "ranger-archetype-improvement-1",
+        "minLevel": 7
+      },
+      {
+        "name": "Land's Stride",
+        "description": "Starting at 8th level, moving through nonmagical difficult terrain costs you no extra movement. You can also pass through nonmagical plants without being slowed by them and without taking damage from them if they have thorns, spines, or a similar hazard.\n\nIn addition, you have advantage on saving throws against plants that are magically created or manipulated to impede movement, such those created by the entangle spell.",
+        "slug": "ranger-lands-stride",
+        "minLevel": 8
+      },
+      {
+        "name": "Hide in Plain Sight",
+        "description": "Starting at 10th level, you can spend 1 minute creating camouflage for yourself. You must have access to fresh mud, dirt, plants, soot, and other naturally occurring materials with which to create your camouflage.\n\nOnce you are camouflaged in this way, you can try to hide by pressing yourself up against a solid surface, such as a tree or wall, that is at least as tall and wide as you are. You gain a +10 bonus to Dexterity (Stealth) checks as long as you remain there without moving or taking actions. Once you move or take an action or a reaction, you must camouflage yourself again to gain this benefit.",
+        "slug": "hide-in-plain-sight",
+        "minLevel": 10
+      },
+      {
+        "name": "Natural Explorer (3 terrain types)",
+        "description": "You are particularly familiar with one type of natural environment and are adept at traveling and surviving in such regions. Choose one type of favored terrain: arctic, coast, desert, forest, grassland, mountain, or swamp. When you make an Intelligence or Wisdom check related to your favored terrain, your proficiency bonus is doubled if you are using a skill that you're proficient in.\n\nWhile traveling for an hour or more in your favored terrain, you gain the following benefits:\n\n- Difficult terrain doesn't slow your group's travel.\n\n- Your group can't become lost except by magical means.\n\n- Even when you are engaged in another activity while traveling (such as foraging, navigating, or tracking), you remain alert to danger.\n\n- If you are traveling alone, you can move stealthily at a normal pace.\n\n- When you forage, you find twice as much food as you normally would.\n\n- While tracking other creatures, you also learn their exact number, their sizes, and how long ago they passed through the area.\n\nYou choose additional favored terrain types at 6th and 10th level.",
+        "slug": "natural-explorer-3-terrain-types",
+        "minLevel": 10
+      },
+      {
+        "name": "Favored Enemy (3 enemies)",
+        "description": "Beginning at 1st level, you have significant experience studying, tracking, hunting, and even talking to a certain type of enemy.\n\nChoose a type of favored enemy: aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, monstrosities, oozes, plants, or undead. Alternatively, you can select two races of humanoid (such as gnolls and orcs) as favored enemies.\n\nYou have advantage on Wisdom (Survival) checks to track your favored enemies, as well as on Intelligence checks to recall information about them.\n\nWhen you gain this feature, you also learn one language of your choice that is spoken by your favored enemies, if they speak one at all.\n\nYou choose one additional favored enemy, as well as an associated language, at 6th and 14th level. As you gain levels, your choices should reflect the types of monsters you have encountered on your adventures.",
+        "slug": "favored-enemy-3-enemies",
+        "minLevel": 14
+      },
+      {
+        "name": "Vanish",
+        "description": "Starting at 14th level, you can use the Hide action as a bonus action on your turn. Also, you can't be tracked by nonmagical means, unless you choose to leave a trail.",
+        "slug": "vanish",
+        "minLevel": 14
+      },
+      {
+        "name": "Feral Senses",
+        "description": "At 18th level, you gain preternatural senses that help you fight creatures you can't see. When you attack a creature you can't see, your inability to see it doesn't impose disadvantage on your attack rolls against it.\n\nYou are also aware of the location of any invisible creature within 30 feet of you, provided that the creature isn't hidden from you and you aren't blinded or deafened.",
+        "slug": "feral-senses",
+        "minLevel": 18
+      },
+      {
+        "name": "Foe Slayer",
+        "description": "At 20th level, you become an unparalleled hunter of your enemies. Once on each of your turns, you can add your Wisdom modifier to the attack roll or the damage roll of an attack you make against one of your favored enemies. You can choose to use this feature before or after the roll, but before any effects of the roll are applied.",
+        "slug": "foe-slayer",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "rogue",
-    name: "Rogue",
-    hitDie: 8,
-    savingThrows: ["dex", "int"],
-    skillChoiceCount: 4,
-    skillOptions: [
+    "id": "rogue",
+    "name": "Rogue",
+    "hitDie": 8,
+    "savingThrows": [
+      "dex",
+      "int"
+    ],
+    "skillChoiceCount": 4,
+    "skillOptions": [
       "acrobatics",
       "athletics",
       "deception",
@@ -551,214 +2427,1250 @@ export const PHB_CLASSES: PhbClass[] = [
       "performance",
       "persuasion",
       "sleightOfHand",
-      "stealth",
+      "stealth"
     ],
-    armorProficiencies: ["light armor"],
-    weaponProficiencies: ["simple weapons", "hand crossbows", "longswords", "rapiers", "shortswords"],
-    toolProficiencies: ["thieves' tools"],
-    startingGold: { dice: 4, sides: 4, multiplier: 10 },
-    fixedEquipment: ["leather armor", "two daggers", "thieves' tools"],
-    equipmentChoices: [
+    "armorProficiencies": [
+      "light armor"
+    ],
+    "weaponProficiencies": [
+      "simple weapons",
+      "hand crossbows",
+      "longswords",
+      "rapiers",
+      "shortswords"
+    ],
+    "toolProficiencies": [
+      "thieves' tools"
+    ],
+    "startingGold": {
+      "dice": 4,
+      "sides": 4,
+      "multiplier": 10
+    },
+    "fixedEquipment": [
+      "leather armor",
+      "two daggers",
+      "thieves' tools"
+    ],
+    "equipmentChoices": [
       {
-        prompt: "Weapon",
-        options: [
-          { label: "(a) rapier", items: ["rapier"] },
-          { label: "(b) shortsword", items: ["shortsword"] },
-        ],
+        "prompt": "Weapon",
+        "options": [
+          {
+            "label": "(a) rapier",
+            "items": [
+              "rapier"
+            ]
+          },
+          {
+            "label": "(b) shortsword",
+            "items": [
+              "shortsword"
+            ]
+          }
+        ]
       },
       {
-        prompt: "Ranged",
-        options: [
-          { label: "(a) shortbow and quiver of 20 arrows", items: ["shortbow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow", "arrow"] },
-          { label: "(b) shortsword", items: ["shortsword"] },
-        ],
+        "prompt": "Ranged",
+        "options": [
+          {
+            "label": "(a) shortbow and quiver of 20 arrows",
+            "items": [
+              "shortbow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow",
+              "arrow"
+            ]
+          },
+          {
+            "label": "(b) shortsword",
+            "items": [
+              "shortsword"
+            ]
+          }
+        ]
       },
       {
-        prompt: "Pack",
-        options: [
-          { label: "(a) burglar's pack", items: ["burglar's pack"] },
-          { label: "(b) dungeoneer's pack", items: ["dungeoneer's pack"] },
-          { label: "(c) explorer's pack", items: ["explorer's pack"] },
-        ],
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) burglar's pack",
+            "items": [
+              "burglar's pack"
+            ]
+          },
+          {
+            "label": "(b) dungeoneer's pack",
+            "items": [
+              "dungeoneer's pack"
+            ]
+          },
+          {
+            "label": "(c) explorer's pack",
+            "items": [
+              "explorer's pack"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 3,
+    "subclasses": [
+      {
+        "id": "thief",
+        "name": "Roguish Archetype: Thief",
+        "features": [
+          {
+            "name": "Fast Hands",
+            "description": "Starting at 3rd level, you can use the bonus action granted by your Cunning Action to make a Dexterity (Sleight of Hand) check, use your thieves' tools to disarm a trap or open a lock, or take the Use an Object action.",
+            "slug": "fast-hands",
+            "minLevel": 3
+          },
+          {
+            "name": "Second-Story Work",
+            "description": "When you choose this archetype at 3rd level, you gain the ability to climb faster than normal; climbing no longer costs you extra movement.\n\nIn addition, when you make a running jump, the distance you cover increases by a number of feet equal to your Dexterity modifier.",
+            "slug": "second-story-work",
+            "minLevel": 3
+          },
+          {
+            "name": "Supreme Sneak",
+            "description": "Starting at 9th level, you have advantage on a Dexterity (Stealth) check if you move no more than half your speed on the same turn.",
+            "slug": "supreme-sneak",
+            "minLevel": 9
+          },
+          {
+            "name": "Use Magic Device",
+            "description": "By 13th level, you have learned enough about the workings of magic that you can improvise the use of items even when they are not intended for you. You ignore all class, race, and level requirements on the use of magic items.",
+            "slug": "use-magic-device",
+            "minLevel": 13
+          },
+          {
+            "name": "Thief's Reflexes",
+            "description": "When you reach 17th level, you have become adept at laying ambushes and quickly escaping danger. You can take two turns during the first round of any combat. You take your first turn at your normal initiative and your second turn at your initiative minus 10. You can't use this feature when you are surprised.",
+            "slug": "thiefs-reflexes",
+            "minLevel": 17
+          }
+        ]
       },
+      {
+        "id": "assassin",
+        "name": "Assassin",
+        "features": [
+          {
+            "name": "Assassinate",
+            "description": "Advantage vs creatures that haven't acted; auto-crit on surprised foes.",
+            "minLevel": 3
+          }
+        ]
+      },
+      {
+        "id": "arcane-trickster",
+        "name": "Arcane Trickster",
+        "features": [
+          {
+            "name": "Mage Hand Legerdemain",
+            "description": "Invisible mage hand; sleight of hand with it.",
+            "minLevel": 3
+          }
+        ]
+      }
     ],
-    subclassLevel: 3,
-    subclasses: [
-      { id: "thief", name: "Thief", features: [{ name: "Fast Hands", description: "Bonus action Sleight of Hand, use object, or Thieves' Tools." }] },
-      { id: "assassin", name: "Assassin", features: [{ name: "Assassinate", description: "Advantage vs creatures that haven't acted; auto-crit on surprised foes." }] },
-      { id: "arcane-trickster", name: "Arcane Trickster", features: [{ name: "Mage Hand Legerdemain", description: "Invisible mage hand; sleight of hand with it." }] },
-    ],
-    features: [
-      { name: "Sneak Attack", description: "1d6 extra damage once per turn when you have advantage or ally within 5 ft of target." },
-      { name: "Expertise", description: "Double proficiency bonus for two skills you are proficient in." },
-      { name: "Thieves' Cant", description: "Secret mix of dialect, jargon, and code." },
-    ],
+    "features": [
+      {
+        "name": "Expertise",
+        "description": "At 1st level, choose two of your skill proficiencies, or one of your skill proficiencies and your proficiency with thieves' tools. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies.\n\nAt 6th level, you can choose two more of your proficiencies (in skills or with thieves' tools) to gain this benefit",
+        "slug": "rogue-expertise-1",
+        "minLevel": 1
+      },
+      {
+        "name": "Sneak Attack",
+        "description": "Beginning at 1st level, you know how to strike subtly and exploit a foe's distraction. Once per turn, you can deal an extra 1d6 damage to one creature you hit with an attack if you have advantage on the attack roll. The attack must use a finesse or a ranged weapon.\n\nYou don't need advantage on the attack roll if another enemy of the target is within 5 feet of it, that enemy isn't incapacitated, and you don't have disadvantage on the attack roll.\n\nThe amount of the extra damage increases as you gain levels in this class, as shown in the Sneak Attack column of the Rogue table.",
+        "slug": "sneak-attack",
+        "minLevel": 1
+      },
+      {
+        "name": "Thieves' Cant",
+        "description": "During your rogue training you learned thieves' cant, a secret mix of dialect, jargon, and code that allows you to hide messages in seemingly normal conversation. Only another creature that knows thieves' cant understands such messages. It takes four times longer to convey such a message than it does to speak the same idea plainly.\n\nIn addition, you understand a set of secret signs and symbols used to convey short, simple messages, such as whether an area is dangerous or the territory of a thieves' guild, whether loot is nearby, or whether the people in an area are easy marks or will provide a safe house for thieves on the run.",
+        "slug": "thieves-cant",
+        "minLevel": 1
+      },
+      {
+        "name": "Cunning Action",
+        "description": "Starting at 2nd level, your quick thinking and agility allow you to move and act quickly. You can take a bonus action on each of your turns in combat. This action can be used only to take the Dash, Disengage, or Hide action.",
+        "slug": "cunning-action",
+        "minLevel": 2
+      },
+      {
+        "name": "Uncanny Dodge",
+        "description": "Starting at 5th level, when an attacker that you can see hits you with an attack, you can use your reaction to halve the attack's damage against you.",
+        "slug": "uncanny-dodge",
+        "minLevel": 5
+      },
+      {
+        "name": "Expertise",
+        "description": "At 1st level, choose two of your skill proficiencies, or one of your skill proficiencies and your proficiency with thieves' tools. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies.\n\nAt 6th level, you can choose two more of your proficiencies (in skills or with thieves' tools) to gain this benefit",
+        "slug": "rogue-expertise-2",
+        "minLevel": 6
+      },
+      {
+        "name": "Evasion",
+        "description": "Beginning at 7th level, you can nimbly dodge out of the way of certain area effects, such as a red dragon's fiery breath or an ice storm spell. When you are subjected to an effect that allows you to make a Dexterity saving throw to take only half damage, you instead take no damage if you succeed on the saving throw, and only half damage if you fail.",
+        "slug": "rogue-evasion",
+        "minLevel": 7
+      },
+      {
+        "name": "Roguish Archetype feature",
+        "description": "At 3rd level, you choose an archetype that you emulate in the exercise of your rogue abilities, such as Thief. Additional archetypes are available in the original source material. Your archetype choice grants you features at 3rd level and then again at 9th, 13th, and 17th level.",
+        "slug": "roguish-archetype-improvement-1",
+        "minLevel": 9
+      },
+      {
+        "name": "Reliable Talent",
+        "description": "By 11th level, you have refined your chosen skills until they approach perfection. Whenever you make an ability check that lets you add your proficiency bonus, you can treat a d20 roll of 9 or lower as a 10.",
+        "slug": "reliable-talent",
+        "minLevel": 11
+      },
+      {
+        "name": "Blindsense",
+        "description": "Starting at 14th level, if you are able to hear, you are aware of the location of any hidden or invisible creature within 10 feet of you.",
+        "slug": "blindsense",
+        "minLevel": 14
+      },
+      {
+        "name": "Slippery Mind",
+        "description": "By 15th level, you have acquired greater mental strength. You gain proficiency in Wisdom saving throws.",
+        "slug": "slippery-mind",
+        "minLevel": 15
+      },
+      {
+        "name": "Elusive",
+        "description": "Beginning at 18th level, you are so evasive that attackers rarely gain the upper hand against you. No attack roll has advantage against you while you aren't incapacitated.",
+        "slug": "elusive",
+        "minLevel": 18
+      },
+      {
+        "name": "Stroke of Luck",
+        "description": "At 20th level, you have an uncanny knack for succeeding when you need to. If your attack misses a target within range, you can turn the miss into a hit. Alternatively, if you fail an ability check, you can treat the d20 roll as a 20.\n\nOnce you use this feature, you can't use it again until you finish a short or long rest.",
+        "slug": "stroke-of-luck",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "sorcerer",
-    name: "Sorcerer",
-    hitDie: 6,
-    savingThrows: ["con", "cha"],
-    skillChoiceCount: 2,
-    skillOptions: ["arcana", "deception", "insight", "intimidation", "persuasion", "religion"],
-    armorProficiencies: [],
-    weaponProficiencies: ["daggers", "darts", "slings", "quarterstaffs", "light crossbows"],
-    startingGold: { dice: 3, sides: 4, multiplier: 10 },
-    fixedEquipment: ["two daggers", "component pouch"],
-    equipmentChoices: [
-      {
-        prompt: "Focus",
-        options: [
-          { label: "(a) light crossbow and 20 bolts", items: ["light crossbow", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt"] },
-          { label: "(b) any simple weapon", items: ["simple weapon"] },
-        ],
-      },
-      {
-        prompt: "Pack",
-        options: [
-          { label: "(a) dungeoneer's pack", items: ["dungeoneer's pack"] },
-          { label: "(b) explorer's pack", items: ["explorer's pack"] },
-        ],
-      },
-      {
-        prompt: "Arcane focus",
-        options: [
-          { label: "(a) component pouch", items: ["component pouch"] },
-          { label: "(b) arcane focus", items: ["arcane focus"] },
-        ],
-      },
+    "id": "sorcerer",
+    "name": "Sorcerer",
+    "hitDie": 6,
+    "savingThrows": [
+      "con",
+      "cha"
     ],
-    subclassLevel: 1,
-    subclasses: [
-      { id: "draconic", name: "Draconic Bloodline", features: [{ name: "Dragon Ancestor", description: "Choose dragon type; draconic resilience and elemental affinity." }] },
-      { id: "wild-magic", name: "Wild Magic", features: [{ name: "Wild Magic Surge", description: "Roll on Wild Magic table after casting a sorcerer spell." }, { name: "Tides of Chaos", slug: "tides-of-chaos", description: "Gain advantage once per long rest; DM may trigger surge.", mechanics: { kind: "uses", max: 1, restReset: "long" } }] },
+    "skillChoiceCount": 2,
+    "skillOptions": [
+      "arcana",
+      "deception",
+      "insight",
+      "intimidation",
+      "persuasion",
+      "religion"
     ],
-    spellcasting: {
-      ability: "cha",
-      cantripsKnown: 4,
-      spellsKnown: 2,
-      ritual: false,
-      spellListId: "sorcerer",
+    "armorProficiencies": [],
+    "weaponProficiencies": [
+      "daggers",
+      "darts",
+      "slings",
+      "quarterstaffs",
+      "light crossbows"
+    ],
+    "startingGold": {
+      "dice": 3,
+      "sides": 4,
+      "multiplier": 10
     },
-    features: [{ name: "Sorcerous Origin", description: "Choose origin at 1st level." }],
+    "fixedEquipment": [
+      "two daggers",
+      "component pouch"
+    ],
+    "equipmentChoices": [
+      {
+        "prompt": "Focus",
+        "options": [
+          {
+            "label": "(a) light crossbow and 20 bolts",
+            "items": [
+              "light crossbow",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt"
+            ]
+          },
+          {
+            "label": "(b) any simple weapon",
+            "items": [
+              "simple weapon"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) dungeoneer's pack",
+            "items": [
+              "dungeoneer's pack"
+            ]
+          },
+          {
+            "label": "(b) explorer's pack",
+            "items": [
+              "explorer's pack"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Arcane focus",
+        "options": [
+          {
+            "label": "(a) component pouch",
+            "items": [
+              "component pouch"
+            ]
+          },
+          {
+            "label": "(b) arcane focus",
+            "items": [
+              "arcane focus"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 1,
+    "subclasses": [
+      {
+        "id": "draconic",
+        "name": "Sorcerous Origin: Draconic",
+        "features": [
+          {
+            "name": "Draconic Resilience",
+            "description": "As magic flows through your body, it causes physical traits of your dragon ancestors to emerge. At 1st level, your hit point maximum increases by 1 and increases by 1 again whenever you gain a level in this class.\n\nAdditionally, parts of your skin are covered by a thin sheen of dragon-like scales. When you aren't wearing armor, your AC equals 13 + your Dexterity modifier.",
+            "slug": "draconic-resilience",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Black - Acid Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-black---acid-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Blue - Lightning Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-blue---lightning-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Brass - Fire Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-brass---fire-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Bronze - Lightning Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-bronze---lightning-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Copper - Acid Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-copper---acid-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Gold - Fire Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-gold---fire-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Green - Poison Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-green---poison-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Red - Fire Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-red---fire-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: Silver - Cold Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-silver---cold-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Dragon Ancestor: White - Cold Damage",
+            "description": "At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later.\n\nYou can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check.",
+            "slug": "dragon-ancestor-white---cold-damage",
+            "minLevel": 1
+          },
+          {
+            "name": "Elemental Affinity",
+            "description": "Starting at 6th level, when you cast a spell that deals damage of the type associated with your draconic ancestry, you can add your Charisma modifier to one damage roll of that spell. At the same time, you can spend 1 sorcery point to gain resistance to that damage type for 1 hour.",
+            "slug": "elemental-affinity",
+            "minLevel": 6
+          },
+          {
+            "name": "Dragon Wings",
+            "description": "At 14th level, you gain the ability to sprout a pair of dragon wings from your back, gaining a flying speed equal to your current speed. You can create these wings as a bonus action on your turn. They last until you dismiss them as a bonus action on your turn.\n\nYou can't manifest your wings while wearing armor unless the armor is made to accommodate them, and clothing not made to accommodate your wings might be destroyed when you manifest them.",
+            "slug": "dragon-wings",
+            "minLevel": 14
+          },
+          {
+            "name": "Draconic Presence",
+            "description": "Beginning at 18th level, you can channel the dread presence of your dragon ancestor, causing those around you to become awestruck or frightened. As an action, you can spend 5 sorcery points to draw on this power and exude an aura of awe or fear (your choice) to a distance of 60 feet. For 1 minute or until you lose your concentration (as if you were casting a concentration spell), each hostile creature that starts its turn in this aura must succeed on a Wisdom saving throw or be charmed (if you chose awe) or frightened (if you chose fear) until the aura ends. A creature that succeeds on this saving throw is immune to your aura for 24 hours.",
+            "slug": "draconic-presence",
+            "minLevel": 18
+          }
+        ]
+      },
+      {
+        "id": "wild-magic",
+        "name": "Wild Magic",
+        "features": [
+          {
+            "name": "Wild Magic Surge",
+            "description": "Roll on Wild Magic table after casting a sorcerer spell.",
+            "minLevel": 1
+          },
+          {
+            "name": "Tides of Chaos",
+            "slug": "tides-of-chaos",
+            "description": "Gain advantage once per long rest; DM may trigger surge.",
+            "minLevel": 1,
+            "mechanics": {
+              "kind": "uses",
+              "max": 1,
+              "restReset": "long"
+            }
+          }
+        ]
+      }
+    ],
+    "spellcasting": {
+      "ability": "cha",
+      "cantripsKnown": 4,
+      "spellsKnown": 2,
+      "ritual": false,
+      "spellListId": "sorcerer"
+    },
+    "features": [
+      {
+        "name": "Sorcerous Origin",
+        "description": "Choose origin at 1st level."
+      },
+      {
+        "name": "Flexible Casting: Converting Spell Slot",
+        "description": "As a bonus action on your turn, you can expend one spell slot and gain a number of sorcery points equal to the slot's level..",
+        "slug": "flexible-casting-converting-spell-slot",
+        "minLevel": 2
+      },
+      {
+        "name": "Flexible Casting: Creating Spell Slots",
+        "description": "You can transform unexpended sorcery points into one spell slot as a bonus action on your turn. The Creating Spell Slots table shows the cost of creating a spell slot of a given level. You can create spell slots no higher in level than 5th. \n\nAny spell slot you create with this feature vanishes when you finish a long rest.",
+        "slug": "flexible-casting-creating-spell-slots",
+        "minLevel": 2
+      },
+      {
+        "name": "Font of Magic",
+        "description": "At 2nd level, you tap into a deep wellspring of magic within yourself. This wellspring is represented by sorcery points, which allow you to create a variety of magical effects.\n\nSorcery Points\n\nYou have 2 sorcery points, and you gain more as you reach higher levels, as shown in the Sorcery Points column of the Sorcerer table. You can never have more sorcery points than shown on the table for your level. You regain all spent sorcery points when you finish a long rest.",
+        "slug": "font-of-magic",
+        "minLevel": 2
+      },
+      {
+        "name": "Metamagic",
+        "description": "At 3rd level, you gain the ability to twist your spells to suit your needs. You gain two of the following Metamagic options of your choice. You gain another one at 10th and 17th level.\n\nYou can use only one Metamagic option on a spell when you cast it, unless otherwise noted.",
+        "slug": "metamagic-1",
+        "minLevel": 3
+      },
+      {
+        "name": "Metamagic: Careful Spell",
+        "description": "When you cast a spell that forces other creatures to make a saving throw, you can protect some of those creatures from the spell's full force. To do so, you spend 1 sorcery point and choose a number of those creatures up to your Charisma modifier (minimum of one creature). A chosen creature automatically succeeds on its saving throw against the spell.",
+        "slug": "metamagic-careful-spell",
+        "minLevel": 3
+      },
+      {
+        "name": "Metamagic: Distant Spell",
+        "description": "When you cast a spell that has a range of 5 feet or greater, you can spend 1 sorcery point to double the range of the spell.\n\nWhen you cast a spell that has a range of touch, you can spend 1 sorcery point to make the range of the spell 30 feet.",
+        "slug": "metamagic-distant-spell",
+        "minLevel": 3
+      },
+      {
+        "name": "Metamagic: Empowered Spell",
+        "description": "When you roll damage for a spell, you can spend 1 sorcery point to reroll a number of the damage dice up to your Charisma modifier (minimum of one). You must use the new rolls.\n\nYou can use Empowered Spell even if you have already used a different Metamagic option during the casting of the spell.",
+        "slug": "metamagic-empowered-spell",
+        "minLevel": 3
+      },
+      {
+        "name": "Metamagic: Extended Spell",
+        "description": "When you cast a spell that has a duration of 1 minute or longer, you can spend 1 sorcery point to double its duration, to a maximum duration of 24 hours.",
+        "slug": "metamagic-extended-spell",
+        "minLevel": 3
+      },
+      {
+        "name": "Metamagic: Heightened Spell",
+        "description": "When you cast a spell that forces a creature to make a saving throw to resist its effects, you can spend 3 sorcery points to give one target of the spell disadvantage on its first saving throw made against the spell.",
+        "slug": "metamagic-heightened-spell",
+        "minLevel": 3
+      },
+      {
+        "name": "Metamagic: Quickened Spell",
+        "description": "When you cast a spell that has a casting time of 1 action, you can spend 2 sorcery points to change the casting time to 1 bonus action for this casting.",
+        "slug": "metamagic-quickened-spell",
+        "minLevel": 3
+      },
+      {
+        "name": "Metamagic: Subtle Spell",
+        "description": "When you cast a spell, you can spend 1 sorcery point to cast it without any somatic or verbal components.",
+        "slug": "metamagic-subtle-spell",
+        "minLevel": 3
+      },
+      {
+        "name": "Metamagic: Twinned Spell",
+        "description": "When you cast a spell that targets only one creature and doesn't have a range of self, you can spend a number of sorcery points equal to the spell's level to target a second creature in range with the same spell (1 sorcery point if the spell is a cantrip).\n\nTo be eligible, a spell must be incapable of targeting more than one creature at the spell's current level. For example, magic missile and scorching ray aren't eligible, but ray of frost is.",
+        "slug": "metamagic-twinned-spell",
+        "minLevel": 3
+      },
+      {
+        "name": "Sorcerous Origin feature",
+        "description": "Choose a sorcerous origin, which describes the source of your innate magical power, such as Draconic Bloodline.\n\nYour choice grants you features when you choose it at 1st level and again at 6th, 14th, and 18th level.",
+        "slug": "sorcerous-origin-improvement-1",
+        "minLevel": 6
+      },
+      {
+        "name": "Metamagic",
+        "description": "At 3rd level, you gain the ability to twist your spells to suit your needs. You gain two of the following Metamagic options of your choice. You gain another one at 10th and 17th level.\n\nYou can use only one Metamagic option on a spell when you cast it, unless otherwise noted.",
+        "slug": "metamagic-2",
+        "minLevel": 10
+      },
+      {
+        "name": "Metamagic",
+        "description": "At 3rd level, you gain the ability to twist your spells to suit your needs. You gain two of the following Metamagic options of your choice. You gain another one at 10th and 17th level.\n\nYou can use only one Metamagic option on a spell when you cast it, unless otherwise noted.",
+        "slug": "metamagic-3",
+        "minLevel": 17
+      },
+      {
+        "name": "Sorcerous Restoration",
+        "description": "At 20th level, you regain 4 expended sorcery points whenever you finish a short rest.",
+        "slug": "sorcerous-restoration",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "warlock",
-    name: "Warlock",
-    hitDie: 8,
-    savingThrows: ["wis", "cha"],
-    skillChoiceCount: 2,
-    skillOptions: ["arcana", "deception", "history", "intimidation", "investigation", "nature", "religion"],
-    armorProficiencies: ["light armor"],
-    weaponProficiencies: ["simple weapons"],
-    startingGold: { dice: 4, sides: 4, multiplier: 10 },
-    fixedEquipment: ["leather armor", "any simple weapon", "two daggers"],
-    equipmentChoices: [
-      {
-        prompt: "Focus",
-        options: [
-          { label: "(a) light crossbow and 20 bolts", items: ["light crossbow", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt", "crossbow bolt"] },
-          { label: "(b) any simple weapon", items: ["simple weapon"] },
-        ],
-      },
-      {
-        prompt: "Pack",
-        options: [
-          { label: "(a) scholar's pack", items: ["scholar's pack"] },
-          { label: "(b) dungeoneer's pack", items: ["dungeoneer's pack"] },
-        ],
-      },
-      {
-        prompt: "Arcane focus",
-        options: [
-          { label: "(a) component pouch", items: ["component pouch"] },
-          { label: "(b) arcane focus", items: ["arcane focus"] },
-        ],
-      },
+    "id": "warlock",
+    "name": "Warlock",
+    "hitDie": 8,
+    "savingThrows": [
+      "wis",
+      "cha"
     ],
-    subclassLevel: 1,
-    subclasses: [
-      { id: "archfey", name: "The Archfey", features: [{ name: "Fey Presence", description: "Charm or frighten creatures in 10-ft cube." }] },
-      { id: "fiend", name: "The Fiend", features: [{ name: "Dark One's Blessing", description: "Gain temp HP when you reduce a hostile creature to 0 HP." }] },
-      { id: "great-old-one", name: "The Great Old One", features: [{ name: "Awakened Mind", description: "Telepathic communication with creatures you can see within 30 ft." }] },
+    "skillChoiceCount": 2,
+    "skillOptions": [
+      "arcana",
+      "deception",
+      "history",
+      "intimidation",
+      "investigation",
+      "nature",
+      "religion"
     ],
-    spellcasting: {
-      ability: "cha",
-      cantripsKnown: 2,
-      spellsKnown: 2,
-      ritual: false,
-      spellListId: "warlock",
+    "armorProficiencies": [
+      "light armor"
+    ],
+    "weaponProficiencies": [
+      "simple weapons"
+    ],
+    "startingGold": {
+      "dice": 4,
+      "sides": 4,
+      "multiplier": 10
     },
-    features: [{ name: "Otherworldly Patron", description: "Choose patron at 1st level." }, { name: "Pact Magic", description: "Recover all spell slots on short rest." }],
+    "fixedEquipment": [
+      "leather armor",
+      "any simple weapon",
+      "two daggers"
+    ],
+    "equipmentChoices": [
+      {
+        "prompt": "Focus",
+        "options": [
+          {
+            "label": "(a) light crossbow and 20 bolts",
+            "items": [
+              "light crossbow",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt",
+              "crossbow bolt"
+            ]
+          },
+          {
+            "label": "(b) any simple weapon",
+            "items": [
+              "simple weapon"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) scholar's pack",
+            "items": [
+              "scholar's pack"
+            ]
+          },
+          {
+            "label": "(b) dungeoneer's pack",
+            "items": [
+              "dungeoneer's pack"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Arcane focus",
+        "options": [
+          {
+            "label": "(a) component pouch",
+            "items": [
+              "component pouch"
+            ]
+          },
+          {
+            "label": "(b) arcane focus",
+            "items": [
+              "arcane focus"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 1,
+    "subclasses": [
+      {
+        "id": "fiend",
+        "name": "Otherworldly Patron: Fiend",
+        "features": [
+          {
+            "name": "Dark One's Blessing",
+            "description": "Starting at 1st level, when you reduce a hostile creature to 0 hit points, you gain temporary hit points equal to your Charisma modifier + your warlock level (minimum of 1).",
+            "slug": "dark-ones-blessing",
+            "minLevel": 1
+          },
+          {
+            "name": "Dark One's Own Luck",
+            "description": "Starting at 6th level, you can call on your patron to alter fate in your favor. When you make an ability check or a saving throw, you can use this feature to add a d10 to your roll. You can do so after seeing the initial roll but before any of the roll's effects occur.\n\nOnce you use this feature, you can't use it again until you finish a short or long rest.",
+            "slug": "dark-ones-own-luck",
+            "minLevel": 6
+          },
+          {
+            "name": "Fiendish Resilience",
+            "description": "Starting at 10th level, you can choose one damage type when you finish a short or long rest. You gain resistance to that damage type until you choose a different one with this feature. Damage from magical weapons or silver weapons ignores this resistance.",
+            "slug": "fiendish-resilience",
+            "minLevel": 10
+          },
+          {
+            "name": "Hurl Through Hell",
+            "description": "Starting at 14th level, when you hit a creature with an attack, you can use this feature to instantly transport the target through the lower planes. The creature disappears and hurtles through a nightmare landscape.\n\nAt the end of your next turn, the target returns to the space it previously occupied, or the nearest unoccupied space. If the target is not a fiend, it takes 10d10 psychic damage as it reels from its horrific experience.\n\nOnce you use this feature, you can't use it again until you finish a long rest.",
+            "slug": "hurl-through-hell",
+            "minLevel": 14
+          }
+        ]
+      },
+      {
+        "id": "great-old-one",
+        "name": "The Great Old One",
+        "features": [
+          {
+            "name": "Awakened Mind",
+            "description": "Telepathic communication with creatures you can see within 30 ft.",
+            "minLevel": 1
+          }
+        ]
+      }
+    ],
+    "spellcasting": {
+      "ability": "cha",
+      "cantripsKnown": 2,
+      "spellsKnown": 2,
+      "ritual": false,
+      "spellListId": "warlock"
+    },
+    "features": [
+      {
+        "name": "Pact Magic",
+        "description": "Your arcane research and the magic bestowed on you by your patron have given you facility with spells.",
+        "slug": "pact-magic",
+        "minLevel": 1
+      },
+      {
+        "name": "Otherworldly Patron",
+        "description": "Choose patron at 1st level."
+      },
+      {
+        "name": "Eldritch Invocation: Agonizing Blast",
+        "description": "When you cast eldritch blast, add your Charisma modifier to the damage it deals on a hit.",
+        "slug": "eldritch-invocation-agonizing-blast",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Armor of Shadows",
+        "description": "You can cast mage armor on yourself at will, without expending a spell slot or material components.",
+        "slug": "eldritch-invocation-armor-of-shadows",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Beast Speech",
+        "description": "You can cast speak with animals at will, without expending a spell slot.",
+        "slug": "eldritch-invocation-beast-speech",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Beguiling Influence",
+        "description": "You gain proficiency in the Deception and Persuasion skills.",
+        "slug": "eldritch-invocation-beguiling-influence",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Book of Ancient Secrets",
+        "description": "You can now inscribe magical rituals in your Book of Shadows. Choose two 1st-level spells that have the ritual tag from any class's spell list (the two needn't be from the same list). The spells appear in the book and don't count against the number of spells you know. With your Book of Shadows in hand, you can cast the chosen spells as rituals. You can't cast the spells except as rituals, unless you've learned them by some other means. You can also cast a warlock spell you know as a ritual if it has the ritual tag.\n\nOn your adventures, you can add other ritual spells to your Book of Shadows. When you find such a spell, you can add it to the book if the spell's level is equal to or less than half your warlock level (rounded up) and if you can spare the time to transcribe the spell. For each level of the spell, the transcription process takes 2 hours and costs 50 gp for the rare inks needed to inscribe it.",
+        "slug": "eldritch-invocation-book-of-ancient-secrets",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Devil's Sight",
+        "description": "You can see normally in darkness, both magical and nonmagical, to a distance of 120 feet.",
+        "slug": "eldritch-invocation-devils-sight",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Eldritch Sight",
+        "description": "You can cast detect magic at will, without expending a spell slot.",
+        "slug": "eldritch-invocation-eldritch-sight",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Eldritch Spear",
+        "description": "When you cast eldritch blast, its range is 300 feet.",
+        "slug": "eldritch-invocation-eldritch-spear",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Eyes of the Rune Keeper",
+        "description": "You can read all writing.",
+        "slug": "eldritch-invocation-eyes-of-the-rune-keeper",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Fiendish Vigor",
+        "description": "You can cast false life on yourself at will as a 1st-level spell, without expending a spell slot or material components.",
+        "slug": "eldritch-invocation-fiendish-vigor",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Gaze of Two Minds",
+        "description": "You can use your action to touch a willing humanoid and perceive through its senses until the end of your next turn. As long as the creature is on the same plane of existence as you, you can use your action on subsequent turns to maintain this connection, extending the duration until the end of your next turn. While perceiving through the other creature's senses, you benefit from any special senses possessed by that creature, and you are blinded and deafened to your own surroundings.",
+        "slug": "eldritch-invocation-gaze-of-two-minds",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Mask of Many Faces",
+        "description": "You can cast disguise self at will, without expending a spell slot.",
+        "slug": "eldritch-invocation-mask-of-many-faces",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Misty Visions",
+        "description": "You can cast silent image at will, without expending a spell slot or material components.",
+        "slug": "eldritch-invocation-misty-visions",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Repelling Blast",
+        "description": "When you hit a creature with eldritch blast, you can push the creature up to 10 feet away from you in a straight line.",
+        "slug": "eldritch-invocation-repelling-blast",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Thief of Five Fates",
+        "description": "You can cast bane once using a warlock spell slot. You can't do so again until you finish a long rest.",
+        "slug": "eldritch-invocation-thief-of-five-fates",
+        "minLevel": 2
+      },
+      {
+        "name": "Eldritch Invocation: Voice of the Chain Master",
+        "description": "You can communicate telepathically with your familiar and perceive through your familiar's senses as long as you are on the same plane of existence.\n\nAdditionally, while perceiving through your familiar's senses, you can also speak through your familiar in your own voice, even if your familiar is normally incapable of speech.",
+        "slug": "eldritch-invocation-voice-of-the-chain-master",
+        "minLevel": 2
+      },
+      {
+        "name": "Pact Boon",
+        "description": "At 3rd level, your otherworldly patron bestows a gift upon you for your loyal service. You gain one of the following features of your choice.",
+        "slug": "pact-boon",
+        "minLevel": 3
+      },
+      {
+        "name": "Pact of the Blade",
+        "description": "You can use your action to create a pact weapon in your empty hand. You can choose the form that this melee weapon takes each time you create it. You are proficient with it while you wield it. This weapon counts as magical for the purpose of overcoming resistance and immunity to nonmagical attacks and damage.\n\nYour pact weapon disappears if it is more than 5 feet away from you for 1 minute or more. It also disappears if you use this feature again, if you dismiss the weapon (no action required), or if you die.\n\nYou can transform one magic weapon into your pact weapon by performing a special ritual while you hold the weapon. You perform the ritual over the course of 1 hour, which can be done during a short rest. You can then dismiss the weapon, shunting it into an extradimensional space, and it appears whenever you create your pact weapon thereafter. You can't affect an artifact or a sentient weapon in this way. The weapon ceases being your pact weapon if you die, if you perform the 1-hour ritual on a different weapon, or if you use a 1-hour ritual to break your bond to it. The weapon appears at your feet if it is in the extradimensional space when the bond breaks.\n\nIf you serve the Fiend, your weapon could be an axe made of black metal and adorned with decorative flames.",
+        "slug": "pact-of-the-blade",
+        "minLevel": 3
+      },
+      {
+        "name": "Pact of the Chain",
+        "description": "You learn the find familiar spell and can cast it as a ritual. The spell doesn't count against your number of spells known.\n\nWhen you cast the spell, you can choose one of the normal forms for your familiar or one of the following special forms: imp, pseudodragon, quasit, or sprite.\n\nAdditionally, when you take the Attack action, you can forgo one of your own attacks to allow your familiar to make one attack of its own with its reaction.\n\nYour familiar is more cunning than a typical familiar. Its default form can be a reflection of your patron, with imps and quasits tied to the Fiend.",
+        "slug": "pact-of-the-chain",
+        "minLevel": 3
+      },
+      {
+        "name": "Pact of the Tome",
+        "description": "Your patron gives you a grimoire called a Book of Shadows. When you gain this feature, choose three cantrips from any class's spell list (the three needn't be from the same list). While the book is on your person, you can cast those cantrips at will. They don't count against your number of cantrips known. If they don't appear on the warlock spell list, they are nonetheless warlock spells for you.\n\nIf you lose your Book of Shadows, you can perform a 1-hour ceremony to receive a replacement from your patron. This ceremony can be performed during a short or long rest, and it destroys the previous book. The book turns to ash when you die.\n\nYour Book of Shadows could be a weighty tome bound in demon hide studded with iron, holding spells of conjuration and a wealth of forbidden lore about the sinister regions of the cosmos, a gift of the Fiend.",
+        "slug": "pact-of-the-tome",
+        "minLevel": 3
+      },
+      {
+        "name": "Eldritch Invocation: Mire the Mind",
+        "description": "You can cast slow once using a warlock spell slot. You can't do so again until you finish a long rest.",
+        "slug": "eldritch-invocation-mire-the-mind",
+        "minLevel": 5
+      },
+      {
+        "name": "Eldritch Invocation: One with Shadows",
+        "description": "When you are in an area of dim light or darkness, you can use your action to become invisible until you move or take an action or a reaction.",
+        "slug": "eldritch-invocation-one-with-shadows",
+        "minLevel": 5
+      },
+      {
+        "name": "Eldritch Invocation: Sign of Ill Omen",
+        "description": "You can cast bestow curse once using a warlock spell slot. You can't do so again until you finish a long rest.",
+        "slug": "eldritch-invocation-sign-of-ill-omen",
+        "minLevel": 5
+      },
+      {
+        "name": "Eldritch Invocation: Thirsting Blade",
+        "description": "You can attack with your pact weapon twice, instead of once, whenever you take the Attack action on your turn.",
+        "slug": "eldritch-invocation-thirsting-blade",
+        "minLevel": 5
+      },
+      {
+        "name": "Otherworldly Patron feature",
+        "description": "At 1st level, you have struck a bargain with an otherworldly being of your choice, such as the Fiend. Your choice grants you features at 1st level and again at 6th, 10th, and 14th level.",
+        "slug": "otherworldly-patron-improvement-1",
+        "minLevel": 6
+      },
+      {
+        "name": "Eldritch Invocation: Bewitching Whispers",
+        "description": "You can cast compulsion once using a warlock spell slot. You can't do so again until you finish a long rest.",
+        "slug": "eldritch-invocation-bewitching-whispers",
+        "minLevel": 7
+      },
+      {
+        "name": "Eldritch Invocation: Dreadful Word",
+        "description": "You can cast confusion once using a warlock spell slot. You can't do so again until you finish a long rest.",
+        "slug": "eldritch-invocation-dreadful-word",
+        "minLevel": 7
+      },
+      {
+        "name": "Eldritch Invocation: Sculptor of Flesh",
+        "description": "You can cast polymorph once using a warlock spell slot. You can't do so again until you finish a long rest.",
+        "slug": "eldritch-invocation-sculptor-of-flesh",
+        "minLevel": 7
+      },
+      {
+        "name": "Eldritch Invocation: Ascendant Step",
+        "description": "You can cast levitate on yourself at will, without expending a spell slot or material components.",
+        "slug": "eldritch-invocation-ascendant-step",
+        "minLevel": 9
+      },
+      {
+        "name": "Eldritch Invocation: Minions of Chaos",
+        "description": "You can cast conjure elemental once using a warlock spell slot. You can't do so again until you finish a long rest.",
+        "slug": "eldritch-invocation-minions-of-chaos",
+        "minLevel": 9
+      },
+      {
+        "name": "Eldritch Invocation: Otherworldly Leap",
+        "description": "You can cast jump on yourself at will, without expending a spell slot or material components.",
+        "slug": "eldritch-invocation-otherworldly-leap",
+        "minLevel": 9
+      },
+      {
+        "name": "Eldritch Invocation: Whispers of the Grave",
+        "description": "You can cast speak with dead at will, without expending a spell slot.",
+        "slug": "eldritch-invocation-whispers-of-the-grave",
+        "minLevel": 9
+      },
+      {
+        "name": "Mystic Arcanum (6th level)",
+        "description": "At 11th level, your patron bestows upon you a magical secret called an arcanum. Choose one 6th- level spell from the warlock spell list as this arcanum.\n\nYou can cast your arcanum spell once without expending a spell slot. You must finish a long rest before you can do so again.\n\nAt higher levels, you gain more warlock spells of your choice that can be cast in this way: one 7th- level spell at 13th level, one 8th-level spell at 15th level, and one 9th-level spell at 17th level. You regain all uses of your Mystic Arcanum when you finish a long rest.",
+        "slug": "mystic-arcanum-6th-level",
+        "minLevel": 11
+      },
+      {
+        "name": "Eldritch Invocation: Lifedrinker",
+        "description": "When you hit a creature with your pact weapon, the creature takes extra necrotic damage equal to your Charisma modifier (minimum 1).",
+        "slug": "eldritch-invocation-lifedrinker",
+        "minLevel": 12
+      },
+      {
+        "name": "Mystic Arcanum (7th level)",
+        "description": "At 11th level, your patron bestows upon you a magical secret called an arcanum. Choose one 6th- level spell from the warlock spell list as this arcanum.\n\nYou can cast your arcanum spell once without expending a spell slot. You must finish a long rest before you can do so again.\n\nAt higher levels, you gain more warlock spells of your choice that can be cast in this way: one 7th- level spell at 13th level, one 8th-level spell at 15th level, and one 9th-level spell at 17th level. You regain all uses of your Mystic Arcanum when you finish a long rest.",
+        "slug": "mystic-arcanum-7th-level",
+        "minLevel": 13
+      },
+      {
+        "name": "Eldritch Invocation: Chains of Carceri",
+        "description": "You can cast hold monster at will--targeting a celestial, fiend, or elemental--without expending a spell slot or material components. You must finish a long rest before you can use this invocation on the same creature again.",
+        "slug": "eldritch-invocation-chains-of-carceri",
+        "minLevel": 15
+      },
+      {
+        "name": "Eldritch Invocation: Master of Myriad Forms",
+        "description": "You can cast alter self at will, without expending a spell slot.",
+        "slug": "eldritch-invocation-master-of-myriad-forms",
+        "minLevel": 15
+      },
+      {
+        "name": "Eldritch Invocation: Visions of Distant Realms",
+        "description": "You can cast arcane eye at will, without expending a spell slot.",
+        "slug": "eldritch-invocation-visions-of-distant-realms",
+        "minLevel": 15
+      },
+      {
+        "name": "Eldritch Invocation: Witch Sight",
+        "description": "You can see the true form of any shapechanger or creature concealed by illusion or transmutation magic while the creature is within 30 feet of you and within line of sight.",
+        "slug": "eldritch-invocation-witch-sight",
+        "minLevel": 15
+      },
+      {
+        "name": "Mystic Arcanum (8th level)",
+        "description": "At 11th level, your patron bestows upon you a magical secret called an arcanum. Choose one 6th- level spell from the warlock spell list as this arcanum.\n\nYou can cast your arcanum spell once without expending a spell slot. You must finish a long rest before you can do so again.\n\nAt higher levels, you gain more warlock spells of your choice that can be cast in this way: one 7th- level spell at 13th level, one 8th-level spell at 15th level, and one 9th-level spell at 17th level. You regain all uses of your Mystic Arcanum when you finish a long rest.",
+        "slug": "mystic-arcanum-8th-level",
+        "minLevel": 15
+      },
+      {
+        "name": "Mystic Arcanum (9th level)",
+        "description": "At 11th level, your patron bestows upon you a magical secret called an arcanum. Choose one 6th- level spell from the warlock spell list as this arcanum.\n\nYou can cast your arcanum spell once without expending a spell slot. You must finish a long rest before you can do so again.\n\nAt higher levels, you gain more warlock spells of your choice that can be cast in this way: one 7th- level spell at 13th level, one 8th-level spell at 15th level, and one 9th-level spell at 17th level. You regain all uses of your Mystic Arcanum when you finish a long rest.",
+        "slug": "mystic-arcanum-9th-level",
+        "minLevel": 17
+      },
+      {
+        "name": "Eldritch Master",
+        "description": "At 20th level, you can draw on your inner reserve of mystical power while entreating your patron to regain expended spell slots. You can spend 1 minute entreating your patron for aid to regain all your expended spell slots from your Pact Magic feature.\n\nOnce you regain spell slots with this feature, you must finish a long rest before you can do so again.",
+        "slug": "eldritch-master",
+        "minLevel": 20
+      }
+    ]
   },
   {
-    id: "wizard",
-    name: "Wizard",
-    hitDie: 6,
-    savingThrows: ["int", "wis"],
-    skillChoiceCount: 2,
-    skillOptions: ["arcana", "history", "insight", "investigation", "medicine", "religion"],
-    armorProficiencies: [],
-    weaponProficiencies: ["daggers", "darts", "slings", "quarterstaffs", "light crossbows"],
-    startingGold: { dice: 4, sides: 4, multiplier: 10 },
-    fixedEquipment: ["spellbook"],
-    equipmentChoices: [
-      {
-        prompt: "Weapon",
-        options: [
-          { label: "(a) quarterstaff", items: ["quarterstaff"] },
-          { label: "(b) dagger", items: ["dagger"] },
-        ],
-      },
-      {
-        prompt: "Focus",
-        options: [
-          { label: "(a) component pouch", items: ["component pouch"] },
-          { label: "(b) arcane focus", items: ["arcane focus"] },
-        ],
-      },
-      {
-        prompt: "Pack",
-        options: [
-          { label: "(a) scholar's pack", items: ["scholar's pack"] },
-          { label: "(b) explorer's pack", items: ["explorer's pack"] },
-        ],
-      },
+    "id": "wizard",
+    "name": "Wizard",
+    "hitDie": 6,
+    "savingThrows": [
+      "int",
+      "wis"
     ],
-    subclassLevel: 2,
-    subclasses: [
-      { id: "abjuration", name: "School of Abjuration", features: [{ name: "Abjuration Savant", description: "Halve gold and time to copy abjuration spells." }] },
-      { id: "conjuration", name: "School of Conjuration", features: [{ name: "Conjuration Savant", description: "Halve gold and time to copy conjuration spells." }] },
-      { id: "divination", name: "School of Divination", features: [{ name: "Divination Savant", description: "Halve gold and time to copy divination spells." }] },
-      { id: "enchantment", name: "School of Enchantment", features: [{ name: "Enchantment Savant", description: "Halve gold and time to copy enchantment spells." }] },
-      { id: "evocation", name: "School of Evocation", features: [{ name: "Evocation Savant", description: "Halve gold and time to copy evocation spells." }] },
-      { id: "illusion", name: "School of Illusion", features: [{ name: "Illusion Savant", description: "Halve gold and time to copy illusion spells." }] },
-      { id: "necromancy", name: "School of Necromancy", features: [{ name: "Necromancy Savant", description: "Halve gold and time to copy necromancy spells." }] },
-      { id: "transmutation", name: "School of Transmutation", features: [{ name: "Transmutation Savant", description: "Halve gold and time to copy transmutation spells." }] },
+    "skillChoiceCount": 2,
+    "skillOptions": [
+      "arcana",
+      "history",
+      "insight",
+      "investigation",
+      "medicine",
+      "religion"
     ],
-    spellcasting: {
-      ability: "int",
-      cantripsKnown: 3,
-      spellbookAtLevel1: 6,
-      preparedCaster: true,
-      ritual: true,
-      spellListId: "wizard",
+    "armorProficiencies": [],
+    "weaponProficiencies": [
+      "daggers",
+      "darts",
+      "slings",
+      "quarterstaffs",
+      "light crossbows"
+    ],
+    "startingGold": {
+      "dice": 4,
+      "sides": 4,
+      "multiplier": 10
     },
-    features: [
-      {
-        name: "Arcane Recovery",
-        slug: "arcane-recovery",
-        minLevel: 2,
-        description: "Recover spell slots on short rest once per day.",
-      },
-      {
-        name: "Ritual Casting",
-        slug: "ritual-casting",
-        description:
-          "Cast a wizard spell from your spellbook with the ritual tag as a ritual, even if not prepared (add 10 minutes; no spell slot).",
-      },
+    "fixedEquipment": [
+      "spellbook"
     ],
-  },
+    "equipmentChoices": [
+      {
+        "prompt": "Weapon",
+        "options": [
+          {
+            "label": "(a) quarterstaff",
+            "items": [
+              "quarterstaff"
+            ]
+          },
+          {
+            "label": "(b) dagger",
+            "items": [
+              "dagger"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Focus",
+        "options": [
+          {
+            "label": "(a) component pouch",
+            "items": [
+              "component pouch"
+            ]
+          },
+          {
+            "label": "(b) arcane focus",
+            "items": [
+              "arcane focus"
+            ]
+          }
+        ]
+      },
+      {
+        "prompt": "Pack",
+        "options": [
+          {
+            "label": "(a) scholar's pack",
+            "items": [
+              "scholar's pack"
+            ]
+          },
+          {
+            "label": "(b) explorer's pack",
+            "items": [
+              "explorer's pack"
+            ]
+          }
+        ]
+      }
+    ],
+    "subclassLevel": 2,
+    "subclasses": [
+      {
+        "id": "evocation",
+        "name": "Arcane Tradition: Evocation",
+        "features": [
+          {
+            "name": "Evocation Savant",
+            "description": "Beginning when you select this school at 2nd level, the gold and time you must spend to copy an evocation spell into your spellbook is halved.",
+            "slug": "evocation-savant",
+            "minLevel": 2
+          },
+          {
+            "name": "Sculpt Spells",
+            "description": "Beginning at 2nd level, you can create pockets of relative safety within the effects of your evocation spells. When you cast an evocation spell that affects other creatures that you can see, you can choose a number of them equal to 1 + the spell's level. The chosen creatures automatically succeed on their saving throws against the spell, and they take no damage if they would normally take half damage on a successful save.",
+            "slug": "sculpt-spells",
+            "minLevel": 2
+          },
+          {
+            "name": "Potent Cantrip",
+            "description": "Starting at 6th level, your damaging cantrips affect even creatures that avoid the brunt of the effect. When a creature succeeds on a saving throw against your cantrip, the creature takes half the cantrip's damage (if any) but suffers no additional effect from the cantrip.",
+            "slug": "potent-cantrip",
+            "minLevel": 6
+          },
+          {
+            "name": "Empowered Evocation",
+            "description": "Beginning at 10th level, you can add your Intelligence modifier to one damage roll of any wizard evocation spell you cast.",
+            "slug": "empowered-evocation",
+            "minLevel": 10
+          },
+          {
+            "name": "Overchannel",
+            "description": "Starting at 14th level, you can increase the power of your simpler spells. When you cast a wizard spell of 1st through 5th level that deals damage, you can deal maximum damage with that spell.\n\nThe first time you do so, you suffer no adverse effect. If you use this feature again before you finish a long rest, you take 2d12 necrotic damage for each level of the spell, immediately after you cast it. Each time you use this feature again before finishing a long rest, the necrotic damage per spell level increases by 1d12. This damage ignores resistance and immunity.",
+            "slug": "overchannel",
+            "minLevel": 14
+          }
+        ]
+      },
+      {
+        "id": "abjuration",
+        "name": "School of Abjuration",
+        "features": [
+          {
+            "name": "Abjuration Savant",
+            "description": "Halve gold and time to copy abjuration spells.",
+            "minLevel": 2
+          }
+        ]
+      },
+      {
+        "id": "conjuration",
+        "name": "School of Conjuration",
+        "features": [
+          {
+            "name": "Conjuration Savant",
+            "description": "Halve gold and time to copy conjuration spells.",
+            "minLevel": 2
+          }
+        ]
+      },
+      {
+        "id": "divination",
+        "name": "School of Divination",
+        "features": [
+          {
+            "name": "Divination Savant",
+            "description": "Halve gold and time to copy divination spells.",
+            "minLevel": 2
+          }
+        ]
+      },
+      {
+        "id": "enchantment",
+        "name": "School of Enchantment",
+        "features": [
+          {
+            "name": "Enchantment Savant",
+            "description": "Halve gold and time to copy enchantment spells.",
+            "minLevel": 2
+          }
+        ]
+      },
+      {
+        "id": "illusion",
+        "name": "School of Illusion",
+        "features": [
+          {
+            "name": "Illusion Savant",
+            "description": "Halve gold and time to copy illusion spells.",
+            "minLevel": 2
+          }
+        ]
+      },
+      {
+        "id": "necromancy",
+        "name": "School of Necromancy",
+        "features": [
+          {
+            "name": "Necromancy Savant",
+            "description": "Halve gold and time to copy necromancy spells.",
+            "minLevel": 2
+          }
+        ]
+      },
+      {
+        "id": "transmutation",
+        "name": "School of Transmutation",
+        "features": [
+          {
+            "name": "Transmutation Savant",
+            "description": "Halve gold and time to copy transmutation spells.",
+            "minLevel": 2
+          }
+        ]
+      }
+    ],
+    "spellcasting": {
+      "ability": "int",
+      "cantripsKnown": 3,
+      "spellbookAtLevel1": 6,
+      "preparedCaster": true,
+      "ritual": true,
+      "spellListId": "wizard"
+    },
+    "features": [
+      {
+        "name": "Arcane Recovery",
+        "description": "You have learned to regain some of your magical energy by studying your spellbook. Once per day when you finish a short rest, you can choose expended spell slots to recover. The spell slots can have a combined level that is equal to or less than half your wizard level (rounded up), and none of the slots can be 6th level or higher.\n\nFor example, if you're a 4th-level wizard, you can recover up to two levels worth of spell slots. You can recover either a 2nd-level spell slot or two 1st-level spell slots.",
+        "slug": "arcane-recovery",
+        "minLevel": 2
+      },
+      {
+        "name": "Ritual Casting",
+        "slug": "ritual-casting",
+        "description": "Cast a wizard spell from your spellbook with the ritual tag as a ritual, even if not prepared (add 10 minutes; no spell slot)."
+      },
+      {
+        "name": "Spell Mastery",
+        "description": "At 18th level, you have achieved such mastery over certain spells that you can cast them at will. Choose a 1st-level wizard spell and a 2nd-level wizard spell that are in your spellbook. You can cast those spells at their lowest level without expending a spell slot when you have them prepared. If you want to cast either spell at a higher level, you must expend a spell slot as normal.\n\nBy spending 8 hours in study, you can exchange one or both of the spells you chose for different spells of the same levels.",
+        "slug": "spell-mastery",
+        "minLevel": 18
+      },
+      {
+        "name": "Signature Spell",
+        "description": "When you reach 20th level, you gain mastery over two powerful spells and can cast them with little effort. Choose two 3rd-level wizard spells in your spellbook as your signature spells. You always have these spells prepared, they don't count against the number of spells you have prepared, and you can cast each of them once at 3rd level without expending a spell slot. When you do so, you can't do so again until you finish a short or long rest.\n\nIf you want to cast either spell at a higher level, you must expend a spell slot as normal.",
+        "slug": "signature-spell",
+        "minLevel": 20
+      }
+    ]
+  }
 ];
 
 export function getClass(id: string): PhbClass | undefined {

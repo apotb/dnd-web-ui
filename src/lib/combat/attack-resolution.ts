@@ -18,6 +18,8 @@ import {
   removePendingAttack,
 } from "@/lib/combat/pending-attacks";
 import { isBattleActive, isDmControlledToken } from "@/lib/combat/turn";
+import { creditXpForDefeatedEnemies } from "@/lib/combat/xp-pool";
+import type { EnemyRecord } from "@/lib/combat/state-utils";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CharacterData } from "@/lib/schemas/character";
 import { consumeSpellSlotOnCharacter } from "@/lib/dnd/spellcasting";
@@ -193,7 +195,8 @@ export interface CharacterHpUpdate {
 export function applyResolvedAttack(
   state: CombatState,
   pending: PendingAttack,
-  charactersById: Record<string, ParsedCharacter> = {}
+  charactersById: Record<string, ParsedCharacter> = {},
+  enemiesBySlug: Record<string, Pick<EnemyRecord, "data">> = {}
 ): {
   next: CombatState;
   characterUpdates: CharacterHpUpdate[];
@@ -382,6 +385,12 @@ export function applyResolvedAttack(
       ...state,
       tokens: resolvedTokens,
       turn,
+      reactionUsedTokenIds: [
+        ...state.reactionUsedTokenIds,
+        ...(pending.protectionTokenIds ?? []).filter(
+          (tokenId) => !state.reactionUsedTokenIds.includes(tokenId)
+        ),
+      ],
     },
     pending.id
   );
@@ -398,6 +407,8 @@ export function applyResolvedAttack(
       turn: applyBattleOverEconomyReset(nextState.turn),
     };
   }
+
+  nextState = creditXpForDefeatedEnemies(nextState, enemiesBySlug);
 
   return {
     next: nextState,

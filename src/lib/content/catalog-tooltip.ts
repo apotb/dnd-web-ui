@@ -1,3 +1,8 @@
+import {
+  getSpeciesTooltipFeatures,
+  getTooltipClassFeatures,
+  getTooltipSubclassFeatures,
+} from "@/lib/character/feature-derivation";
 import { ABILITY_LABELS, SKILL_LABELS } from "@/lib/dnd/calculations";
 import type {
   PhbBackground,
@@ -85,6 +90,15 @@ function joinLines(lines: string[]): string | null {
   return filtered.length > 0 ? filtered.join("\n\n") : null;
 }
 
+function formatUnlockedFeaturesLine(
+  features: { name: string }[],
+  label: string
+): string | null {
+  if (!features.length) return null;
+  const items = features.map((f) => `• ${f.name}`).join("\n");
+  return `${label}\n${items}`;
+}
+
 export function findSpeciesByDisplayName(
   displayName: string,
   speciesList: PhbSpecies[]
@@ -142,7 +156,25 @@ export function findSubclassByName(
   const cls = findClassByName(className, classes);
   if (!cls || !subclassName.trim()) return null;
   const normalized = subclassName.trim().toLowerCase();
-  const subclass = cls.subclasses.find((s) => s.name.toLowerCase() === normalized);
+  const aliases: Record<string, string> = {
+    "path of the berserker": "primal path: berserker",
+    "path of the totem warrior": "totem warrior",
+    "school of evocation": "arcane tradition: evocation",
+    "champion": "martial archetype: champion",
+    "college of lore": "bard college: lore",
+  };
+  const idAliases: Record<string, string> = {
+    "knowledge domain": "knowledge",
+    "nature domain": "nature",
+    "tempest domain": "tempest",
+    "circle of the land": "land",
+    "circle of the moon": "moon",
+  };
+  const resolved = aliases[normalized] ?? normalized;
+  const subclass =
+    cls.subclasses.find((s) => s.name.toLowerCase() === resolved) ??
+    cls.subclasses.find((s) => s.id === (idAliases[normalized] ?? normalized.replace(/\s+/g, "-"))) ??
+    cls.subclasses.find((s) => resolved.includes(s.name.toLowerCase()));
   return subclass ? { cls, subclass } : null;
 }
 
@@ -164,18 +196,14 @@ export function formatSpeciesTooltip(
   );
   if (langLine) lines.push(langLine);
 
-  if (subspecies?.extras?.length) {
-    lines.push(subspecies.extras.join("\n"));
-  }
-
-  for (const trait of species.traits) {
-    lines.push(`${trait.name}\n${trait.description}`);
+  for (const feature of getSpeciesTooltipFeatures(species, subspecies)) {
+    lines.push(`${feature.name}\n${feature.description}`);
   }
 
   return joinLines(lines);
 }
 
-export function formatClassTooltip(cls: PhbClass): string | null {
+export function formatClassTooltip(cls: PhbClass, characterLevel?: number): string | null {
   const lines: string[] = [];
 
   lines.push(`Hit Die: d${cls.hitDie}`);
@@ -194,14 +222,16 @@ export function formatClassTooltip(cls: PhbClass): string | null {
   }
 
   if (cls.spellcasting) {
-    lines.push(
-      `Spellcasting: ${ABILITY_LABELS[cls.spellcasting.ability]} · ${cls.spellcasting.spellListId} list`
-    );
+    lines.push(`Spellcasting: ${ABILITY_LABELS[cls.spellcasting.ability]}`);
   }
 
-  for (const feature of cls.features) {
-    lines.push(`${feature.name}\n${feature.description}`);
-  }
+  const features =
+    characterLevel != null
+      ? getTooltipClassFeatures(cls, characterLevel)
+      : cls.features;
+
+  const featuresLine = formatUnlockedFeaturesLine(features, "Class features:");
+  if (featuresLine) lines.push(featuresLine);
 
   return joinLines(lines);
 }
@@ -236,10 +266,14 @@ export function formatBackgroundTooltip(
   return joinLines(lines);
 }
 
-export function formatSubclassTooltip(subclass: PhbSubclass): string | null {
-  const lines: string[] = [];
-  for (const feature of subclass.features) {
-    lines.push(`${feature.name}\n${feature.description}`);
-  }
-  return joinLines(lines);
+export function formatSubclassTooltip(
+  subclass: PhbSubclass,
+  characterLevel?: number
+): string | null {
+  const features =
+    characterLevel != null
+      ? getTooltipSubclassFeatures(subclass, characterLevel)
+      : subclass.features;
+  const featuresLine = formatUnlockedFeaturesLine(features, "Subclass features:");
+  return featuresLine ? joinLines([featuresLine]) : null;
 }

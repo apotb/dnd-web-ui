@@ -25,6 +25,7 @@ import {
   usesTortleNaturalArmor,
 } from "@/lib/dnd/phb/species-mechanics";
 import { getSpell } from "@/lib/dnd/phb/spells";
+import { classHasSpellcastingAtLevel } from "@/lib/dnd/spellcasting";
 import type { CreatorCatalog } from "@/lib/content/catalog";
 import {
   buildLanguageLookup,
@@ -451,7 +452,7 @@ function buildSpells(state: CharacterCreatorState, scores: CharacterData["abilit
       spellId: s!.id,
       name: s!.name,
       level: 1,
-      prepared: false,
+      prepared: state.spellIds.includes(s!.id),
       notes: `Spellbook · ${s!.school}`,
     }));
 
@@ -559,6 +560,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       pendingShortRest: false,
       speed,
       hitDice: `1d${cls?.hitDie ?? 8}`,
+      levelUpHpGains: [],
       hitDiceSpent: 0,
       lastLongRestDate: null,
       deathSaves: { successes: 0, failures: 0 },
@@ -633,6 +635,15 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       favoredEnemy: state.favoredEnemy,
       favoredHumanoidSpecies: state.favoredHumanoidSpecies,
       favoredTerrain: state.favoredTerrain,
+      favoredEnemyPicks: state.favoredEnemy
+        ? [
+            {
+              enemy: state.favoredEnemy,
+              humanoidSpecies: state.favoredHumanoidSpecies,
+            },
+          ]
+        : [],
+      favoredTerrains: state.favoredTerrain ? [state.favoredTerrain] : [],
       variantHumanFeat: state.variantHumanFeat,
       magicInitiateClass: "",
       magicInitiateCantripIds: [],
@@ -664,6 +675,8 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
     classSkillChoices: state.classSkills,
     features: [],
     featureUseState: {},
+    levelUpFeats: {},
+    dmGrantedFeats: [],
   };
 
   const syncedData = syncFeatureGrants(data, {
@@ -817,7 +830,7 @@ export function validateCreatorState(state: CharacterCreatorState, catalog?: Cre
     errors.push(`Choose ${cls.skillChoiceCount} class skill(s).`);
   }
 
-  if (cls?.spellcasting) {
+  if (cls?.spellcasting && classHasSpellcastingAtLevel(cls, 1)) {
     const sc = cls.spellcasting;
     if (state.cantripIds.length !== sc.cantripsKnown) {
       errors.push(`Choose ${sc.cantripsKnown} cantrip(s).`);
@@ -834,6 +847,13 @@ export function validateCreatorState(state: CharacterCreatorState, catalog?: Cre
       const required = Math.max(1, mod + 1);
       if (state.spellIds.length !== required) {
         errors.push(`Prepare ${required} 1st-level spell(s) (Wis/Int mod + level).`);
+      }
+    }
+    if (sc.spellbookAtLevel1) {
+      const mod = abilityModifier(state.baseScores.int + (computeRacialBonuses(state).int.total));
+      const required = Math.max(1, mod + 1);
+      if (state.spellIds.length !== required) {
+        errors.push(`Prepare ${required} spell(s) from your spellbook.`);
       }
     }
   }

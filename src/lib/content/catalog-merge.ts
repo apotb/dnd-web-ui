@@ -23,7 +23,7 @@ export function mergeCatalogFeatureEntries(
       ...entry,
       slug: entry.slug?.trim() ? entry.slug : phb.slug,
       mechanics: entry.mechanics ?? phb.mechanics,
-      minLevel: entry.minLevel ?? phb.minLevel,
+      minLevel: phb.minLevel ?? entry.minLevel,
     };
   });
 
@@ -40,7 +40,35 @@ export function mergeClassWithPhb(dbClass: PhbClass, phbClass: PhbClass | undefi
   if (!phbClass) return dbClass;
 
   return {
+    ...phbClass,
     ...dbClass,
+    id: dbClass.id,
+    name: dbClass.name,
+    hitDie: dbClass.hitDie ?? phbClass.hitDie,
+    savingThrows:
+      dbClass.savingThrows?.length > 0 ? dbClass.savingThrows : phbClass.savingThrows,
+    skillChoiceCount: dbClass.skillChoiceCount ?? phbClass.skillChoiceCount,
+    skillOptions:
+      dbClass.skillOptions?.length > 0 ? dbClass.skillOptions : phbClass.skillOptions,
+    armorProficiencies:
+      dbClass.armorProficiencies?.length > 0
+        ? dbClass.armorProficiencies
+        : phbClass.armorProficiencies,
+    weaponProficiencies:
+      dbClass.weaponProficiencies?.length > 0
+        ? dbClass.weaponProficiencies
+        : phbClass.weaponProficiencies,
+    startingGold: dbClass.startingGold ?? phbClass.startingGold,
+    equipmentChoices:
+      dbClass.equipmentChoices?.length > 0
+        ? dbClass.equipmentChoices
+        : phbClass.equipmentChoices,
+    fixedEquipment:
+      dbClass.fixedEquipment?.length > 0
+        ? dbClass.fixedEquipment
+        : phbClass.fixedEquipment,
+    subclassLevel: dbClass.subclassLevel ?? phbClass.subclassLevel,
+    spellcasting: dbClass.spellcasting ?? phbClass.spellcasting,
     features: mergeCatalogFeatureEntries(dbClass.features, phbClass.features),
     subclasses: dbClass.subclasses.map((subclass) => {
       const phbSubclass = phbClass.subclasses.find((entry) => entry.id === subclass.id);
@@ -60,9 +88,39 @@ export function mergeSpeciesWithPhb(
 ): PhbSpecies {
   if (!phbSpecies) return dbSpecies;
 
+  const phbSubById = new Map((phbSpecies.subspecies ?? []).map((sub) => [sub.id, sub]));
+  const dbSubIds = new Set((dbSpecies.subspecies ?? []).map((sub) => sub.id));
+
+  const mergedSubspecies = (dbSpecies.subspecies ?? []).map((sub) => {
+    const phbSub = phbSubById.get(sub.id);
+    if (!phbSub) return sub;
+    return {
+      ...phbSub,
+      ...sub,
+      extras: sub.extras?.length ? sub.extras : phbSub.extras,
+      weaponProficiencies: sub.weaponProficiencies?.length
+        ? sub.weaponProficiencies
+        : phbSub.weaponProficiencies,
+      armorProficiencies: sub.armorProficiencies?.length
+        ? sub.armorProficiencies
+        : phbSub.armorProficiencies,
+      abilityBonus: sub.abilityBonus ?? phbSub.abilityBonus,
+    };
+  });
+
+  for (const phbSub of phbSpecies.subspecies ?? []) {
+    if (!dbSubIds.has(phbSub.id)) {
+      mergedSubspecies.push(phbSub);
+    }
+  }
+
   return {
+    ...phbSpecies,
     ...dbSpecies,
+    id: dbSpecies.id,
+    name: dbSpecies.name,
     traits: mergeCatalogFeatureEntries(dbSpecies.traits, phbSpecies.traits),
+    subspecies: mergedSubspecies.length ? mergedSubspecies : phbSpecies.subspecies,
   };
 }
 

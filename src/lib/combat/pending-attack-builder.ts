@@ -17,6 +17,8 @@ import {
 import type { CombatOption } from "@/lib/combat/combat-options";
 import { isWieldedMainHandWeaponAttack } from "@/lib/combat/combat-options";
 import { canTwoWeaponFightSameTurn } from "@/lib/dnd/two-weapon-fighting";
+import { qualifiesForGreatWeaponFighting } from "@/lib/dnd/fighting-styles";
+import type { WeaponGrip } from "@/lib/dnd/attacks";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import type { Item } from "@/lib/schemas/item";
 import type { ParsedCharacter } from "@/lib/character/utils";
@@ -43,6 +45,9 @@ export interface AttackSubmissionInput {
   damageAmount?: number | null;
   /** Resolved damage dice (e.g. after versatile grip selection). */
   damageDice?: string;
+  weaponGrip?: WeaponGrip;
+  /** Protector token id per target token id (Fighting Style: Protection). */
+  protectionByTargetId?: Record<string, string>;
   perTarget?: Array<{
     tokenId: string;
     attackRoll?: number | null;
@@ -197,6 +202,27 @@ export function createPendingAttack(
   const requiresSave = attack.rollType === "save";
   const rollType = attack.rollType ?? "attack";
   const resolvedDamageDice = submission.damageDice ?? attack.damageDice;
+  const weaponGrip = submission.weaponGrip ?? "one-handed";
+
+  const attackerCharacter = attacker.characterId
+    ? charactersById[attacker.characterId] ?? null
+    : null;
+
+  const greatWeaponFighting =
+    attackerCharacter != null &&
+    options?.catalogItems != null &&
+    qualifiesForGreatWeaponFighting(
+      attackerCharacter.data,
+      options.catalogItems,
+      attack,
+      weaponGrip,
+      options.classCatalog
+    );
+
+  const protectionByTargetId = submission.protectionByTargetId ?? {};
+  const protectionTokenIds = [
+    ...new Set(Object.values(protectionByTargetId).filter(Boolean)),
+  ];
 
   const pendingTargets: PendingAttackTarget[] = targets.map((token) => {
     const ctx = resolveTokenContext(token, charactersById, enemiesBySlug);
@@ -205,7 +231,9 @@ export function createPendingAttack(
       enemyData: ctx.enemyData,
       requiresSave,
     });
-    const attackDisadvantage = getAttackRollDisadvantage(attacker, token, state, attack);
+    const protectionDisadvantage = Boolean(protectionByTargetId[token.id]);
+    const attackDisadvantage =
+      getAttackRollDisadvantage(attacker, token, state, attack) || protectionDisadvantage;
 
     const perTarget = submission.perTarget?.find((entry) => entry.tokenId === token.id);
     const attackRoll = perTarget?.attackRoll ?? submission.attackRoll ?? null;
@@ -267,9 +295,6 @@ export function createPendingAttack(
       ? "awaiting-saves"
       : "awaiting-dm-review";
 
-  const attackerCharacter = attacker.characterId
-    ? charactersById[attacker.characterId] ?? null
-    : null;
   const isWeaponAction =
     getOptionActionCost(option, options) === "action" &&
     option.attack?.source === "weapon";
@@ -305,6 +330,8 @@ export function createPendingAttack(
       : false,
     unlocksTwoWeaponFighting: unlocksTwoWeaponFighting || undefined,
     weaponWieldOffHand,
+    greatWeaponFighting: greatWeaponFighting || undefined,
+    protectionTokenIds,
     isAoe: spec.isAoe,
     ...resolvePendingAmmunition(attack, attacker, charactersById),
     ...resolvePendingThrownWeapon(attack, attacker, charactersById),

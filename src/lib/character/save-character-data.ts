@@ -8,7 +8,7 @@ import { syncSavingThrowsFromClass, resolveCharacterClass } from "@/lib/characte
 import { stripGrantedFeaturesForSave } from "@/lib/character/feature-derivation";
 import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
 import { syncSpellcastingFromClass } from "@/lib/dnd/spellcasting";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 import { createClient } from "@/lib/supabase/client";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 
@@ -39,7 +39,7 @@ export function prepareCharacterDataForSave(
   );
   const granted = syncFeatureGrants(stripped, { classes });
   const cls = resolveCharacterClass(granted, classes);
-  const level = levelFromXp(granted.basicInfo.xp ?? 0);
+  const level = getCharacterLevel(granted);
   const withSpells = cls?.spellcasting
     ? { ...granted, spells: syncSpellcastingFromClass(granted, cls, level) }
     : granted;

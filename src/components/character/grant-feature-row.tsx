@@ -19,6 +19,7 @@ import { CantripPickerField } from "@/components/spells/cantrip-picker-field";
 import { SpellPicker } from "@/components/spells/spell-picker";
 import type { CatalogSpellRow } from "@/lib/content/catalog-client";
 import { choicePlaceholder } from "@/lib/character/feature-choices";
+import { SelectedChoiceDescription } from "@/components/character/selected-choice-description";
 import {
   buildGrantFeatureCommitPatch,
   isGrantFeatureDraftDirty,
@@ -196,7 +197,10 @@ export function GrantFeatureRow({
     if (editor.storage.area === "featureChoices") {
       const key = editor.storage.key as keyof FeatureChoices;
       const value = workingData.featureChoices?.[key];
-      return Array.isArray(value) ? value : [];
+      return Array.isArray(value) &&
+        value.every((item): item is string => typeof item === "string")
+        ? value
+        : [];
     }
     return [];
   }
@@ -230,31 +234,37 @@ export function GrantFeatureRow({
       {showEditors ? (
         <div className="space-y-2">
           {editor.kind === "skill-or-tool" ? (
-            <Select
-              value={skillOrToolChoice || undefined}
-              onValueChange={(value) => {
-                applyPatch({
-                  speciesChoices: {
-                    ...(workingData.speciesChoices ?? {}),
-                    speciesSkillOrTool: (value ?? "") as SpeciesChoices["speciesSkillOrTool"],
-                    ...(value === "skill" ? { speciesToolChoice: "" } : { speciesSkillChoices: [] }),
-                  },
-                });
-              }}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder={choicePlaceholder(feature.choiceKey)}>
-                  {optionLabel(feature.choiceOptions, skillOrToolChoice)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {feature.choiceOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              <Select
+                value={skillOrToolChoice || undefined}
+                onValueChange={(value) => {
+                  applyPatch({
+                    speciesChoices: {
+                      ...(workingData.speciesChoices ?? {}),
+                      speciesSkillOrTool: (value ?? "") as SpeciesChoices["speciesSkillOrTool"],
+                      ...(value === "skill" ? { speciesToolChoice: "" } : { speciesSkillChoices: [] }),
+                    },
+                  });
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder={choicePlaceholder(feature.choiceKey)}>
+                    {optionLabel(feature.choiceOptions, skillOrToolChoice)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {feature.choiceOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <SelectedChoiceDescription
+                options={feature.choiceOptions}
+                value={skillOrToolChoice || undefined}
+              />
+            </>
           ) : null}
 
           {editor.kind === "skills" ? (

@@ -27,12 +27,13 @@ import { formatSpellPickerTooltip, getMaxCastableSpellLevel } from "@/lib/dnd/sp
 import {
   applyPreparedSelection,
   canReprepareSpellsOnLongRest,
+  canUseClassSpellcasting,
   getSpellcastingLimits,
   isWizard,
   listPreparedLeveledSpells,
   syncSpellcastingFromClass,
 } from "@/lib/dnd/spellcasting";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 import type { HarptosDate } from "@/lib/dnd/harptos-calendar";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
@@ -69,7 +70,7 @@ export function CharacterRestButtons({
     () => resolveCharacterClass(data, classes),
     [data, classes]
   );
-  const characterLevel = levelFromXp(data.basicInfo.xp ?? 0);
+  const characterLevel = getCharacterLevel(data);
   const spellLimits = useMemo(
     () =>
       resolvedClass?.spellcasting
@@ -77,9 +78,10 @@ export function CharacterRestButtons({
         : null,
     [resolvedClass, characterLevel, data.abilityScores]
   );
-  const canReprepare = resolvedClass
-    ? canReprepareSpellsOnLongRest(resolvedClass)
-    : false;
+  const canReprepare =
+    resolvedClass &&
+    canReprepareSpellsOnLongRest(resolvedClass) &&
+    canUseClassSpellcasting(resolvedClass, characterLevel);
   const classSpellListId = resolvedClass?.spellcasting?.spellListId;
   const maxCastableSpellLevel = useMemo(
     () => getMaxCastableSpellLevel(characterLevel, data.spells.slots),

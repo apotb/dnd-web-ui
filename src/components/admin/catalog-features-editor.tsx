@@ -120,7 +120,7 @@ export function CatalogFeaturesEditor({
         const mechanicsKind = feature.mechanics?.kind ?? "none";
         return (
           <div key={index} className="space-y-2 rounded-md border border-dashed p-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <Input
                 placeholder="Name"
                 value={feature.name}
@@ -130,6 +130,19 @@ export function CatalogFeaturesEditor({
                 placeholder="Slug (optional)"
                 value={feature.slug ?? ""}
                 onChange={(e) => updateFeature(index, { slug: e.target.value })}
+              />
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                placeholder="Min level"
+                value={feature.minLevel ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  updateFeature(index, {
+                    minLevel: raw === "" ? undefined : Number(raw),
+                  });
+                }}
               />
             </div>
             <Textarea

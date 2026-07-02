@@ -51,6 +51,30 @@ const WARLOCK_PACT: { slotLevel: number; count: number }[] = [
   { slotLevel: 5, count: 4 },
 ];
 
+/** Half-caster spell slots by character level (index 0 = level 1). */
+const HALF_CASTER_SLOTS: number[][] = [
+  [],
+  [2],
+  [3],
+  [3],
+  [4, 2],
+  [4, 2],
+  [4, 3],
+  [4, 3],
+  [4, 3, 2],
+  [4, 3, 2],
+  [4, 3, 3],
+  [4, 3, 3],
+  [4, 3, 3, 1],
+  [4, 3, 3, 1],
+  [4, 3, 3, 2],
+  [4, 3, 3, 2],
+  [4, 3, 3, 3, 1],
+  [4, 3, 3, 3, 1],
+  [4, 3, 3, 3, 2],
+  [4, 3, 3, 3, 2],
+];
+
 const CANTrips_BY_CLASS: Record<string, number[]> = {
   bard: [2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
   cleric: [3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
@@ -62,6 +86,7 @@ const CANTrips_BY_CLASS: Record<string, number[]> = {
 
 const SPELLS_KNOWN_BY_CLASS: Record<string, number[]> = {
   bard: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24],
+  ranger: [0, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11],
   sorcerer: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14, 15],
   warlock: [2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11],
 };
@@ -88,6 +113,95 @@ export function isWizard(cls: PhbClass): boolean {
   return cls.id === "wizard" && cls.spellcasting?.preparedCaster === true;
 }
 
+export function isHalfCaster(cls: PhbClass): boolean {
+  return cls.spellcasting?.halfCaster === true;
+}
+
+/** True when the character has reached the level spellcasting begins for this class. */
+export function classHasSpellcastingAtLevel(
+  cls: PhbClass,
+  characterLevel: number
+): boolean {
+  if (!cls.spellcasting) return false;
+  const startsAt = cls.spellcasting.startsAtLevel ?? 1;
+  return characterLevel >= startsAt;
+}
+
+/** True when class spellcasting is active at the character's current level. */
+export function canUseClassSpellcasting(
+  cls: PhbClass,
+  characterLevel: number
+): boolean {
+  return !!cls.spellcasting && classHasSpellcastingAtLevel(cls, characterLevel);
+}
+
+/** Full-list prepared casters with no class cantrips (e.g. paladin). */
+export function isNoCantripPreparedCaster(
+  cls: PhbClass,
+  characterLevel: number
+): boolean {
+  return (
+    isFullListPreparedCaster(cls) &&
+    getCantripsKnownLimit(cls, characterLevel) === 0
+  );
+}
+
+/** Whether the DM cantrip/spell edit toggle should appear on the character sheet. */
+export function canShowDmCantripEditToggle(
+  cls: PhbClass | undefined,
+  characterLevel: number
+): boolean {
+  return !!cls?.spellcasting && canUseClassSpellcasting(cls, characterLevel);
+}
+
+/** Checkbox label for the DM spell edit toggle. */
+export function getDmSpellEditToggleLabel(
+  cls: PhbClass,
+  characterLevel: number
+): "Edit spells" | "Edit cantrips" {
+  if (isWizard(cls) || isNoCantripPreparedCaster(cls, characterLevel)) {
+    return "Edit spells";
+  }
+  if (isKnownCaster(cls) && getCantripsKnownLimit(cls, characterLevel) === 0) {
+    return "Edit spells";
+  }
+  return "Edit cantrips";
+}
+
+/** How many prepared spells the player must pick when leveling from → to. */
+export function getPreparedSpellPickCount(
+  cls: PhbClass,
+  fromLevel: number,
+  toLevel: number,
+  abilityScores: CharacterData["abilityScores"]
+): number {
+  if (!cls.spellcasting?.preparedCaster || isWizard(cls)) return 0;
+  const hadBefore = classHasSpellcastingAtLevel(cls, fromLevel);
+  const hasAfter = classHasSpellcastingAtLevel(cls, toLevel);
+  if (!hasAfter) return 0;
+  const next = getPreparedSpellLimit(cls, toLevel, abilityScores);
+  if (!hadBefore) return next;
+  const prev = getPreparedSpellLimit(cls, fromLevel, abilityScores);
+  return Math.max(0, next - prev);
+}
+
+/** How many spells the player must learn when leveling from → to. */
+export function getSpellsKnownPickCount(
+  cls: PhbClass,
+  fromLevel: number,
+  toLevel: number
+): number {
+  if (!isKnownCaster(cls)) return 0;
+  const hadBefore = classHasSpellcastingAtLevel(cls, fromLevel);
+  const hasAfter = classHasSpellcastingAtLevel(cls, toLevel);
+  if (!hasAfter) return 0;
+  const next = getSpellsKnownLimit(cls, toLevel);
+  if (next == null) return 0;
+  if (!hadBefore) return next;
+  const prev = getSpellsKnownLimit(cls, fromLevel) ?? 0;
+  return Math.max(0, next - prev);
+}
+
 /** Cleric, druid, etc.: full class list access; prepare a subset each rest (not wizard). */
 export function isFullListPreparedCaster(cls: PhbClass): boolean {
   return isPreparedCaster(cls) && !isWizard(cls);
@@ -110,6 +224,12 @@ export function getSpellcastingFeatureDescription(cls: PhbClass): string {
   }
   if (isWizard(cls)) {
     return `Full caster — ${abilityLabel} · spellbook (prepare from book on long rest)`;
+  }
+  if (isKnownCaster(cls) && isHalfCaster(cls)) {
+    return `Half caster — ${abilityLabel} · spells known`;
+  }
+  if (isHalfCaster(cls)) {
+    return `Half caster — ${abilityLabel} · prepare from ${cls.id} list on long rest`;
   }
   if (isFullListPreparedCaster(cls)) {
     return `Full caster — ${abilityLabel} · prepare from class list on long rest`;
@@ -135,13 +255,23 @@ export function getWizardSpellbookSpells(known: Spell[]): Spell[] {
     });
 }
 
-/** DM session toggle to add, swap, or remove all wizard spells on the sheet. */
+/** DM session toggle to add, swap, or remove class spells on the sheet (wizard spellbook or no-cantrip prepared casters). */
 export function canModifyPlayerSpells(
   isDm: boolean,
   dmSpellEditEnabled: boolean,
-  cls: PhbClass | undefined
+  cls: PhbClass | undefined,
+  characterLevel?: number
 ): boolean {
-  return isDm && dmSpellEditEnabled && !!cls && isWizard(cls);
+  if (!isDm || !dmSpellEditEnabled || !cls?.spellcasting) return false;
+  if (
+    characterLevel != null &&
+    !canUseClassSpellcasting(cls, characterLevel)
+  ) {
+    return false;
+  }
+  if (isWizard(cls)) return true;
+  if (characterLevel == null) return false;
+  return isNoCantripPreparedCaster(cls, characterLevel);
 }
 
 /** Whether a non-grant spell row can be swapped or removed on the character sheet. */
@@ -149,16 +279,28 @@ export function canEditSpellOnSheet(
   spell: Spell,
   cls: PhbClass | undefined,
   isDm: boolean,
-  dmSpellEditEnabled: boolean
+  dmSpellEditEnabled: boolean,
+  characterLevel?: number
 ): boolean {
   if (isManagedGrantSpell(spell) || !cls) return false;
 
+  if (canModifyPlayerSpells(isDm, dmSpellEditEnabled, cls, characterLevel)) {
+    return true;
+  }
+
   if (isWizard(cls)) {
-    return canModifyPlayerSpells(isDm, dmSpellEditEnabled, cls);
+    return false;
   }
 
   if (isPlayerCantrip(spell)) {
     return canModifyPlayerCantrips(isDm, dmSpellEditEnabled);
+  }
+
+  if (
+    characterLevel != null &&
+    isNoCantripPreparedCaster(cls, characterLevel)
+  ) {
+    return false;
   }
 
   return !isFullListPreparedCaster(cls);
@@ -168,11 +310,15 @@ export function canEditSpellOnSheet(
 export function canAddSpellsOnSheet(
   cls: PhbClass | undefined,
   isDm: boolean,
-  dmSpellEditEnabled: boolean
+  dmSpellEditEnabled: boolean,
+  characterLevel?: number
 ): boolean {
   if (!cls?.spellcasting) return false;
+  if (canModifyPlayerSpells(isDm, dmSpellEditEnabled, cls, characterLevel)) {
+    return true;
+  }
   if (isWizard(cls)) {
-    return canModifyPlayerSpells(isDm, dmSpellEditEnabled, cls);
+    return false;
   }
   if (isFullListPreparedCaster(cls)) {
     return false;
@@ -195,6 +341,8 @@ export interface PreparedSpellSelection {
 }
 
 export function getCantripsKnownLimit(cls: PhbClass, characterLevel: number): number {
+  const startsAt = cls.spellcasting?.startsAtLevel ?? 1;
+  if (characterLevel < startsAt) return 0;
   const table = CANTrips_BY_CLASS[cls.id];
   if (table) return tableAt(table, characterLevel);
   return cls.spellcasting?.cantripsKnown ?? 0;
@@ -221,6 +369,9 @@ export function getPreparedSpellLimit(
   const ability = cls.spellcasting?.ability;
   if (!ability) return 0;
   const mod = abilityModifier(abilityScores[ability]);
+  if (isHalfCaster(cls)) {
+    return Math.max(1, mod + Math.floor(characterLevel / 2));
+  }
   return Math.max(1, mod + characterLevel);
 }
 
@@ -233,7 +384,9 @@ export function formatPreparedSpellLimitTooltip(
   if (!ability || !isPreparedCaster(cls)) return null;
 
   const mod = abilityModifier(abilityScores[ability]);
-  const raw = mod + characterLevel;
+  const raw = isHalfCaster(cls)
+    ? mod + Math.floor(characterLevel / 2)
+    : mod + characterLevel;
   const lines = [
     `Character Level: ${characterLevel}`,
     `${ABILITY_FULL_LABELS[ability]}: ${formatModifier(mod)}`,
@@ -252,11 +405,25 @@ export function buildSpellSlots(
   const prev = existing ?? {};
   const slots: CharacterData["spells"]["slots"] = {};
 
+  if (!classHasSpellcastingAtLevel(cls, characterLevel)) {
+    return slots;
+  }
+
   if (cls.id === "warlock") {
     const pact = WARLOCK_PACT[levelIndex(characterLevel)] ?? WARLOCK_PACT[0];
     const key = String(pact.slotLevel);
     const used = prev[key]?.used ?? 0;
     slots[key] = { max: pact.count, used: Math.min(used, pact.count) };
+    return slots;
+  }
+
+  if (isHalfCaster(cls)) {
+    const row = HALF_CASTER_SLOTS[levelIndex(characterLevel)] ?? [];
+    row.forEach((max, index) => {
+      const key = String(index + 1);
+      const used = prev[key]?.used ?? 0;
+      slots[key] = { max, used: Math.min(used, max) };
+    });
     return slots;
   }
 
@@ -283,6 +450,15 @@ export function getSpellcastingLimits(
   abilityScores: CharacterData["abilityScores"]
 ): SpellcastingLimits {
   const usesPreparedList = isPreparedCaster(cls);
+  if (!classHasSpellcastingAtLevel(cls, characterLevel)) {
+    return {
+      cantripsKnown: 0,
+      spellsKnown: null,
+      preparedSpells: null,
+      usesPreparedList,
+      isWizard: isWizard(cls),
+    };
+  }
   return {
     cantripsKnown: getCantripsKnownLimit(cls, characterLevel),
     spellsKnown: getSpellsKnownLimit(cls, characterLevel),
@@ -411,7 +587,7 @@ export function syncSpellcastingFromClass(
   cls: PhbClass | undefined,
   characterLevel: number
 ): CharacterData["spells"] {
-  if (!cls?.spellcasting) {
+  if (!cls?.spellcasting || !classHasSpellcastingAtLevel(cls, characterLevel)) {
     return data.spells;
   }
 

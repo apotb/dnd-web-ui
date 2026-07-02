@@ -1,4 +1,5 @@
 import type { CharacterData, SkillKey } from "@/lib/schemas/character";
+import { hasMagicInitiateFeat } from "@/lib/character/character-feats";
 import type { BackgroundChoices } from "@/lib/schemas/character";
 import {
   buildChoiceDescription,
@@ -17,6 +18,7 @@ import {
 import type { PhbBackground, PhbSpecies } from "@/lib/dnd/phb/types";
 import { SKILL_LABELS } from "@/lib/dnd/calculations";
 import { getSpell } from "@/lib/dnd/phb/spells";
+import { getFeat } from "@/lib/dnd/phb/feats";
 import { KNOWLEDGE_DOMAIN_SKILL_OPTIONS } from "@/lib/dnd/phb/cleric-domain-grants";
 import {
   defaultLanguageLookup,
@@ -300,29 +302,6 @@ export function deriveGrantConfigurableFeatures(
     );
   }
 
-  if (featureChoices.variantHumanFeat === "magic-initiate") {
-    const feat = getFeat("magic-initiate");
-    const rules =
-      feat?.description ??
-      "Learn two cantrips and one 1st-level spell from cleric, druid, or wizard list.";
-    features.push(
-      makeGrantFeature(
-        "species",
-        "Magic Initiate",
-        rules,
-        rules,
-        "variantHumanFeat",
-        featureChoices.magicInitiateClass,
-        [
-          { value: "cleric", label: "Cleric" },
-          { value: "druid", label: "Druid" },
-          { value: "wizard", label: "Wizard" },
-        ],
-        { kind: "magic-initiate", storage: { area: "featureChoices", key: "magicInitiateClass" } }
-      )
-    );
-  }
-
   const subclassMatch = findSubclassByName(
     data.basicInfo.class ?? "",
     data.basicInfo.subclass ?? "",
@@ -463,8 +442,6 @@ export function deriveGrantConfigurableFeatures(
   return features;
 }
 
-import { getFeat } from "@/lib/dnd/phb/feats";
-
 export function isGrantConfigurableFeature(
   feature: { locked?: boolean; grantEditor?: GrantEditorConfig }
 ): feature is GrantConfigurableFeature {
@@ -488,5 +465,33 @@ export function isReplacedByGrantFeature(
   const names = replacements[locked.name] ?? [locked.name];
   return grantFeatures.some(
     (g) => g.source === locked.source && names.some((n) => g.name.includes(n) || n.includes(g.name))
+  );
+}
+
+/** Magic Initiate spell picks — shown under the Feats section when the feat is present. */
+export function deriveMagicInitiateGrantFeature(
+  data: CharacterData
+): GrantConfigurableFeature | null {
+  if (!hasMagicInitiateFeat(data)) return null;
+
+  const featureChoices = data.featureChoices ?? {};
+  const feat = getFeat("magic-initiate");
+  const rules =
+    feat?.description ??
+    "Learn two cantrips and one 1st-level spell from cleric, druid, or wizard list.";
+
+  return makeGrantFeature(
+    "species",
+    "Magic Initiate",
+    rules,
+    rules,
+    "variantHumanFeat",
+    featureChoices.magicInitiateClass,
+    [
+      { value: "cleric", label: "Cleric" },
+      { value: "druid", label: "Druid" },
+      { value: "wizard", label: "Wizard" },
+    ],
+    { kind: "magic-initiate", storage: { area: "featureChoices", key: "magicInitiateClass" } }
   );
 }

@@ -10,6 +10,7 @@ import {
   isCriticalAttackRoll,
 } from "@/lib/combat/attack-resolution";
 import {
+  applyGreatWeaponFightingRerolls,
   areDamageRollsComplete,
   isD20RollComplete,
   parseDamageNotation,
@@ -323,10 +324,11 @@ export function DamageRollField({
 export function getDamageSubmitValues(
   damageDice: string,
   rolls: string[],
-  fallbackTotal: string
+  fallbackTotal: string,
+  options?: { greatWeaponFighting?: boolean }
 ): { damageText: string; damageRolls: number[]; damageAmount: number | null } {
   const parsed = parseDamageNotation(damageDice);
-  const damageRolls =
+  let damageRolls =
     parsed != null
       ? parsed.dice
           .map((sides, index) => parseDieRoll(rolls[index] ?? "", sides))
@@ -334,6 +336,10 @@ export function getDamageSubmitValues(
       : rolls
           .map((value) => parseOptionalInt(value))
           .filter((value): value is number => value != null);
+
+  if (options?.greatWeaponFighting && parsed && damageRolls.length === parsed.dice.length) {
+    damageRolls = applyGreatWeaponFightingRerolls(damageRolls, parsed.dice);
+  }
 
   if (!parsed) {
     return {
@@ -346,7 +352,11 @@ export function getDamageSubmitValues(
   return {
     damageText: parsed.notation,
     damageRolls,
-    damageAmount: sumDamageRollValues(rolls, parsed.dice, parsed.modifier),
+    damageAmount: sumDamageRollValues(
+      damageRolls.map(String),
+      parsed.dice,
+      parsed.modifier
+    ),
   };
 }
 

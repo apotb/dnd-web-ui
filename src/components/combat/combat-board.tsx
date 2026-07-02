@@ -38,6 +38,11 @@ import {
   patchTokenHpFromDamage,
 } from "@/lib/combat/hp-adjust";
 import {
+  clearXpPool,
+  creditXpForDefeatedEnemies,
+  distributeXpPool,
+} from "@/lib/combat/xp-pool";
+import {
   removeCombatImage,
   resolveCombatImageUrl,
   uploadCombatBackground,
@@ -53,6 +58,7 @@ import {
 } from "@/lib/dnd/mechanical-features";
 import type { HpPoolCombatTarget } from "@/lib/combat/combat-mechanical-actions";
 import { speciesSubtitleLabel } from "@/lib/content/catalog-tooltip";
+import { clampInspiration } from "@/lib/dnd/calculations";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import {
   persistCombatState,
@@ -95,6 +101,7 @@ import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-mo
 import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
 import { CombatShellDefenseConfirmModal } from "@/components/combat/combat-shell-defense-confirm-modal";
 import { CombatHpPoolModal } from "@/components/combat/combat-hp-pool-modal";
+import { CombatXpModal } from "@/components/combat/combat-xp-modal";
 import { CombatOtherActionsModal } from "@/components/combat/combat-other-actions-modal";
 import { CombatSpellCastModal } from "@/components/combat/combat-spell-cast-modal";
 import {
@@ -636,6 +643,9 @@ export function CombatBoard({
   const [measureHoverCell, setMeasureHoverCell] = useState<GridPosition | null>(null);
   const [losMode, setLosMode] = useState(false);
   const [boardExpanded, setBoardExpanded] = useState(false);
+  const [xpModalOpen, setXpModalOpen] = useState(false);
+  const [distributingXp, setDistributingXp] = useState(false);
+  const prevBattleOverRef = useRef<boolean | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const draggingTokenIdRef = useRef<string | null>(null);
@@ -706,6 +716,14 @@ export function CombatBoard({
         .join(","),
     [localCharacters]
   );
+
+  const xpModalParticipantIds = useMemo(() => {
+    const registered = combatState.battleParticipantCharacterIds ?? [];
+    if (registered.length > 0) return registered;
+    return combatState.tokens
+      .filter((token) => token.kind === "party" && token.characterId)
+      .map((token) => token.characterId!);
+  }, [combatState.battleParticipantCharacterIds, combatState.tokens]);
 
   const persist = useCallback(
     async (next: CombatState): Promise<string | null> => {
@@ -1200,6 +1218,25 @@ export function CombatBoard({
     if (isDm && !showDmUi) return;
     setSelectedTokenId((current) => current ?? defaultBattleOverActingToken.id);
   }, [battleOver, defaultBattleOverActingToken, isDm, showDmUi]);
+
+  useEffect(() => {
+    if (prevBattleOverRef.current === null) {
+      prevBattleOverRef.current = battleOver;
+      return;
+    }
+
+    const wasBattleOver = prevBattleOverRef.current;
+    prevBattleOverRef.current = battleOver;
+
+    if (
+      showDmUi &&
+      !wasBattleOver &&
+      battleOver &&
+      (combatState.xpPool ?? 0) > 0
+    ) {
+      setXpModalOpen(true);
+    }
+  }, [battleOver, combatState.xpPool, showDmUi]);
 
   useEffect(() => {
     if (isDm && !showDmUi) {
@@ -1943,6 +1980,7 @@ export function CombatBoard({
       saveTotal,
       saveRoll2,
       charactersById,
+      enemiesBySlug,
     });
     setSubmittingSaveId(null);
     if (error) {
@@ -1966,7 +2004,8 @@ export function CombatBoard({
       pendingAttackId,
       saves,
       charactersById,
-      isDm
+      isDm,
+      enemiesBySlug
     );
     setSubmittingSaveId(null);
     if (error) {
@@ -1986,7 +2025,8 @@ export function CombatBoard({
       combatState,
       reviewed,
       charactersById,
-      isDm
+      isDm,
+      enemiesBySlug
     );
     setResolvingAttackId(null);
     if (error) {
@@ -2048,7 +2088,7 @@ export function CombatBoard({
       if (resolvingAttackId === pending.id) continue;
 
       autoResolvingAttackIdsRef.current.add(pending.id);
-      void resolveCombatAttack(campaignId, combatState, pending, charactersById, isDm)
+      void resolveCombatAttack(campaignId, combatState, pending, charactersById, isDm, enemiesBySlug)
         .then(({ next, error, characterUpdates }) => {
           if (error) {
             showAlert(error);
@@ -2067,6 +2107,7 @@ export function CombatBoard({
     campaignId,
     charactersById,
     combatState,
+    enemiesBySlug,
     isDm,
     resolvingAttackId,
   ]);
@@ -2452,6 +2493,7 @@ export function CombatBoard({
         attacker: actingToken,
         combatOption: pendingSpellCast,
         charactersById,
+        enemiesBySlug,
       }
     );
     setSubmittingAttack(false);
@@ -2507,6 +2549,8 @@ export function CombatBoard({
       next = updateInitiativeAfterVisibilityChange(next, token.id, false, true);
     }
 
+    next = creditXpForDefeatedEnemies(next, enemiesBySlug);
+
     setApplyingHp(true);
 
     const persistError = await persist(next);
@@ -2521,15 +2565,15 @@ export function CombatBoard({
         ...character.data.combat,
         currentHp: nextHp,
       };
-      const error = await saveCharacterData(
+      const saveResult = await saveCharacterData(
         character.id,
         { ...character.data, combat: nextCombat },
         undefined,
         { isDm: true, originalData: character.data }
       );
-      if (error) {
+      if (saveResult.error) {
         setApplyingHp(false);
-        showAlert(error);
+        showAlert(saveResult.error);
         return;
       }
       setLocalCharacters((current) =>
@@ -2548,6 +2592,81 @@ export function CombatBoard({
     }
 
     setApplyingHp(false);
+  }
+
+  async function handleDistributeXp(selectedCharacterIds: string[], allyCount: number) {
+    const pool = combatState.xpPool ?? 0;
+    if (pool <= 0 || selectedCharacterIds.length === 0) return;
+
+    const recipients = selectedCharacterIds
+      .map((id) => localCharacters.find((character) => character.id === id))
+      .filter((character): character is ParsedCharacter => character != null)
+      .map((character) => ({
+        id: character.id,
+        currentXp: character.data.basicInfo.xp ?? 0,
+      }));
+
+    if (recipients.length === 0) return;
+
+    const awards = distributeXpPool(pool, recipients, allyCount);
+    if (awards.size === 0) {
+      showAlert("Could not calculate XP distribution.");
+      return;
+    }
+
+    setDistributingXp(true);
+
+    const updatedById = new Map<string, ParsedCharacter>();
+
+    for (const recipient of recipients) {
+      const award = awards.get(recipient.id) ?? 0;
+      if (award <= 0) continue;
+
+      const character = localCharacters.find((entry) => entry.id === recipient.id);
+      if (!character) continue;
+
+      const nextXp = (character.data.basicInfo.xp ?? 0) + award;
+      const mergedData = {
+        ...character.data,
+        basicInfo: {
+          ...character.data.basicInfo,
+          xp: nextXp,
+        },
+      };
+      const nextData = {
+        ...mergedData,
+        inspiration: clampInspiration(character.data.inspiration ?? 0, mergedData),
+      };
+
+      const saveResult = await saveCharacterData(
+        character.id,
+        nextData,
+        undefined,
+        { isDm: true, originalData: character.data }
+      );
+      if (saveResult.error) {
+        setDistributingXp(false);
+        showAlert(saveResult.error);
+        return;
+      }
+
+      updatedById.set(character.id, { ...character, data: nextData });
+    }
+
+    setLocalCharacters((current) =>
+      current.map((character) => updatedById.get(character.id) ?? character)
+    );
+
+    const cleared = clearXpPool(combatState);
+    const persistError = await persist(cleared);
+    setDistributingXp(false);
+
+    if (persistError) {
+      showAlert(persistError);
+      return;
+    }
+
+    setXpModalOpen(false);
   }
 
   async function handleAdjustTurnMovement(deltaUsedFeet: number) {
@@ -4080,6 +4199,13 @@ export function CombatBoard({
                   <button
                     type="button"
                     className="candy-btn"
+                    onClick={() => setXpModalOpen(true)}
+                  >
+                    XP
+                  </button>
+                  <button
+                    type="button"
+                    className="candy-btn"
                     onClick={() => {
                       if (selectedMarker) setEditMarkerOpen(true);
                       else if (selectedEnemy) setEditEnemyOpen(true);
@@ -4284,6 +4410,9 @@ export function CombatBoard({
           }
           combatState={combatState}
           attackDisadvantageByTokenId={attackSubmitDraft.attackDisadvantageByTokenId ?? {}}
+          charactersById={charactersById}
+          catalogItems={catalogItems}
+          classCatalog={classCatalog}
           damageTakenByTokenId={damageTakenByTokenId}
           submitting={submittingAttack}
           onCancel={() => setAttackSubmitDraft(null)}
@@ -4477,6 +4606,20 @@ export function CombatBoard({
           claiming={assigningCharacterSlot}
           onConfirm={() => void handleClaimCharacterSlot()}
           onCancel={() => setCharacterSlotTokenId(null)}
+        />
+      ) : null}
+      {showDmUi ? (
+        <CombatXpModal
+          key={xpModalOpen ? "open" : "closed"}
+          open={xpModalOpen}
+          xpPool={combatState.xpPool ?? 0}
+          characters={localCharacters}
+          participantCharacterIds={xpModalParticipantIds}
+          distributing={distributingXp}
+          onClose={() => setXpModalOpen(false)}
+          onDistribute={(selectedCharacterIds, allyCount) =>
+            void handleDistributeXp(selectedCharacterIds, allyCount)
+          }
         />
       ) : null}
     </div>

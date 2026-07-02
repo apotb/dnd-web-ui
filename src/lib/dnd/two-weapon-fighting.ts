@@ -5,6 +5,7 @@ import {
   isOneHandedWeapon,
 } from "@/lib/character/equip-rules";
 import { getAllCharacterFeatures } from "@/lib/character/feature-derivation";
+import { getAllCharacterFeatIds } from "@/lib/character/character-feats";
 import type { CharacterData } from "@/lib/schemas/character";
 import { getWeaponProperties, type Item } from "@/lib/schemas/item";
 import type { PhbClass } from "@/lib/dnd/phb/types";
@@ -18,7 +19,7 @@ export function hasDualWielder(
   character: CharacterData,
   catalogClasses?: PhbClass[]
 ): boolean {
-  if (character.featureChoices?.variantHumanFeat === "dual-wielder") {
+  if (getAllCharacterFeatIds(character).includes("dual-wielder")) {
     return true;
   }
   return getAllCharacterFeatures(character, { classes: catalogClasses }).some(

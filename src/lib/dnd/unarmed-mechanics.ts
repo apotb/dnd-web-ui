@@ -1,10 +1,11 @@
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import { findSpeciesByDisplayName } from "@/lib/content/catalog-tooltip";
+import { getAllCharacterFeatIds } from "@/lib/character/character-feats";
 import type { CharacterData } from "@/lib/schemas/character";
 import { getWeaponProperties, type Item } from "@/lib/schemas/item";
 import { ALL_SPECIES } from "@/lib/dnd/phb/species";
 import type { PhbClass } from "@/lib/dnd/phb/types";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 
 export interface NaturalAttackSpec {
   id: string;
@@ -59,7 +60,7 @@ function parseDieFaces(dice: string): number {
 }
 
 export function hasTavernBrawler(character: CharacterData): boolean {
-  if (character.featureChoices?.variantHumanFeat === "tavern-brawler") return true;
+  if (getAllCharacterFeatIds(character).includes("tavern-brawler")) return true;
   return character.features.some((f) => f.name.toLowerCase() === "tavern brawler");
 }
 
@@ -153,6 +154,4 @@ export function getNaturalAttackSpecs(
   return specs;
 }
 
-export function getCharacterLevel(character: CharacterData): number {
-  return levelFromXp(character.basicInfo.xp ?? 0);
-}
+export { getCharacterLevel } from "@/lib/dnd/xp";

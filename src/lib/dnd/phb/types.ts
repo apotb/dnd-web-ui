@@ -128,6 +128,10 @@ export interface PhbClass {
     preparedCaster?: boolean;
     ritual?: boolean;
     spellListId: string;
+    /** Level when spellcasting begins (default 1). Paladin/ranger: 2. */
+    startsAtLevel?: number;
+    /** Half-caster slot progression (paladin, ranger). */
+    halfCaster?: boolean;
   };
   features: CatalogFeatureEntry[];
 }

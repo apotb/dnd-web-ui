@@ -17,8 +17,11 @@ import {
   resolveBackgroundToolProficiencies,
   validateCreatorState,
 } from "@/lib/dnd/character-builder/build-character";
-import { choicePlaceholder, buildChoiceDescription } from "@/lib/character/feature-choices";
-import { TWO_HUMANOID_SPECIES_OPTION, formatFavoredEnemyDisplay } from "@/lib/dnd/phb/favored-enemy-humanoids";
+import { buildFightingStyleChoiceOptions, findCatalogRulesDescription } from "@/lib/character/feature-choices";
+import { SelectedChoiceDescription } from "@/components/character/selected-choice-description";
+import { getFightingStyleOptions } from "@/lib/dnd/phb/fighting-styles";
+import { TWO_HUMANOID_SPECIES_OPTION } from "@/lib/dnd/phb/favored-enemy-humanoids";
+import { RangerFeaturePickers } from "@/components/character/ranger-feature-pickers";
 import {
   ALIGNMENTS,
   CREATOR_STEPS,
@@ -29,10 +32,8 @@ import {
 } from "@/lib/dnd/character-builder/types";
 import {
   classRequiresSubclassAtLevel1,
-  FAVORED_ENEMIES,
-  FAVORED_TERRAINS,
-  FIGHTING_STYLES,
 } from "@/lib/dnd/phb/classes";
+import { classHasSpellcastingAtLevel } from "@/lib/dnd/spellcasting";
 import { getSpeciesGrantLines } from "@/lib/dnd/phb/species-grants";
 import type { CreatorCatalog } from "@/lib/content/catalog";
 import { characterExportSchema } from "@/lib/schemas/character";
@@ -44,7 +45,6 @@ import {
 } from "./equipment-sub-picker";
 import { IntroContent } from "./creator-intro-modal";
 import { LanguagePicker } from "./language-picker";
-import { HumanoidSpeciesPicker } from "./humanoid-species-picker";
 import { SkillPicker } from "./skill-picker";
 import { CantripPickerField } from "@/components/spells/cantrip-picker-field";
 import { KNOWLEDGE_DOMAIN_SKILL_OPTIONS } from "@/lib/dnd/phb/cleric-domain-grants";
@@ -267,7 +267,9 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
         return null;
       case "spells": {
         const sc = selectedClass?.spellcasting;
-        if (!sc) return null;
+        if (!sc || !selectedClass || !classHasSpellcastingAtLevel(selectedClass, 1)) {
+          return null;
+        }
         if (state.cantripIds.length !== sc.cantripsKnown) {
           return `Choose ${sc.cantripsKnown} cantrip(s).`;
         }
@@ -1071,96 +1073,75 @@ export function CharacterCreator({ campaignId, catalog }: CharacterCreatorProps)
                 </>
               ) : null}
 
-              {state.classId === "fighter" ? (
-                <>
-                  <label className="candy-label">Fighting style</label>
-                  <select
-                    className="candy-input"
-                    value={state.fightingStyle}
-                    onChange={(e) => update({ fightingStyle: e.target.value })}
-                  >
-                    <option value="">— choose —</option>
-                    {FIGHTING_STYLES.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </>
+              {state.classId === "fighter" && selectedClass ? (
+                (() => {
+                  const styleOptions = buildFightingStyleChoiceOptions(
+                    selectedClass.features,
+                    getFightingStyleOptions(selectedClass.id)
+                  );
+                  return (
+                    <>
+                      <label className="candy-label">Fighting style</label>
+                      <select
+                        className="candy-input"
+                        value={state.fightingStyle}
+                        onChange={(e) => update({ fightingStyle: e.target.value })}
+                      >
+                        <option value="">— choose —</option>
+                        {styleOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <SelectedChoiceDescription
+                        options={styleOptions}
+                        value={state.fightingStyle || undefined}
+                        className="retro-muted text-sm whitespace-pre-wrap"
+                      />
+                    </>
+                  );
+                })()
               ) : null}
 
-              {state.classId === "ranger" ? (
-                <>
-                  {(() => {
-                    const enemyRules =
-                      selectedClass.features.find((f) => f.name === "Favored Enemy")
-                        ?.description ??
-                      "Advantage on Survival checks to track and Intelligence to recall info about chosen enemy type.";
-                    const terrainRules =
-                      selectedClass.features.find((f) => f.name === "Natural Explorer")
-                        ?.description ?? "";
-                    return (
-                      <>
-                        <label className="candy-label">Favored enemy</label>
-                        <select
-                          className="candy-input"
-                          value={state.favoredEnemy}
-                          onChange={(e) => {
-                            const favoredEnemy = e.target.value;
-                            update({
-                              favoredEnemy,
-                              favoredHumanoidSpecies:
-                                favoredEnemy === TWO_HUMANOID_SPECIES_OPTION
-                                  ? state.favoredHumanoidSpecies
-                                  : [],
-                            });
-                          }}
-                        >
-                          <option value="">{choicePlaceholder("favoredEnemy")}</option>
-                          {FAVORED_ENEMIES.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                        {state.favoredEnemy === TWO_HUMANOID_SPECIES_OPTION ? (
-                          <>
-                            <label className="candy-label">Humanoid species (pick 2)</label>
-                            <HumanoidSpeciesPicker
-                              selected={state.favoredHumanoidSpecies}
-                              onChange={(ids) => update({ favoredHumanoidSpecies: ids })}
-                              variant="creator"
-                            />
-                          </>
-                        ) : null}
-                        <p className="retro-muted text-sm whitespace-pre-wrap">
-                          {buildChoiceDescription(
-                            enemyRules,
-                            state.favoredEnemy
-                              ? formatFavoredEnemyDisplay(
-                                  state.favoredEnemy,
-                                  state.favoredHumanoidSpecies
-                                )
-                              : null
-                          )}
-                        </p>
-                        <label className="candy-label">Favored terrain</label>
-                        <select
-                          className="candy-input"
-                          value={state.favoredTerrain}
-                          onChange={(e) => update({ favoredTerrain: e.target.value })}
-                        >
-                          <option value="">{choicePlaceholder("favoredTerrain")}</option>
-                          {FAVORED_TERRAINS.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                        <p className="retro-muted text-sm whitespace-pre-wrap">
-                          {buildChoiceDescription(
-                            terrainRules,
-                            state.favoredTerrain || null
-                          )}
-                        </p>
-                      </>
-                    );
-                  })()}
-                </>
+              {state.classId === "ranger" && selectedClass ? (
+                <RangerFeaturePickers
+                  enemySlotCount={1}
+                  terrainSlotCount={1}
+                  enemyPicks={[
+                    {
+                      enemy: state.favoredEnemy,
+                      humanoidSpecies: state.favoredHumanoidSpecies,
+                    },
+                  ]}
+                  terrains={[state.favoredTerrain]}
+                  onEnemyPicksChange={(picks) => {
+                    const primary = picks[0];
+                    update({
+                      favoredEnemy: primary?.enemy ?? "",
+                      favoredHumanoidSpecies: primary?.humanoidSpecies ?? [],
+                    });
+                  }}
+                  onTerrainsChange={(terrains) =>
+                    update({ favoredTerrain: terrains[0] ?? "" })
+                  }
+                  enemyRules={
+                    findCatalogRulesDescription(
+                      selectedClass.features,
+                      "Favored Enemy",
+                      1
+                    ) ??
+                    "Advantage on Survival checks to track and Intelligence to recall info about chosen enemy type."
+                  }
+                  terrainRules={
+                    findCatalogRulesDescription(
+                      selectedClass.features,
+                      "Natural Explorer",
+                      1
+                    ) ?? ""
+                  }
+                  variant="creator"
+                />
               ) : null}
 
               {state.classId === "cleric" && state.subclassId === "nature" ? (

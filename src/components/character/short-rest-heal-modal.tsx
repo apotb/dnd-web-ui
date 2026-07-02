@@ -18,7 +18,7 @@ import {
   type SpellRecoverySelection,
 } from "@/lib/dnd/mechanical-features";
 import { applyShortRestFinish, applySingleHitDieHeal } from "@/lib/dnd/rest";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 
@@ -83,7 +83,7 @@ export function ShortRestHealModal({
         : null;
 
   const secondWindCanUse = canUseSecondWind(data, catalogs);
-  const characterLevel = levelFromXp(data.basicInfo.xp ?? 0);
+  const characterLevel = getCharacterLevel(data);
 
   const hitDiceRemaining = getHitDiceRemaining(data, classes);
   const hitDieSides = getHitDieSides(data, classes);

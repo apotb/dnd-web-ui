@@ -26,6 +26,10 @@ import {
   type WeaponGrip,
 } from "@/components/combat/combat-roll-fields";
 import { parseDamageNotation } from "@/lib/dnd/dice";
+import { findProtectionEligibleTokens, qualifiesForGreatWeaponFighting } from "@/lib/dnd/fighting-styles";
+import type { ParsedCharacter } from "@/lib/character/utils";
+import type { Item } from "@/lib/schemas/item";
+import type { PhbClass } from "@/lib/dnd/phb/types";
 
 export interface AttackSubmitValues {
   attackRoll?: number | null;
@@ -34,6 +38,8 @@ export interface AttackSubmitValues {
   damageRolls?: number[];
   damageAmount?: number | null;
   damageDice?: string;
+  weaponGrip?: WeaponGrip;
+  protectionByTargetId?: Record<string, string>;
   perTarget?: Array<{
     tokenId: string;
     attackRoll?: number | null;
@@ -52,6 +58,9 @@ interface CombatAttackSubmitModalProps {
   attackerCharacter?: CharacterData;
   combatState?: CombatState;
   attackDisadvantageByTokenId?: Record<string, boolean>;
+  charactersById?: Record<string, ParsedCharacter>;
+  catalogItems?: Record<string, Item>;
+  classCatalog?: PhbClass[];
   damageTakenByTokenId: Record<string, number>;
   onCancel: () => void;
   onSubmit: (values: AttackSubmitValues) => void;
@@ -73,6 +82,9 @@ export function CombatAttackSubmitModal({
   attackerCharacter,
   combatState,
   attackDisadvantageByTokenId = {},
+  charactersById = {},
+  catalogItems = {},
+  classCatalog = [],
   damageTakenByTokenId,
   onCancel,
   onSubmit,
@@ -91,8 +103,36 @@ export function CombatAttackSubmitModal({
       ),
     [attack, attackerCharacter]
   );
-  const singleTargetDisadvantage =
-    targets.length === 1 ? attackDisadvantageByTokenId[targets[0].id] === true : false;
+
+  const protectionOptionsByTarget = useMemo(() => {
+    if (!attackerToken || !combatState) return {};
+    const map: Record<string, CombatToken[]> = {};
+    for (const target of targets) {
+      map[target.id] = findProtectionEligibleTokens(
+        target,
+        attackerToken,
+        combatState,
+        charactersById,
+        catalogItems,
+        classCatalog
+      );
+    }
+    return map;
+  }, [
+    attackerToken,
+    charactersById,
+    catalogItems,
+    classCatalog,
+    combatState,
+    targets,
+  ]);
+
+  function hasTargetDisadvantage(targetId: string): boolean {
+    return (
+      attackDisadvantageByTokenId[targetId] === true ||
+      Boolean(protectionByTargetId[targetId])
+    );
+  }
 
   function disadvantageLabelForTarget(target: CombatToken): string | null {
     if (!attackDisadvantageByTokenId[target.id]) return null;
@@ -116,7 +156,25 @@ export function CombatAttackSubmitModal({
     Record<string, { attackRoll: string; attackRoll2: string; damageAmount: string }>
   >({});
 
+  const [protectionByTargetId, setProtectionByTargetId] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const greatWeaponFighting = useMemo(() => {
+    if (!attackerCharacter || attack.source !== "weapon") return false;
+    return qualifiesForGreatWeaponFighting(
+      attackerCharacter,
+      catalogItems,
+      attack,
+      weaponGrip,
+      classCatalog
+    );
+  }, [attackerCharacter, attack, catalogItems, classCatalog, weaponGrip]);
+
+  const singleTargetDisadvantage =
+    targets.length === 1
+      ? attackDisadvantageByTokenId[targets[0].id] === true ||
+        Boolean(protectionByTargetId[targets[0].id])
+      : false;
 
   const effectiveDamageDice = useMemo(
     () => resolveWeaponGripDamageDice(attack, weaponGrip),
@@ -143,6 +201,7 @@ export function CombatAttackSubmitModal({
 
   useEffect(() => {
     setWeaponGrip("one-handed");
+    setProtectionByTargetId({});
   }, [attack.id]);
 
   useEffect(() => {
@@ -172,7 +231,7 @@ export function CombatAttackSubmitModal({
         attackRoll2: "",
         damageAmount: "",
       };
-      if (attackDisadvantageByTokenId[target.id]) {
+      if (hasTargetDisadvantage(target.id)) {
         return isDisadvantageHitRollComplete(entry.attackRoll, entry.attackRoll2);
       }
       return isD20RollComplete(entry.attackRoll);
@@ -195,19 +254,26 @@ export function CombatAttackSubmitModal({
     const sharedDamage = getDamageSubmitValues(
       effectiveDamageDice,
       damageRolls,
-      damageFallbackTotal
+      damageFallbackTotal,
+      { greatWeaponFighting }
+    );
+
+    const activeProtection = Object.fromEntries(
+      Object.entries(protectionByTargetId).filter(([, protectorId]) => protectorId)
     );
 
     if (multiTarget) {
       onSubmit({
         damageDice: effectiveDamageDice,
+        weaponGrip,
+        protectionByTargetId: activeProtection,
         perTarget: targets.map((target) => {
           const entry = perTargetRolls[target.id] ?? {
             attackRoll: "",
             attackRoll2: "",
             damageAmount: "",
           };
-          const disadvantage = attackDisadvantageByTokenId[target.id] === true;
+          const disadvantage = hasTargetDisadvantage(target.id);
           return {
             tokenId: target.id,
             attackRoll: parseD20Roll(entry.attackRoll),
@@ -226,6 +292,8 @@ export function CombatAttackSubmitModal({
       attackRoll2:
         isSave || isAuto || !singleTargetDisadvantage ? null : parseD20Roll(attackRoll2),
       damageDice: effectiveDamageDice,
+      weaponGrip,
+      protectionByTargetId: activeProtection,
       ...sharedDamage,
     });
   }
@@ -245,17 +313,53 @@ export function CombatAttackSubmitModal({
         />
 
         <div className="combat-attack-submit-targets">
-          {targets.map((target) => (
-            <div key={target.id} className="combat-attack-submit-target">
-              <strong>{target.label}</strong>
-              {attackDisadvantageByTokenId[target.id] ? (
-                <span className="retro-muted">{disadvantageLabelForTarget(target)}</span>
-              ) : null}
-              <span className="retro-muted">
-                Battle damage taken: {damageTakenByTokenId[target.id] ?? 0}
-              </span>
-            </div>
-          ))}
+          {targets.map((target) => {
+            const protectors = protectionOptionsByTarget[target.id] ?? [];
+            const protectionActive = Boolean(protectionByTargetId[target.id]);
+            return (
+              <div key={target.id} className="combat-attack-submit-target">
+                <strong>{target.label}</strong>
+                {hasTargetDisadvantage(target.id) ? (
+                  <span className="retro-muted">
+                    {protectionActive
+                      ? "Disadvantage (Protection)"
+                      : disadvantageLabelForTarget(target) ?? "Disadvantage on attack roll"}
+                  </span>
+                ) : null}
+                {protectors.length > 0 ? (
+                  <label className="combat-protection-picker retro-muted">
+                    <span>Protection reaction</span>
+                    <select
+                      value={protectionByTargetId[target.id] ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setProtectionByTargetId((current) => {
+                          const next = { ...current };
+                          if (!value) {
+                            delete next[target.id];
+                          } else {
+                            next[target.id] = value;
+                          }
+                          return next;
+                        });
+                      }}
+                      disabled={submitting}
+                    >
+                      <option value="">None</option>
+                      {protectors.map((protector) => (
+                        <option key={protector.id} value={protector.id}>
+                          {protector.label || protector.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <span className="retro-muted">
+                  Battle damage taken: {damageTakenByTokenId[target.id] ?? 0}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         {!isSave && !multiTarget ? (
@@ -296,6 +400,11 @@ export function CombatAttackSubmitModal({
               critical={isCriticalHit}
               disabled={submitting}
             />
+            {greatWeaponFighting ? (
+              <p className="retro-muted combat-attack-submit-hint">
+                Great Weapon Fighting: damage dice showing 1 or 2 are rerolled on submit.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -334,7 +443,7 @@ export function CombatAttackSubmitModal({
                 attackRoll2: "",
                 damageAmount: "",
               };
-              const disadvantage = attackDisadvantageByTokenId[target.id] === true;
+              const disadvantage = hasTargetDisadvantage(target.id);
               return (
                 <div key={target.id} className="combat-attack-submit-target-block">
                   <strong>{target.label}</strong>

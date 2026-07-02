@@ -9,6 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import { ConditionsEditor } from "@/components/character/conditions-editor";
 import { DeathSaveRollModal } from "@/components/character/death-save-roll-modal";
+import { CharacterFeatsSection } from "@/components/character/character-feats-section";
 import { Input } from "@/components/ui/input";
 import { DraftNumberInput } from "@/components/ui/draft-number-input";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -28,7 +29,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { CharacterData, AbilityKey, SkillKey, ActionCost, InventoryItem } from "@/lib/schemas/character";
-import { choicePlaceholder } from "@/lib/character/feature-choices";
+import { choicePlaceholder, selectedChoiceDescription } from "@/lib/character/feature-choices";
+import { SelectedChoiceDescription } from "@/components/character/selected-choice-description";
 import {
   appendExhaustionSheetNote,
   applyExhaustionToSpeed,
@@ -59,7 +61,7 @@ import {
   getSpellSaveDc,
 } from "@/lib/dnd/calculations";
 import { applyCurrencyDelta as applyWalletCurrencyDelta } from "@/lib/dnd/currency";
-import { levelFromXp, xpProgress } from "@/lib/dnd/xp";
+import { getCharacterLevel, xpProgressForLevel, canCharacterLevelUp } from "@/lib/dnd/xp";
 import {
   getMaxCastableSpellLevel,
   groupKnownSpellsByLevel,
@@ -71,6 +73,9 @@ import {
   canEditSpellOnSheet,
   canModifyPlayerCantrips,
   canModifyPlayerSpells,
+  canShowDmCantripEditToggle,
+  getDmSpellEditToggleLabel,
+  canUseClassSpellcasting,
   countGrantedCantrips,
   countGrantedLeveled,
   countPlayerCantrips,
@@ -103,8 +108,7 @@ import { SpellbookDialog } from "@/components/spells/spellbook-dialog";
 import { SpellGlossaryMeta } from "@/components/spells/spell-glossary-meta";
 import { CharacterPortrait } from "@/components/character/character-portrait";
 import { CharacterRestButtons } from "@/components/character/character-rest-buttons";
-import { HumanoidSpeciesPicker } from "@/components/character-creator/humanoid-species-picker";
-import { TWO_HUMANOID_SPECIES_OPTION } from "@/lib/dnd/phb/favored-enemy-humanoids";
+import { RangerFeaturePickers } from "@/components/character/ranger-feature-pickers";
 import { getSpellsForList } from "@/lib/dnd/phb/spells";
 import { getItemsBySlugsClient } from "@/lib/items/catalog-client";
 import {
@@ -127,7 +131,20 @@ import {
   formatSubclassTooltip,
   speciesSubtitleLabel,
 } from "@/lib/content/catalog-tooltip";
-import { getAllAttacks, formatAttackRollLine, formatAttackBonusTooltip, formatDamageBonusTooltip, formatAttackRangeTooltip, formatWeaponRangeBandTooltip, type DerivedAttack } from "@/lib/dnd/attacks";
+import {
+  getAllAttacks,
+  formatAttackRollLine,
+  formatAttackBonusTooltip,
+  formatDamageBonusTooltip,
+  formatAttackRangeTooltip,
+  formatWeaponRangeBandTooltip,
+  type DerivedAttack,
+} from "@/lib/dnd/attacks";
+import {
+  getFavoredEnemySlotCount,
+  getFavoredTerrainSlotCount,
+  getRangerPicksFromChoices,
+} from "@/lib/dnd/phb/ranger-feature-slots";
 import {
   ACTION_COST_LABELS,
   ACTION_COST_ORDER,
@@ -137,6 +154,7 @@ import {
 } from "@/lib/dnd/character-actions";
 import {
   deriveGrantedFeatures,
+  getCustomFeatures,
   enrichMechanicalFeature,
   featureSourceLabel,
   isConfigurableGrantedFeature,
@@ -247,6 +265,8 @@ interface CharacterSheetProps {
   /** Prefer combat board HP pool features while on an active encounter token. */
   hpPoolCombatPreferred?: boolean;
   onUseHpPool?: (featureId: string) => void;
+  /** DM View: open level-up modal when XP threshold is met. */
+  onStartLevelUp?: () => void;
 }
 
 function GrantedFeatureRow({
@@ -413,18 +433,45 @@ function ConfigurableFeatureRow({
 
   const showEditors = gated ? isEditing : !!editable;
   const choiceValue = String(workingData.featureChoices?.[feature.choiceKey] ?? "");
-  const favoredHumanoidSpecies = workingData.featureChoices?.favoredHumanoidSpecies ?? [];
+  const characterLevel = getCharacterLevel(workingData);
+  const rangerPicks = getRangerPicksFromChoices(workingData.featureChoices, characterLevel);
+  const rulesBase = feature.description.split("\n\nSelected:")[0] ?? feature.description;
+  const isRangerEnemy = feature.choiceKey === "favoredEnemy";
+  const isRangerTerrain = feature.choiceKey === "favoredTerrain";
+  const selectedDetail = selectedChoiceDescription(
+    feature.choiceOptions,
+    choiceValue || undefined
+  );
+
+  function applyRangerEnemyPicks(enemyPicks: typeof rangerPicks.enemyPicks) {
+    const primary = enemyPicks[0];
+    applyChoicePatch({
+      featureChoices: {
+        ...(workingData.featureChoices ?? {}),
+        favoredEnemyPicks: enemyPicks,
+        favoredEnemy: primary?.enemy ?? "",
+        favoredHumanoidSpecies: primary?.humanoidSpecies ?? [],
+      },
+    });
+  }
+
+  function applyRangerTerrains(terrains: string[]) {
+    applyChoicePatch({
+      featureChoices: {
+        ...(workingData.featureChoices ?? {}),
+        favoredTerrains: terrains,
+        favoredTerrain: terrains[0] ?? "",
+      },
+    });
+  }
 
   function applyChoiceChange(value: string) {
     let nextChoices = {
       ...(workingData.featureChoices ?? {}),
       [feature.choiceKey]: value,
     };
-    if (feature.choiceKey === "favoredEnemy" && value !== TWO_HUMANOID_SPECIES_OPTION) {
-      nextChoices = { ...nextChoices, favoredHumanoidSpecies: [] };
-    }
     if (feature.choiceKey === "variantHumanFeat") {
-      nextChoices = clearMagicInitiateChoices(nextChoices);
+      nextChoices = clearMagicInitiateChoices(nextChoices, workingData);
     }
     applyChoicePatch({ featureChoices: nextChoices });
   }
@@ -464,43 +511,64 @@ function ConfigurableFeatureRow({
       </div>
       {showEditors ? (
         <div className="space-y-2">
-          <Select
-            value={choiceValue || undefined}
-            onValueChange={(value) => applyChoiceChange(value ?? "")}
-          >
-            <SelectTrigger className="h-9">
-              <SelectValue placeholder={choicePlaceholder(feature.choiceKey)}>
-                {optionLabel(feature.choiceOptions, choiceValue)}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {feature.choiceOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {feature.choiceKey === "favoredEnemy" &&
-          choiceValue === TWO_HUMANOID_SPECIES_OPTION ? (
-            <HumanoidSpeciesPicker
-              selected={favoredHumanoidSpecies}
-              onChange={(ids) =>
-                applyChoicePatch({
-                  featureChoices: {
-                    ...(workingData.featureChoices ?? {}),
-                    favoredHumanoidSpecies: ids,
-                  },
-                })
-              }
+          {isRangerEnemy ? (
+            <RangerFeaturePickers
+              enemySlotCount={getFavoredEnemySlotCount(characterLevel)}
+              terrainSlotCount={0}
+              enemyPicks={rangerPicks.enemyPicks}
+              terrains={[]}
+              onEnemyPicksChange={applyRangerEnemyPicks}
+              onTerrainsChange={() => {}}
+              enemyRules={rulesBase}
+              terrainRules=""
               variant="sheet"
+              mode="enemy"
+            />
+          ) : isRangerTerrain ? (
+            <RangerFeaturePickers
+              enemySlotCount={0}
+              terrainSlotCount={getFavoredTerrainSlotCount(characterLevel)}
+              enemyPicks={[]}
+              terrains={rangerPicks.terrains}
+              onEnemyPicksChange={() => {}}
+              onTerrainsChange={applyRangerTerrains}
+              enemyRules=""
+              terrainRules={rulesBase}
+              variant="sheet"
+              mode="terrain"
+            />
+          ) : (
+            <Select
+              value={choiceValue || undefined}
+              onValueChange={(value) => applyChoiceChange(value ?? "")}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder={choicePlaceholder(feature.choiceKey)}>
+                  {optionLabel(feature.choiceOptions, choiceValue)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {feature.choiceOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {!isRangerEnemy && !isRangerTerrain ? (
+            <SelectedChoiceDescription
+              options={feature.choiceOptions}
+              value={choiceValue || undefined}
             />
           ) : null}
         </div>
       ) : null}
-      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-        {feature.description}
-      </p>
+      {!showEditors || !selectedDetail ? (
+        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+          {feature.description}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -519,7 +587,7 @@ function InspirationIndicator({
   if (max <= 0) return null;
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex items-center justify-end gap-1">
       <Tooltip content={formatInspirationTooltip(inspiration, max)}>
         <div
           className="flex items-center gap-1"
@@ -538,12 +606,12 @@ function InspirationIndicator({
         </div>
       </Tooltip>
       {isDm && onAdjust ? (
-        <div className="flex items-center gap-1">
+        <>
           <Button
             type="button"
-            size="sm"
+            size="icon-xs"
             variant="outline"
-            className="h-6 w-6 p-0"
+            className="size-4 min-h-4 min-w-4 p-0 text-[11px] leading-none"
             disabled={inspiration <= 0}
             aria-label="Remove inspiration"
             onClick={() => onAdjust(-1)}
@@ -552,16 +620,16 @@ function InspirationIndicator({
           </Button>
           <Button
             type="button"
-            size="sm"
+            size="icon-xs"
             variant="outline"
-            className="h-6 w-6 p-0"
+            className="size-4 min-h-4 min-w-4 p-0 text-[11px] leading-none"
             disabled={inspiration >= max}
             aria-label="Grant inspiration"
             onClick={() => onAdjust(1)}
           >
             +
           </Button>
-        </div>
+        </>
       ) : null}
     </div>
   );
@@ -671,6 +739,7 @@ export function CharacterSheet({
   canRest = false,
   hpPoolCombatPreferred = false,
   onUseHpPool,
+  onStartLevelUp,
 }: CharacterSheetProps) {
   const showDmUi = useShowDmUi(isDm);
   const canMutate = editable || canToggleEquipment;
@@ -771,14 +840,19 @@ export function CharacterSheet({
   const inspiration = getInspiration(data);
   const resolvedClass = resolveCharacterClass(data, classCatalog);
   const isWizardClass = resolvedClass ? isWizard(resolvedClass) : false;
+  const level = getCharacterLevel(data);
   const canEditWizardSpells = canModifyPlayerSpells(
     showDmUi,
     dmCantripEditMode,
-    resolvedClass
+    resolvedClass,
+    level
   );
-  const level = levelFromXp(data.basicInfo.xp ?? 0);
+  const dmSpellEditToggleLabel = resolvedClass
+    ? getDmSpellEditToggleLabel(resolvedClass, level)
+    : "Edit cantrips";
   const xp = data.basicInfo.xp ?? 0;
-  const xpBar = xpProgress(xp);
+  const xpBar = xpProgressForLevel(level, xp);
+  const levelUpAvailable = canCharacterLevelUp(data);
 
   const baseMaxHpBreakdown = useMemo(
     () => calculateMaxHpBreakdown(data, classCatalog, catalogSpecies),
@@ -831,8 +905,8 @@ export function CharacterSheet({
 
   const classTooltip = useMemo(() => {
     const cls = findClassByName(primaryClassName, classCatalog);
-    return cls ? formatClassTooltip(cls) : null;
-  }, [primaryClassName, classCatalog]);
+    return cls ? formatClassTooltip(cls, level) : null;
+  }, [primaryClassName, classCatalog, level]);
 
   const subclassTooltip = useMemo(() => {
     const match = findSubclassByName(
@@ -840,8 +914,8 @@ export function CharacterSheet({
       data.basicInfo.subclass,
       classCatalog
     );
-    return match ? formatSubclassTooltip(match.subclass) : null;
-  }, [primaryClassName, data.basicInfo.subclass, classCatalog]);
+    return match ? formatSubclassTooltip(match.subclass, level) : null;
+  }, [primaryClassName, data.basicInfo.subclass, classCatalog, level]);
 
   const classOverviewTooltip = useMemo(() => {
     const parts = [classTooltip, subclassTooltip].filter(Boolean);
@@ -910,6 +984,15 @@ export function CharacterSheet({
     () => (resolvedClass ? isFullListPreparedCaster(resolvedClass) : false),
     [resolvedClass]
   );
+  const classSpellcastingActive = useMemo(
+    () =>
+      resolvedClass ? canUseClassSpellcasting(resolvedClass, level) : false,
+    [resolvedClass, level]
+  );
+  const showDmCantripEditToggle = useMemo(
+    () => canShowDmCantripEditToggle(resolvedClass, level),
+    [resolvedClass, level]
+  );
   const slotSummary = useMemo(
     () => formatSlotSummary(data.spells.slots),
     [data.spells.slots]
@@ -963,35 +1046,15 @@ export function CharacterSheet({
   const updateBasicWithSync = (patch: Partial<CharacterData["basicInfo"]>) => {
     const nextBasic = { ...data.basicInfo, ...patch };
     let merged: CharacterData = { ...data, basicInfo: nextBasic };
-    if (patch.xp !== undefined && resolvedClass?.spellcasting) {
-      merged = {
-        ...merged,
-        spells: syncSpellcastingFromClass(
-          merged,
-          resolvedClass,
-          levelFromXp(nextBasic.xp ?? 0)
-        ),
-      };
-    }
     if (patch.xp !== undefined) {
       merged = {
         ...merged,
         inspiration: clampInspiration(data.inspiration ?? 0, merged),
       };
-      merged = syncFeatureGrants(merged, {
-        species: catalogSpecies,
-        classes: classCatalog,
-        backgrounds: catalogBackgrounds,
-      });
     }
     update({
       basicInfo: merged.basicInfo,
-      ...(patch.xp !== undefined
-        ? {
-            spells: merged.spells,
-            inspiration: merged.inspiration,
-          }
-        : {}),
+      ...(patch.xp !== undefined ? { inspiration: merged.inspiration } : {}),
     });
   };
 
@@ -1001,7 +1064,7 @@ export function CharacterSheet({
     const delta = parseInt(trimmed, 10);
     if (!Number.isFinite(delta) || delta === 0) return;
     const nextXp = Math.max(0, xp + delta);
-    updateBasicWithSync({ xp: nextXp, level: levelFromXp(nextXp) });
+    updateBasicWithSync({ xp: nextXp });
     setXpDelta("");
   }
 
@@ -1130,12 +1193,17 @@ export function CharacterSheet({
     const isCantrip = catalogSpell.level === 0;
     const knownCaster = resolvedClass ? isKnownCaster(resolvedClass) : false;
     const wizardClass = resolvedClass ? isWizard(resolvedClass) : false;
+    const fullListPrepared =
+      resolvedClass ? isFullListPreparedCaster(resolvedClass) : false;
     return {
       id: crypto.randomUUID(),
       spellId: catalogSpell.slug,
       name: catalogSpell.name,
       level: catalogSpell.level,
-      prepared: isCantrip || knownCaster,
+      prepared:
+        isCantrip ||
+        knownCaster ||
+        (fullListPrepared && !wizardClass && !isCantrip),
       notes:
         wizardClass && !isCantrip
           ? `Spellbook · ${catalogSpell.school}`
@@ -1149,6 +1217,15 @@ export function CharacterSheet({
     const entry = spellFromCatalog(catalogSpell);
 
     if (resolvedClass && isWizard(resolvedClass) && !canEditWizardSpells) {
+      return;
+    }
+
+    if (
+      catalogSpell.level > 0 &&
+      resolvedClass &&
+      isFullListPreparedCaster(resolvedClass) &&
+      !canEditWizardSpells
+    ) {
       return;
     }
 
@@ -1169,7 +1246,8 @@ export function CharacterSheet({
       }
       if (
         catalogSpell.level > 0 &&
-        !canAddLeveledSpell(data.spells.known, spellLimits)
+        !canAddLeveledSpell(data.spells.known, spellLimits) &&
+        !canEditWizardSpells
       ) {
         return;
       }
@@ -1208,9 +1286,9 @@ export function CharacterSheet({
   );
   const showSpellCard = useMemo(
     () =>
-      !!(resolvedClass?.spellcasting && spellLimits) ||
+      classSpellcastingActive ||
       hasManagedSpellGrants(data, featureCatalogs),
-    [resolvedClass, spellLimits, data, featureCatalogs]
+    [classSpellcastingActive, data, featureCatalogs]
   );
   const spellGrantSourceMap = useMemo(
     () => buildSpellGrantSourceMap(data, featureCatalogs),
@@ -1260,7 +1338,10 @@ export function CharacterSheet({
     onChange(syncFeatureGrants(merged, featureCatalogs));
   };
 
-  const customFeatures = data.features;
+  const customFeatures = useMemo(
+    () => getCustomFeatures(data, featureCatalogs),
+    [data, featureCatalogs]
+  );
   const derivedAttacks = getAllAttacks(data, catalogItems, classCatalog);
   const characterActions = useMemo(
     () => getAllCharacterActions(data, featureCatalogs),
@@ -1456,45 +1537,39 @@ export function CharacterSheet({
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Level</Label>
-                {showDmUi && editable ? (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <p className="text-sm font-medium w-6 shrink-0">{level}</p>
-                      <DraftNumberInput
-                        min={0}
-                        value={xp}
-                        className="max-w-36"
-                        onCommit={(v) => {
-                          const next = Math.max(0, v ?? 0);
-                          updateBasicWithSync({ xp: next, level: levelFromXp(next) });
-                        }}
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium w-6 shrink-0">{level}</p>
+                  <div className="flex-1 space-y-0.5 min-w-0">
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full bg-foreground rounded-full transition-all"
+                        style={{ width: `${xpBar.pct}%` }}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        {xpBar.nextLevelXp !== null
-                          ? `${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} XP to lvl ${level + 1}`
-                          : "Max level"}
-                      </p>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      {xp.toLocaleString()} XP
+                      {xpBar.nextLevelXp !== null
+                        ? ` · ${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} to lvl ${level + 1}`
+                        : " · Max level"}
+                      {levelUpAvailable ? (
+                        showDmUi && editable && onStartLevelUp ? (
+                          <>
+                            {" · "}
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                              onClick={onStartLevelUp}
+                            >
+                              Level up available
+                            </button>
+                          </>
+                        ) : (
+                          " · Level up available"
+                        )
+                      ) : null}
+                    </p>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm font-medium w-6 shrink-0">{level}</p>
-                    <div className="flex-1 space-y-0.5 min-w-0">
-                      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full bg-foreground rounded-full transition-all"
-                          style={{ width: `${xpBar.pct}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {xp.toLocaleString()} XP
-                        {xpBar.nextLevelXp !== null
-                          ? ` · ${xpBar.progressXp.toLocaleString()} / ${xpBar.neededXp.toLocaleString()} to lvl ${level + 1}`
-                          : " · Max level"}
-                      </p>
-                    </div>
-                  </div>
-                )}
+                </div>
                 {canMutate ? (
                   <div className="flex items-center gap-2 pt-1">
                     <Input
@@ -2285,7 +2360,7 @@ export function CharacterSheet({
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
               <CardTitle className="text-base">Spellcasting</CardTitle>
               <div className="flex flex-wrap items-center gap-3">
-                {isWizardClass ? (
+                {isWizardClass && classSpellcastingActive ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -2297,7 +2372,7 @@ export function CharacterSheet({
                       : ""}
                   </Button>
                 ) : null}
-                {fullListPreparedCaster && classSpellListId ? (
+                {fullListPreparedCaster && classSpellListId && classSpellcastingActive ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -2309,17 +2384,17 @@ export function CharacterSheet({
                       : ""}
                   </Button>
                 ) : null}
-                {showDmUi && editable ? (
+                {showDmUi && editable && showDmCantripEditToggle ? (
                   <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                     <Checkbox
                       checked={dmCantripEditMode}
                       onCheckedChange={(checked) => setDmCantripEditMode(!!checked)}
-                      aria-label={isWizardClass ? "Edit spells" : "Edit cantrips"}
+                      aria-label={dmSpellEditToggleLabel}
                     />
-                    {isWizardClass ? "Edit spells" : "Edit cantrips"}
+                    {dmSpellEditToggleLabel}
                   </label>
                 ) : null}
-                {editable && resolvedClass?.spellcasting && spellLimits ? (
+                {editable && classSpellcastingActive && spellLimits ? (
                   <>
                     {fullListPreparedCaster ? (
                       canEditPlayerCantrips &&
@@ -2339,7 +2414,8 @@ export function CharacterSheet({
                     ) : canAddSpellsOnSheet(
                         resolvedClass,
                         showDmUi,
-                        dmCantripEditMode
+                        dmCantripEditMode,
+                        level
                       ) ? (
                       <Button
                         size="sm"
@@ -2358,13 +2434,21 @@ export function CharacterSheet({
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {resolvedClass?.spellcasting && spellLimits ? (
+              {!classSpellcastingActive &&
+              resolvedClass?.spellcasting?.startsAtLevel &&
+              resolvedClass.spellcasting.startsAtLevel > level ? (
+                <p className="text-sm text-muted-foreground">
+                  Class spellcasting unlocks at level{" "}
+                  {resolvedClass.spellcasting.startsAtLevel}.
+                </p>
+              ) : null}
+              {classSpellcastingActive && spellLimits ? (
                 <>
               <div className="grid gap-3 sm:grid-cols-3">
                 <Stat
                   label="Spellcasting Ability"
                   value={
-                    resolvedClass.spellcasting?.ability
+                    resolvedClass?.spellcasting?.ability
                       ? ABILITY_FULL_LABELS[resolvedClass.spellcasting.ability]
                       : "—"
                   }
@@ -2423,12 +2507,14 @@ export function CharacterSheet({
 
               {data.spells.known.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  {editable && resolvedClass?.spellcasting && spellLimits
+                  {editable && classSpellcastingActive && spellLimits
                     ? fullListPreparedCaster
-                      ? canEditPlayerCantrips
-                        ? "Add cantrips from the catalog or take a long rest to change prepared spells."
-                        : "Cantrips are set at creation. Take a long rest to change prepared spells."
-                      : isWizardClass
+                      ? spellLimits.cantripsKnown > 0
+                        ? canEditPlayerCantrips
+                          ? "Add cantrips from the catalog or take a long rest to change prepared spells."
+                          : "Cantrips are set at creation. Take a long rest to change prepared spells."
+                        : "Take a long rest to prepare spells from your class list."
+                      : isWizardClass || dmSpellEditToggleLabel === "Edit spells"
                         ? canEditWizardSpells
                           ? 'Click "+ Add Spell" to pick from the catalog.'
                           : "Spells are set at creation. Take a long rest to change prepared spells."
@@ -2535,7 +2621,8 @@ export function CharacterSheet({
                               spell,
                               resolvedClass,
                               showDmUi,
-                              dmCantripEditMode
+                              dmCantripEditMode,
+                              level
                             );
                           const canRemoveSpellRow =
                             editable &&
@@ -2543,7 +2630,8 @@ export function CharacterSheet({
                               spell,
                               resolvedClass,
                               showDmUi,
-                              dmCantripEditMode
+                              dmCantripEditMode,
+                              level
                             );
                           const showPreparedBadge =
                             spell.level > 0 &&
@@ -2861,7 +2949,7 @@ export function CharacterSheet({
             />
           ) : null}
 
-          {fullListPreparedCaster && classSpellListId ? (
+          {fullListPreparedCaster && classSpellListId && classSpellcastingActive ? (
             <ClassSpellListDialog
               open={classSpellListOpen}
               onClose={() => setClassSpellListOpen(false)}
@@ -2871,7 +2959,7 @@ export function CharacterSheet({
             />
           ) : null}
 
-          {editable && resolvedClass?.spellcasting && spellPickerOpen ? (
+          {editable && classSpellcastingActive && spellPickerOpen ? (
           <SpellPicker
             open={spellPickerOpen}
             onClose={() => {
@@ -3440,6 +3528,12 @@ export function CharacterSheet({
         </TabsContent>
 
         <TabsContent value="features" className="space-y-4">
+          <CharacterFeatsSection
+            data={data}
+            editable={editable}
+            showDmUi={showDmUi}
+            onApply={applyGrantUpdate}
+          />
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Features & Traits</CardTitle>

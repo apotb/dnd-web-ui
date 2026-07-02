@@ -184,6 +184,9 @@ export function savedEncounterToCombatState(
     savedEncounterId: encounter.id,
     autoApprove: false,
     autoApproveDm: true,
+    xpPool: 0,
+    battleParticipantCharacterIds: [],
+    reactionUsedTokenIds: [],
   };
 
   const tokens: CombatToken[] = [];

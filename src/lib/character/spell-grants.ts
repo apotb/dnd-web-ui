@@ -1,3 +1,4 @@
+import { hasMagicInitiateFeat } from "@/lib/character/character-feats";
 import type { CharacterData, SpeciesChoices } from "@/lib/schemas/character";
 import type { FeatureCatalogs, FeatureSource } from "@/lib/character/feature-choices";
 import { resolveFeatureCatalogs } from "@/lib/character/feature-choices";
@@ -9,7 +10,7 @@ import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import { CLERIC_DOMAIN_SPELLS } from "@/lib/dnd/phb/cleric-domain-spells";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import type { PhbSpecies } from "@/lib/dnd/phb/types";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 
 /**
  * Level 5+ racial spells not yet granted in spell-grants.ts (add when needed):
@@ -385,9 +386,10 @@ function resolveSubclassSpells(
 }
 
 function resolveMagicInitiateSpells(
-  featureChoices: CharacterData["featureChoices"]
+  data: CharacterData
 ): SpellGrantSpec[] {
-  if (featureChoices.variantHumanFeat !== "magic-initiate") return [];
+  if (!hasMagicInitiateFeat(data)) return [];
+  const featureChoices = data.featureChoices ?? {};
   const listId = featureChoices.magicInitiateClass;
   if (!listId) return [];
 
@@ -432,7 +434,7 @@ export function resolveAllSpellGrants(
   const species = match?.species;
   const subspeciesId = match?.subspecies?.id;
   const speciesChoices = data.speciesChoices ?? {};
-  const characterLevel = levelFromXp(data.basicInfo.xp ?? 0);
+  const characterLevel = getCharacterLevel(data);
   const grants: SpellGrantSpec[] = [];
 
   if (species) {
@@ -442,7 +444,7 @@ export function resolveAllSpellGrants(
   }
 
   grants.push(...resolveSubclassSpells(data, catalogs));
-  grants.push(...resolveMagicInitiateSpells(data.featureChoices ?? {}));
+  grants.push(...resolveMagicInitiateSpells(data));
 
   return filterByLevel(grants, characterLevel);
 }

@@ -4,6 +4,7 @@ import {
   stripDmNotesFromCharacterData,
   type CharacterData,
 } from "@/lib/schemas/character";
+import { averageLevelUpHpGain } from "@/lib/character/combat-derivation";
 import { syncSavingThrowsFromClass } from "@/lib/character/class-derivation";
 import { syncAcFromEquipment } from "@/lib/character/ac-derivation";
 import { sanitizeEquippedItems } from "@/lib/character/equip-rules";
@@ -16,7 +17,7 @@ import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
 import { migrateLanguageChoices } from "@/lib/character/language-choices";
 import { normalizeCombatConditions } from "@/lib/dnd/conditions";
 import { syncSpellcastingFromClass, migrateFullListPreparedCasterSpells } from "@/lib/dnd/spellcasting";
-import { levelFromXp, xpForLevel } from "@/lib/dnd/xp";
+import { getCharacterLevel, levelFromXp, xpForLevel } from "@/lib/dnd/xp";
 import type { Character } from "@/lib/types/database";
 
 export type ParsedCharacter = Omit<Character, "data"> & { data: CharacterData };
@@ -219,6 +220,22 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
     raw = { ...raw, basicInfo: { ...basicInfo } };
   }
 
+  // Seed committed level from XP for legacy saves that never had level set
+  if (basicInfo) {
+    const xp =
+      typeof basicInfo.xp === "number" ? basicInfo.xp : 0;
+    const storedLevel = typeof basicInfo.level === "number" ? basicInfo.level : 0;
+    if (storedLevel < 1) {
+      raw = {
+        ...raw,
+        basicInfo: {
+          ...basicInfo,
+          level: levelFromXp(xp),
+        },
+      };
+    }
+  }
+
   // --- Custom ability mod migration ---
   raw = {
     ...raw,
@@ -246,13 +263,29 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
     };
   }
 
+  // --- Level-up HP gains backfill for characters above level 1 ---
+  const combatRaw = raw.combat as Record<string, unknown> | undefined;
+  const charData = raw as unknown as CharacterData;
+  const committedLevel = getCharacterLevel(charData);
+  const existingGains = combatRaw?.levelUpHpGains;
+  if (
+    committedLevel > 1 &&
+    (!Array.isArray(existingGains) || existingGains.length === 0)
+  ) {
+    const avgGain = averageLevelUpHpGain(charData);
+    const gains = Array.from({ length: committedLevel - 1 }, () => avgGain);
+    raw = {
+      ...raw,
+      combat: {
+        ...(combatRaw ?? {}),
+        levelUpHpGains: gains,
+      },
+    };
+  }
+
   // --- Spellcasting ability, slots, and cantrip preparation from class ---
   const spellClass = resolveCharacterClass(raw as unknown as CharacterData);
-  const spellLevel = levelFromXp(
-    typeof (raw.basicInfo as Record<string, unknown> | undefined)?.xp === "number"
-      ? ((raw.basicInfo as Record<string, unknown>).xp as number)
-      : 0
-  );
+  const spellLevel = getCharacterLevel(raw as unknown as CharacterData);
   if (spellClass?.spellcasting) {
     let migrated = raw as unknown as CharacterData;
     migrated = migrateFullListPreparedCasterSpells(migrated, spellClass);

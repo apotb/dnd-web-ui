@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { mergeClassWithPhb } from "@/lib/content/catalog-merge";
+import { mergeClassWithPhb, mergeSpeciesWithPhb } from "@/lib/content/catalog-merge";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
-import type { PhbClass } from "@/lib/dnd/phb/types";
+import { PHB_SPECIES } from "@/lib/dnd/phb/species";
+import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 
 describe("catalog-merge", () => {
   it("fills missing mechanics and slug from built-in PHB class data", () => {
@@ -22,6 +23,19 @@ describe("catalog-merge", () => {
     assert.ok(layOnHands);
     assert.equal(layOnHands!.slug, "lay-on-hands");
     assert.equal(layOnHands!.mechanics?.kind, "hp-pool");
+  });
+
+  it("fills missing hitDie from built-in PHB class data", () => {
+    const barbarian = PHB_CLASSES.find((entry) => entry.id === "barbarian");
+    assert.ok(barbarian);
+
+    const staleDbBarbarian = {
+      ...barbarian!,
+      hitDie: undefined as unknown as number,
+    };
+
+    const merged = mergeClassWithPhb(staleDbBarbarian, barbarian);
+    assert.equal(merged.hitDie, 12);
   });
 
   it("fills missing minLevel from built-in PHB class data", () => {
@@ -58,5 +72,24 @@ describe("catalog-merge", () => {
     const ritualCasting = merged.features.find((feature) => feature.name === "Ritual Casting");
     assert.ok(ritualCasting);
     assert.equal(ritualCasting!.slug, "ritual-casting");
+  });
+
+  it("fills missing subspecies extras from built-in PHB species data", () => {
+    const gnome = PHB_SPECIES.find((entry) => entry.id === "gnome");
+    assert.ok(gnome);
+
+    const staleDbGnome: PhbSpecies = {
+      ...gnome!,
+      subspecies: gnome!.subspecies?.map((sub) => ({
+        id: sub.id,
+        name: sub.name,
+        abilityBonus: sub.abilityBonus,
+      })),
+    };
+
+    const merged = mergeSpeciesWithPhb(staleDbGnome, gnome);
+    const rock = merged.subspecies?.find((sub) => sub.id === "rock");
+    assert.ok(rock?.extras?.length);
+    assert.ok(rock!.extras!.some((extra) => extra.startsWith("Tinker")));
   });
 });

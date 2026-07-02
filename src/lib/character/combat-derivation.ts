@@ -12,13 +12,14 @@ import type { Item } from "@/lib/schemas/item";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 import { abilityModifier, formatModifier } from "@/lib/dnd/calculations";
+import { averageHpGain } from "@/lib/dnd/level-up";
 import {
   applyExhaustionToSpeed,
   getExhaustionMaxHpSheetNote,
   getExhaustionModifiers,
   getExhaustionSpeedSheetNote,
 } from "@/lib/dnd/exhaustion";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 
 export interface CombatStatSource {
   label: string;
@@ -156,7 +157,7 @@ export function getSpeciesHpBonus(
 }
 
 /** Level-1 max HP from class hit die, Constitution, and species bonuses. */
-export function calculateMaxHpBreakdown(
+export function calculateLevel1MaxHpBreakdown(
   data: CharacterData,
   catalogClasses?: PhbClass[],
   speciesList?: PhbSpecies[]
@@ -176,6 +177,37 @@ export function calculateMaxHpBreakdown(
 
   const total = Math.max(1, hitDie + conMod + speciesBonus.bonus);
   return { total, sources };
+}
+
+/** Average HP gain per level after 1st (mean die roll rounded down + CON). */
+export function averageLevelUpHpGain(
+  data: CharacterData,
+  catalogClasses?: PhbClass[]
+): number {
+  const cls = resolveCharacterClass(data, catalogClasses);
+  const hitDie = cls?.hitDie ?? 8;
+  const conMod = abilityModifier(data.abilityScores.con);
+  return averageHpGain(hitDie, conMod);
+}
+
+/** Cumulative max HP including level-up gains after 1st level. */
+export function calculateMaxHpBreakdown(
+  data: CharacterData,
+  catalogClasses?: PhbClass[],
+  speciesList?: PhbSpecies[]
+): MaxHpBreakdown {
+  const level1 = calculateLevel1MaxHpBreakdown(data, catalogClasses, speciesList);
+  const gains = data.combat.levelUpHpGains ?? [];
+  if (gains.length === 0) return level1;
+
+  const gainTotal = gains.reduce((sum, g) => sum + g, 0);
+  return {
+    total: level1.total + gainTotal,
+    sources: [
+      ...level1.sources,
+      { label: "Level-up", value: gainTotal },
+    ],
+  };
 }
 
 export function applyExhaustionToMaxHpBreakdown(
@@ -237,7 +269,7 @@ export function getHitDiceTotal(
   catalogClasses?: PhbClass[],
   level?: number
 ): number {
-  return level ?? levelFromXp(data.basicInfo.xp ?? 0);
+  return level ?? getCharacterLevel(data);
 }
 
 export function getHitDieSides(

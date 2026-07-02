@@ -4,6 +4,7 @@ import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import type { Spell } from "@/lib/schemas/character";
 import {
   applyPreparedSelection,
+  buildSpellSlots,
   canAddLeveledSpell,
   canAddLeveledSpellToSpellbook,
   canAddSpellsOnSheet,
@@ -12,13 +13,21 @@ import {
   canModifyPlayerSpells,
   canPrepareAnother,
   canReprepareSpellsOnLongRest,
+  canShowDmCantripEditToggle,
+  getDmSpellEditToggleLabel,
+  canUseClassSpellcasting,
+  classHasSpellcastingAtLevel,
   countPlayerPreparedLeveled,
   enforcePreparedLimit,
   formatLevelPreparedSummary,
+  getPreparedSpellLimit,
   getSpellcastingFeatureDescription,
   getSpellcastingLimits,
+  getSpellsKnownLimit,
+  getSpellsKnownPickCount,
   getWizardSpellbookSpells,
   isFullListPreparedCaster,
+  isKnownCaster,
   isPlayerCantrip,
   isWizardSpellbookSpell,
   migrateFullListPreparedCasterSpells,
@@ -28,6 +37,8 @@ import type { CharacterData } from "@/lib/schemas/character";
 
 const cleric = PHB_CLASSES.find((c) => c.id === "cleric")!;
 const wizard = PHB_CLASSES.find((c) => c.id === "wizard")!;
+const paladin = PHB_CLASSES.find((c) => c.id === "paladin")!;
+const ranger = PHB_CLASSES.find((c) => c.id === "ranger")!;
 const bard = PHB_CLASSES.find((c) => c.id === "bard")!;
 const warlock = PHB_CLASSES.find((c) => c.id === "warlock")!;
 
@@ -148,20 +159,32 @@ describe("wizard spell sheet permissions", () => {
     );
   });
 
-  it("requires DM edit mode for all wizard spell changes", () => {
-    assert.equal(canModifyPlayerSpells(true, true, wizard), true);
-    assert.equal(canModifyPlayerSpells(true, false, wizard), false);
-    assert.equal(canModifyPlayerSpells(true, true, cleric), false);
+  it("requires DM edit mode for wizard and no-cantrip prepared caster spell changes", () => {
+    assert.equal(canModifyPlayerSpells(true, true, wizard, 2), true);
+    assert.equal(canModifyPlayerSpells(true, false, wizard, 2), false);
+    assert.equal(canModifyPlayerSpells(true, true, cleric, 1), false);
+    assert.equal(canModifyPlayerSpells(true, true, paladin, 2), true);
+    assert.equal(canModifyPlayerSpells(true, true, paladin, 1), false);
   });
 
   it("locks wizard spells on the sheet unless DM edit mode is on", () => {
     const cantrip = spell({ name: "Fire Bolt", level: 0, spellId: "fire-bolt" });
     const bookSpell = spell({ name: "Alarm", level: 1, spellId: "alarm" });
 
-    assert.equal(canEditSpellOnSheet(cantrip, wizard, false, false), false);
-    assert.equal(canEditSpellOnSheet(bookSpell, wizard, true, false), false);
-    assert.equal(canEditSpellOnSheet(cantrip, wizard, true, true), true);
-    assert.equal(canEditSpellOnSheet(bookSpell, wizard, true, true), true);
+    assert.equal(canEditSpellOnSheet(cantrip, wizard, false, false, 1), false);
+    assert.equal(canEditSpellOnSheet(bookSpell, wizard, true, false, 1), false);
+    assert.equal(canEditSpellOnSheet(cantrip, wizard, true, true, 1), true);
+    assert.equal(canEditSpellOnSheet(bookSpell, wizard, true, true, 1), true);
+  });
+
+  it("locks paladin spells on the sheet unless DM edit mode is on", () => {
+    const leveled = spell({ name: "Bless", level: 1, spellId: "bless", prepared: true });
+
+    assert.equal(canEditSpellOnSheet(leveled, paladin, false, false, 2), false);
+    assert.equal(canEditSpellOnSheet(leveled, paladin, true, false, 2), false);
+    assert.equal(canEditSpellOnSheet(leveled, paladin, true, true, 2), true);
+    assert.equal(canAddSpellsOnSheet(paladin, true, true, 2), true);
+    assert.equal(canAddSpellsOnSheet(paladin, true, false, 2), false);
   });
 
   it("still allows known casters to edit leveled spells without DM mode", () => {
@@ -369,7 +392,9 @@ describe("canReprepareSpellsOnLongRest", () => {
   });
 
   it("is false for known casters", () => {
+    const bard = PHB_CLASSES.find((c) => c.id === "bard")!;
     assert.equal(canReprepareSpellsOnLongRest(bard), false);
+    assert.equal(canReprepareSpellsOnLongRest(ranger), false);
   });
 });
 
@@ -429,5 +454,108 @@ describe("applySpellSlotUsed", () => {
   it("no-ops for cantrip casts", () => {
     const slots = { "1": { max: 2, used: 0 } };
     assert.equal(applySpellSlotUsed(slots, 0), slots);
+  });
+});
+
+describe("paladin half-caster spellcasting", () => {
+  const scores = {
+    str: 16,
+    dex: 10,
+    con: 14,
+    int: 10,
+    wis: 10,
+    cha: 14,
+  };
+
+  it("has no spellcasting at level 1", () => {
+    assert.equal(classHasSpellcastingAtLevel(paladin, 1), false);
+    const slots = buildSpellSlots(paladin, 1);
+    assert.deepEqual(slots, {});
+  });
+
+  it("gains half-caster slots and prepare limit at level 2", () => {
+    assert.equal(classHasSpellcastingAtLevel(paladin, 2), true);
+    const slots = buildSpellSlots(paladin, 2);
+    assert.deepEqual(slots, { "1": { max: 2, used: 0 } });
+    assert.equal(getPreparedSpellLimit(paladin, 2, scores), 3);
+    assert.match(getSpellcastingFeatureDescription(paladin), /Half caster/i);
+  });
+
+  it("returns inactive limits before spellcasting unlocks", () => {
+    const limits = getSpellcastingLimits(paladin, 1, scores);
+    assert.equal(limits.cantripsKnown, 0);
+    assert.equal(limits.preparedSpells, null);
+    assert.equal(limits.spellsKnown, null);
+  });
+
+  it("returns active limits after spellcasting unlocks", () => {
+    const limits = getSpellcastingLimits(paladin, 2, scores);
+    assert.equal(limits.cantripsKnown, 0);
+    assert.equal(limits.preparedSpells, 3);
+  });
+});
+
+describe("ranger half-caster spellcasting", () => {
+  const scores = {
+    str: 10,
+    dex: 14,
+    con: 12,
+    int: 10,
+    wis: 14,
+    cha: 10,
+  };
+
+  it("has no spellcasting at level 1", () => {
+    assert.equal(classHasSpellcastingAtLevel(ranger, 1), false);
+    assert.equal(canUseClassSpellcasting(ranger, 1), false);
+    assert.equal(isKnownCaster(ranger), true);
+    assert.equal(canReprepareSpellsOnLongRest(ranger), false);
+    const slots = buildSpellSlots(ranger, 1);
+    assert.deepEqual(slots, {});
+  });
+
+  it("gains half-caster slots and spells known at level 2", () => {
+    assert.equal(classHasSpellcastingAtLevel(ranger, 2), true);
+    assert.equal(canUseClassSpellcasting(ranger, 2), true);
+    const slots = buildSpellSlots(ranger, 2);
+    assert.deepEqual(slots, { "1": { max: 2, used: 0 } });
+    assert.equal(getSpellsKnownLimit(ranger, 2), 2);
+    assert.equal(getSpellsKnownPickCount(ranger, 1, 2), 2);
+    assert.equal(getSpellsKnownPickCount(ranger, 2, 3), 1);
+    assert.match(getSpellcastingFeatureDescription(ranger), /spells known/i);
+    const limits = getSpellcastingLimits(ranger, 2, scores);
+    assert.equal(limits.spellsKnown, 2);
+    assert.equal(limits.preparedSpells, null);
+    assert.equal(limits.usesPreparedList, false);
+  });
+
+  it("returns inactive limits before spellcasting unlocks", () => {
+    const limits = getSpellcastingLimits(ranger, 1, scores);
+    assert.equal(limits.preparedSpells, null);
+    assert.equal(limits.spellsKnown, null);
+  });
+});
+
+describe("canShowDmCantripEditToggle", () => {
+  it("is false before half-caster spellcasting unlocks", () => {
+    assert.equal(canShowDmCantripEditToggle(paladin, 1), false);
+    assert.equal(canShowDmCantripEditToggle(ranger, 1), false);
+  });
+
+  it("is true for half-casters once spellcasting unlocks", () => {
+    assert.equal(canShowDmCantripEditToggle(paladin, 2), true);
+    assert.equal(canShowDmCantripEditToggle(ranger, 2), true);
+    assert.equal(getDmSpellEditToggleLabel(paladin, 2), "Edit spells");
+    assert.equal(getDmSpellEditToggleLabel(ranger, 2), "Edit spells");
+  });
+
+  it("is true for cleric at level 1", () => {
+    assert.equal(canShowDmCantripEditToggle(cleric, 1), true);
+    assert.equal(getDmSpellEditToggleLabel(cleric, 1), "Edit cantrips");
+  });
+
+  it("is true for wizard at level 1", () => {
+    assert.equal(canShowDmCantripEditToggle(wizard, 1), true);
+    assert.equal(getDmSpellEditToggleLabel(wizard, 1), "Edit spells");
   });
 });

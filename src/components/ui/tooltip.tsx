@@ -103,6 +103,7 @@ function fitTooltipLayout(
 /**
  * Wraps any single element and shows a dark floating tooltip on hover.
  * Replaces the native browser `title` attribute tooltip.
+ * z-index must stay above dialog overlays (see dialog.tsx z-[10050]).
  */
 export function Tooltip({ content, children }: TooltipProps) {
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
@@ -176,7 +177,7 @@ export function Tooltip({ content, children }: TooltipProps) {
             style={{
               position: "fixed",
               pointerEvents: "none",
-              zIndex: 9999,
+              zIndex: 10100,
               left: layout?.left ?? anchor.x + OFFSET_X,
               top: layout?.top ?? anchor.y + OFFSET_Y,
               visibility: layout ? "visible" : "hidden",

@@ -1,4 +1,5 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { registerBattleParticipants } from "@/lib/combat/battle-participants";
 import { isCharacterPlaceholder } from "@/lib/combat/character-placeholder";
 import { isFootprintOnBlocked } from "@/lib/combat/collision";
 import { buildTurnOrder, syncInitiativeOrder } from "@/lib/combat/initiative";
@@ -97,11 +98,15 @@ export function createDefaultCombatState(
     savedEncounterId: null,
     autoApprove: false,
     autoApproveDm: true,
+    xpPool: 0,
+    battleParticipantCharacterIds: [],
+    reactionUsedTokenIds: [],
   };
 
   return {
     ...base,
     tokens: buildPartyTokens(characters, base),
+    battleParticipantCharacterIds: characters.map((character) => character.id),
   };
 }
 
@@ -937,10 +942,13 @@ export function addPartyMembersToState(
     };
   }
 
-  return {
-    ...workingState,
-    tokens: relabelEnemyTokens(workingState.tokens),
-  };
+  return registerBattleParticipants(
+    {
+      ...workingState,
+      tokens: relabelEnemyTokens(workingState.tokens),
+    },
+    characters.map((character) => character.id)
+  );
 }
 
 export function resetCombatBoard(
@@ -963,6 +971,9 @@ export function resetCombatBoard(
     savedEncounterId: null,
     autoApprove: false,
     autoApproveDm: true,
+    xpPool: 0,
+    battleParticipantCharacterIds: [],
+    reactionUsedTokenIds: [],
   };
 }
 

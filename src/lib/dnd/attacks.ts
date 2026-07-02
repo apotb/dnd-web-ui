@@ -2,7 +2,10 @@ import {
   getEffectiveWieldMain,
   getEffectiveWieldOff,
 } from "@/lib/character/equip-rules";
-import { getAllCharacterFeatures } from "@/lib/character/feature-derivation";
+import {
+  getArcheryAttackBonus,
+  getDuelingDamageBonus,
+} from "@/lib/dnd/fighting-styles";
 import { getEffectiveWeaponProficiencies } from "@/lib/character/class-derivation";
 import type { CharacterData, Spell } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
@@ -27,12 +30,11 @@ import {
   getSpellSaveDc,
   formatModifier,
 } from "@/lib/dnd/calculations";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 import { canCastSpellWithRemainingSlots } from "@/lib/dnd/spellcasting";
 import { canCastGrantSpell } from "@/lib/character/spell-grant-uses";
 import { isManagedGrantSpell } from "@/lib/character/spell-sources";
 import {
-  getCharacterLevel,
   getNaturalAttackSpecs,
   hasMonkMartialArts,
   isMonkWeapon,
@@ -440,17 +442,7 @@ function isProficientWithWeapon(
   return profs.some((p) => p === slug || p === name);
 }
 
-export function hasTwoWeaponFighting(
-  character: CharacterData,
-  catalogClasses?: PhbClass[]
-): boolean {
-  if (/two-weapon fighting/i.test(character.featureChoices?.fightingStyle ?? "")) {
-    return true;
-  }
-  return getAllCharacterFeatures(character, { classes: catalogClasses }).some(
-    (f) => /two-weapon fighting/i.test(f.name)
-  );
-}
+export { hasTwoWeaponFighting } from "@/lib/dnd/fighting-styles";
 
 function formatDamageDice(dice: string, abilityMod: number, includeMod: boolean): string {
   if (!includeMod) return dice;
@@ -537,7 +529,34 @@ export function deriveWeaponAttacks(
 
     const addAttack = (isOffHand: boolean, mode: "single" | "melee" | "thrown") => {
       const baseDice = wp.damage ?? "—";
-      const damageDiceStr = formatDamageDice(baseDice, abilityMod, true);
+      const isThrownAttackMode = mode === "thrown";
+      const archeryBonus = getArcheryAttackBonus(
+        character,
+        isRanged && !isThrownAttackMode,
+        catalogClasses
+      );
+      const duelingBonus = getDuelingDamageBonus(
+        character,
+        catalogItems,
+        {
+          isOffHand,
+          isRanged,
+          isThrown: isThrownAttackMode,
+          catalogItem,
+        },
+        catalogClasses
+      );
+      const attackBonusWithStyles = attackBonus + archeryBonus;
+      const attackBonusSourcesWithStyles = [...attackBonusSources];
+      if (archeryBonus > 0) {
+        attackBonusSourcesWithStyles.push({ label: "Archery", value: archeryBonus });
+      }
+      const damageMod = abilityMod + duelingBonus;
+      const damageBonusSourcesWithStyles = [...damageBonusSources];
+      if (duelingBonus > 0) {
+        damageBonusSourcesWithStyles.push({ label: "Dueling", value: duelingBonus });
+      }
+      const damageDiceStr = formatDamageDice(baseDice, damageMod, true);
       const damageDiceWithoutMod = baseDice;
 
       const offHandSuffix = isOffHand ? " (off-hand)" : "";
@@ -556,7 +575,7 @@ export function deriveWeaponAttacks(
         wp.weaponProperties.includes("versatile") &&
         wp.versatileDamage &&
         !isOffHand
-          ? formatDamageDice(wp.versatileDamage, abilityMod, true)
+          ? formatDamageDice(wp.versatileDamage, damageMod, true)
           : undefined;
       const versatileDamageDiceWithoutMod =
         versatileDamageDice != null ? wp.versatileDamage : undefined;
@@ -575,9 +594,9 @@ export function deriveWeaponAttacks(
       attacks.push({
         id: `weapon-${invItem.id}${idSuffix}${modeSuffix}`,
         name,
-        attackBonus,
-        attackBonusSources,
-        damageBonusSources,
+        attackBonus: attackBonusWithStyles,
+        attackBonusSources: attackBonusSourcesWithStyles,
+        damageBonusSources: damageBonusSourcesWithStyles,
         damageDice: damageDiceStr,
         damageDiceWithoutMod,
         versatileDamageDice,
@@ -757,7 +776,7 @@ export function buildSpellAttackForCast(
   if (!meta) return null;
 
   const saveDc = getSpellSaveDc(character) ?? undefined;
-  const characterLevel = levelFromXp(character.basicInfo.xp ?? 0);
+  const characterLevel = getCharacterLevel(character);
 
   return buildOffensiveSpellEntry(
     spell,
@@ -781,7 +800,7 @@ export function deriveSpellAttacks(character: CharacterData): DerivedAttack[] {
   if (!character.spells.spellcastingAbility) return [];
 
   const saveDc = getSpellSaveDc(character) ?? undefined;
-  const characterLevel = levelFromXp(character.basicInfo.xp ?? 0);
+  const characterLevel = getCharacterLevel(character);
 
   const attacks: DerivedAttack[] = [];
 

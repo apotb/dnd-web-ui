@@ -1,4 +1,5 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
+import { registerBattleParticipants } from "@/lib/combat/battle-participants";
 import { getPartyTokenLabel } from "@/lib/combat/party-token-label";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { combatTokenSchema } from "@/lib/schemas/combat-state";
@@ -41,24 +42,27 @@ export function assignCharacterToPlaceholder(
 
   const excluded = state.excludedPartyCharacterIds.filter((id) => id !== character.id);
 
-  return {
-    ...state,
-    excludedPartyCharacterIds: excluded,
-    tokens: state.tokens.map((entry) =>
-      entry.id === tokenId
-        ? combatTokenSchema.parse({
-            ...entry,
-            id: character.id,
-            characterId: character.id,
-            name: character.name,
-            label: getPartyTokenLabel(character.name),
-            portraitPath: character.data.basicInfo.portrait || null,
-            currentHp: character.data.combat.currentHp,
-            maxHp: character.data.combat.maxHp,
-          })
-        : entry
-    ),
-  };
+  return registerBattleParticipants(
+    {
+      ...state,
+      excludedPartyCharacterIds: excluded,
+      tokens: state.tokens.map((entry) =>
+        entry.id === tokenId
+          ? combatTokenSchema.parse({
+              ...entry,
+              id: character.id,
+              characterId: character.id,
+              name: character.name,
+              label: getPartyTokenLabel(character.name),
+              portraitPath: character.data.basicInfo.portrait || null,
+              currentHp: character.data.combat.currentHp,
+              maxHp: character.data.combat.maxHp,
+            })
+          : entry
+      ),
+    },
+    [character.id]
+  );
 }
 
 export function canPlayerClaimPlaceholder(

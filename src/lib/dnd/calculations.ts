@@ -1,7 +1,7 @@
 import type { AbilityKey, CharacterData, SkillKey } from "@/lib/schemas/character";
 import { isClassSavingThrowProficient } from "@/lib/character/class-derivation";
 import type { PhbClass } from "@/lib/dnd/phb/types";
-import { levelFromXp } from "@/lib/dnd/xp";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 
 /** Standard D&D 5e skill → ability mapping. */
 export const SKILL_ABILITY_MAP: Record<SkillKey, AbilityKey> = {
@@ -77,7 +77,7 @@ export function proficiencyBonus(level: number): number {
 }
 
 export function getProficiencyBonus(data: CharacterData): number {
-  const level = levelFromXp(data.basicInfo.xp ?? 0);
+  const level = getCharacterLevel(data);
   return data.proficiencyBonusOverride ?? proficiencyBonus(level);
 }
 

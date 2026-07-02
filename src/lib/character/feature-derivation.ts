@@ -3,6 +3,7 @@ import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import {
   catalogFeatureId,
   parseCatalogFeatureEntry,
+  slugifyFeatureName,
   type CatalogFeatureEntry,
   type CatalogFeatureMechanics,
 } from "@/lib/dnd/catalog-feature-mechanics";
@@ -25,8 +26,12 @@ import {
   isReplacedByGrantFeature,
   type GrantConfigurableFeature,
 } from "@/lib/character/feature-grant-features";
-import { getSpellcastingFeatureDescription } from "@/lib/dnd/spellcasting";
-import { levelFromXp } from "@/lib/dnd/xp";
+import {
+  classHasSpellcastingAtLevel,
+  getSpellcastingFeatureDescription,
+} from "@/lib/dnd/spellcasting";
+import type { PhbClass, PhbSubclass, PhbSpecies } from "@/lib/dnd/phb/types";
+import { getCharacterLevel } from "@/lib/dnd/xp";
 
 export type { FeatureCatalogs, FeatureSource, ConfigurableGrantedFeature };
 export { isConfigurableGrantedFeature, isLegacyPersonalizedFeature } from "@/lib/character/feature-choices";
@@ -48,16 +53,28 @@ export type DerivedFeature = GrantedFeature | ConfigurableGrantedFeature;
 export const CREATOR_OVERRIDDEN_CLASS_FEATURES: Partial<
   Record<string, readonly string[]>
 > = {
-  ranger: ["Favored Enemy", "Natural Explorer"],
+  ranger: ["Favored Enemy", "Natural Explorer", "Fighting Style"],
   fighter: ["Fighting Style"],
+  paladin: ["Fighting Style"],
 };
 
 export function isOverriddenClassFeature(
   classId: string,
   featureName: string
 ): boolean {
-  return (
-    CREATOR_OVERRIDDEN_CLASS_FEATURES[classId]?.includes(featureName) ?? false
+  const overrides = CREATOR_OVERRIDDEN_CLASS_FEATURES[classId];
+  if (!overrides?.length) return false;
+  const family = featureFamilyKey(featureName);
+  return overrides.some((name) => featureFamilyKey(name) === family);
+}
+
+function isReplacedByConfigurableFeature(
+  locked: GrantedFeature,
+  configurableFeatures: ConfigurableGrantedFeature[]
+): boolean {
+  const family = featureFamilyKey(locked.name);
+  return configurableFeatures.some(
+    (c) => c.source === locked.source && featureFamilyKey(c.name) === family
   );
 }
 
@@ -69,6 +86,111 @@ export function isFeatureAvailableAtLevel(
   const minLevel = parsed?.minLevel;
   if (minLevel == null) return true;
   return characterLevel >= minLevel;
+}
+
+/** Collapse unicode whitespace so feature family matching is stable. */
+function normalizeFeatureName(name: string): string {
+  return name.replace(/\s+/gu, " ").trim();
+}
+
+/** Normalize feature names that upgrade at higher levels (e.g. Bardic Inspiration (d6)). */
+export function featureFamilyKey(name: string): string {
+  const normalized = normalizeFeatureName(name);
+  if (/^fighting style:/i.test(normalized)) return "fighting style";
+  const paren = normalized.indexOf("(");
+  if (paren > 0) return normalized.slice(0, paren).trim().toLowerCase();
+  return normalized.toLowerCase();
+}
+
+function pickLatestFeatureUpgrades(
+  entries: CatalogFeatureEntry[],
+  characterLevel: number
+): CatalogFeatureEntry[] {
+  const available = entries.filter((e) => isFeatureAvailableAtLevel(e, characterLevel));
+  const bestByFamily = new Map<string, CatalogFeatureEntry>();
+  for (const entry of available) {
+    const key = featureFamilyKey(entry.name);
+    const existing = bestByFamily.get(key);
+    if (!existing || (entry.minLevel ?? 1) > (existing.minLevel ?? 1)) {
+      bestByFamily.set(key, entry);
+    }
+  }
+  return [...bestByFamily.values()];
+}
+
+/** Catalog features unlocked at the given level (matches sheet derivation rules). */
+export function getUnlockedCatalogFeatures(
+  entries: CatalogFeatureEntry[],
+  characterLevel: number,
+  classId?: string
+): CatalogFeatureEntry[] {
+  const filtered = entries.filter((f) => {
+    if (classId && isOverriddenClassFeature(classId, f.name)) return false;
+    if (f.name.startsWith("Fighting Style:")) return false;
+    return isFeatureAvailableAtLevel(f, characterLevel);
+  });
+  return pickLatestFeatureUpgrades(filtered, characterLevel).sort((a, b) => {
+    const levelDiff = (a.minLevel ?? 1) - (b.minLevel ?? 1);
+    if (levelDiff !== 0) return levelDiff;
+    const keyA = a.slug?.trim() || slugifyFeatureName(a.name);
+    const keyB = b.slug?.trim() || slugifyFeatureName(b.name);
+    return keyA.localeCompare(keyB);
+  });
+}
+
+function sortCatalogFeatures(entries: CatalogFeatureEntry[]): CatalogFeatureEntry[] {
+  return [...entries].sort((a, b) => {
+    const levelDiff = (a.minLevel ?? 1) - (b.minLevel ?? 1);
+    if (levelDiff !== 0) return levelDiff;
+    const keyA = a.slug?.trim() || slugifyFeatureName(a.name);
+    const keyB = b.slug?.trim() || slugifyFeatureName(b.name);
+    return keyA.localeCompare(keyB);
+  });
+}
+
+/** Class features for tooltips — includes level-gated catalog entries without sheet override filtering. */
+export function getTooltipClassFeatures(
+  cls: PhbClass,
+  characterLevel: number
+): CatalogFeatureEntry[] {
+  let features = getUnlockedCatalogFeatures(cls.features, characterLevel);
+
+  if (cls.spellcasting && classHasSpellcastingAtLevel(cls, characterLevel)) {
+    const hasSpellcasting = features.some(
+      (f) => featureFamilyKey(f.name) === "spellcasting"
+    );
+    if (!hasSpellcasting) {
+      features = sortCatalogFeatures([
+        ...features,
+        {
+          name: "Spellcasting",
+          slug: "spellcasting",
+          description: getSpellcastingFeatureDescription(cls),
+          minLevel: 1,
+        },
+      ]);
+    }
+  }
+
+  return features;
+}
+
+/** Subclass features for tooltips. */
+export function getTooltipSubclassFeatures(
+  subclass: PhbSubclass,
+  characterLevel: number
+): CatalogFeatureEntry[] {
+  return getUnlockedCatalogFeatures(subclass.features, characterLevel);
+}
+
+/** True when a feature first becomes available at the given level. */
+export function isFeatureNewlyAvailableAtLevel(
+  entry: CatalogFeatureEntry | { name: string; description: string },
+  characterLevel: number
+): boolean {
+  if (!isFeatureAvailableAtLevel(entry, characterLevel)) return false;
+  if (characterLevel <= 1) return true;
+  return !isFeatureAvailableAtLevel(entry, characterLevel - 1);
 }
 
 function makeGrantedFeature(
@@ -102,14 +224,51 @@ function makeGrantedFeature(
 }
 
 /** Derive a display name from subspecies extra text (e.g. "Tinker: …" → "Tinker"). */
-function subspeciesExtraFeatureName(text: string, subspeciesName: string, index: number): string {
+export function parseSubspeciesExtra(
+  text: string,
+  subspeciesName: string,
+  index: number
+): { name: string; description: string } {
   const colonIdx = text.indexOf(":");
   if (colonIdx > 0) {
-    return text.slice(0, colonIdx).trim();
+    return {
+      name: text.slice(0, colonIdx).trim(),
+      description: text.slice(colonIdx + 1).trim(),
+    };
   }
   const trimmed = text.trim().replace(/\.$/, "");
-  if (trimmed.length > 0 && trimmed.length <= 80) return trimmed;
-  return `${subspeciesName} (${index + 1})`;
+  if (trimmed.length > 0 && trimmed.length <= 80) {
+    return { name: trimmed, description: text };
+  }
+  return { name: `${subspeciesName} (${index + 1})`, description: text };
+}
+
+type PhbSubspecies = NonNullable<PhbSpecies["subspecies"]>[number];
+
+/** Species traits + subspecies extras for tooltips and sheet derivation. */
+export function getSpeciesTooltipFeatures(
+  species: PhbSpecies,
+  subspecies?: PhbSubspecies
+): Array<{ name: string; description: string }> {
+  const features: Array<{ name: string; description: string }> = [];
+
+  for (const trait of species.traits) {
+    if (species.id === "warforged" && trait.name === "Integrated Protection") continue;
+    features.push({ name: trait.name, description: trait.description });
+  }
+
+  subspecies?.extras?.forEach((text, index) => {
+    features.push(parseSubspeciesExtra(text, subspecies.name, index));
+  });
+
+  if (species.id === "warforged") {
+    features.push({
+      name: "Integrated Protection",
+      description: "+1 bonus to Armor Class (included in your AC).",
+    });
+  }
+
+  return features;
 }
 
 /** Rules-derived features from species, class, subclass, and background. */
@@ -135,38 +294,21 @@ export function deriveGrantedFeatures(
   const sub = subclassMatch?.subclass;
 
   const background = findBackgroundByName(data.basicInfo.background, backgrounds);
-  const characterLevel = levelFromXp(data.basicInfo.xp ?? 0);
+  const characterLevel = getCharacterLevel(data);
 
-  species?.traits.forEach((t) => {
-    if (species.id === "warforged" && t.name === "Integrated Protection") return;
-    features.push(makeGrantedFeature("species", t));
-  });
-
-  subspecies?.extras?.forEach((text, index) => {
-    features.push(
-      makeGrantedFeature("species", {
-        name: subspeciesExtraFeatureName(text, subspecies.name, index),
-        description: text,
-      })
-    );
-  });
-
-  if (species?.id === "warforged") {
-    features.push(
-      makeGrantedFeature("species", {
-        name: "Integrated Protection",
-        description: "+1 bonus to Armor Class (included in your AC).",
-      })
-    );
+  if (species) {
+    getSpeciesTooltipFeatures(species, subspecies).forEach((feature) => {
+      features.push(makeGrantedFeature("species", feature));
+    });
   }
 
-  cls?.features.forEach((f) => {
-    if (isOverriddenClassFeature(cls.id, f.name)) return;
-    if (!isFeatureAvailableAtLevel(f, characterLevel)) return;
-    features.push(makeGrantedFeature("class", f, "long"));
-  });
+  if (cls) {
+    getUnlockedCatalogFeatures(cls.features, characterLevel, cls.id).forEach((f) => {
+      features.push(makeGrantedFeature("class", f, "long"));
+    });
+  }
 
-  if (cls?.spellcasting) {
+  if (cls?.spellcasting && classHasSpellcastingAtLevel(cls, characterLevel)) {
     const spellcastingDesc = getSpellcastingFeatureDescription(cls);
     const existingIdx = features.findIndex(
       (f) => f.locked && f.source === "class" && f.name === "Spellcasting"
@@ -192,10 +334,11 @@ export function deriveGrantedFeatures(
   features.push(...deriveConfigurableFeatures(data, catalogs));
   features.push(...deriveGrantConfigurableFeatures(data, catalogs));
 
-  sub?.features.forEach((f) => {
-    if (!isFeatureAvailableAtLevel(f, characterLevel)) return;
-    features.push(makeGrantedFeature("subclass", f, "long"));
-  });
+  if (sub) {
+    getUnlockedCatalogFeatures(sub.features, characterLevel).forEach((f) => {
+      features.push(makeGrantedFeature("subclass", f, "long"));
+    });
+  }
 
   if (background) {
     features.push(makeGrantedFeature("background", background.feature));
@@ -204,11 +347,19 @@ export function deriveGrantedFeatures(
   const grantFeatures = features.filter(
     (f): f is GrantConfigurableFeature => isGrantConfigurableFeature(f)
   );
-  return features.filter(
-    (f) =>
-      !f.locked ||
-      !isReplacedByGrantFeature(f as GrantedFeature, grantFeatures)
+  const configurableFeatures = features.filter(
+    (f): f is ConfigurableGrantedFeature =>
+      !f.locked && "choiceKey" in f && !!f.choiceKey
   );
+  return features.filter((f) => {
+    if (!f.locked) return true;
+    const locked = f as GrantedFeature;
+    if (isReplacedByGrantFeature(locked, grantFeatures)) return false;
+    if (isReplacedByConfigurableFeature(locked, configurableFeatures)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 const FEATURE_SOURCE_LABEL: Record<FeatureSource, string> = {
@@ -232,10 +383,13 @@ export function isCustomFeature(
   const grantedIds = new Set(granted.map((g) => g.id));
   if (grantedIds.has(feature.id)) return false;
 
-  const grantedNames = new Set(
-    granted.filter((g) => g.locked).map((g) => g.name.toLowerCase())
+  const grantedNames = new Set(granted.map((g) => g.name.toLowerCase()));
+  const grantedFamilies = new Set(granted.map((g) => featureFamilyKey(g.name)));
+  const featureFamily = featureFamilyKey(feature.name);
+  return (
+    !grantedNames.has(feature.name.toLowerCase()) &&
+    !grantedFamilies.has(featureFamily)
   );
-  return !grantedNames.has(feature.name.toLowerCase());
 }
 
 /** Stored features that are not rules-derived. */
