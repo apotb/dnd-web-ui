@@ -1,0 +1,32 @@
+---
+description: Data-driven architecture — derive don't store, catalog merge, shared pipelines
+alwaysApply: true
+---
+
+# Architecture Philosophy
+
+**Add behavior by extending validated data and shared derivation pipelines — not by hardcoding values in components or duplicating catalog content.**
+
+## Schema-first domain data
+
+Flexible game state lives in JSONB columns, validated by Zod in `src/lib/schemas/`. Shape changes start with the schema, then flow to save/load/realtime hooks.
+
+## Derive, don't store
+
+Calculated values (modifiers, skill totals, granted features, spell DCs) are computed in `src/lib/dnd/` and `src/lib/character/` — never persisted. Use `prepareCharacterDataForSave()` and `parseCharacterRow()` as the save/load boundary.
+
+## Catalog as shared truth
+
+Species, classes, spells, feats, etc. come from **DB + PHB merge** (`src/lib/content/catalog-merge.ts`): empty DB → PHB fallback; non-empty → merge (DB overrides, PHB fills gaps). Combat, character builder, and admin all read this layer — don't duplicate content in UI.
+
+## Mechanics as structured data
+
+Class/species features use machine-readable mechanics (`src/lib/dnd/catalog-feature-mechanics.ts`) wired through `src/lib/character/feature-derivation.ts`. New abilities = extend data + derivation, not one-off component logic.
+
+## Features interact through state
+
+Combat reads character catalog data; realtime hooks (`src/lib/hooks/use-realtime-*.ts`) keep campaign JSON columns in sync. When adding a feature, trace which JSON column + hook + schema it touches.
+
+## Security at the DB boundary
+
+DM writes directly; players use RPCs for combat (`persistOrRpc` in `src/lib/combat/attack-actions.ts`). Strip `dmNotes` for non-DM views. RLS in migrations is authoritative.

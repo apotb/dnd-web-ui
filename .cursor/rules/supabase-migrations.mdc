@@ -1,0 +1,14 @@
+---
+description: Supabase migration and schema conventions
+globs: supabase/**
+alwaysApply: false
+---
+
+# Supabase Migrations
+
+- Migrations in `supabase/migrations/` are the source of truth; **never edit already-applied files** — add `NNN_description.sql`
+- RLS policies and player RPCs belong in migrations, not app-only checks
+- After schema changes, update `src/lib/types/database.ts` by hand (no ORM codegen)
+- Large seed data → migration SQL; dev PHB seeding → admin UI or `seedCatalog*` in `src/lib/content/catalog.ts`
+- Use `npm run db:migration:list` to check drift
+- Use `npm run db:repair-baseline` only for the documented one-time repair case in `supabase/README.md`

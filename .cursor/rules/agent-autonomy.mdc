@@ -1,0 +1,26 @@
+---
+description: Commands agents may run without asking permission
+alwaysApply: true
+---
+
+# Agent Autonomy
+
+Run these commands proactively — do not ask for permission first.
+
+## Run without asking
+
+- `npm run db:push` after adding or changing files in `supabase/migrations/`
+- `npm run db:push:dry` first when unsure what will apply
+- `npm test` when touching `src/lib/dnd/`, `src/lib/combat/`, `src/lib/character/`, or `src/lib/content/`
+- `npm run lint` after substantive code changes
+- `npm run build` to verify the app compiles before considering work done
+
+## Still ask / never do without explicit request
+
+- Git commit, git push, or force-push
+- Editing `.env.local` or other secrets
+- Destructive DB operations (drops, truncates, manual SQL against production)
+
+## Failure handling
+
+If `db:push` fails, diagnose and fix — add a new migration, use `npm run db:repair-baseline` only for the documented one-time repair case in `supabase/README.md`. Do not stop at reporting the error.

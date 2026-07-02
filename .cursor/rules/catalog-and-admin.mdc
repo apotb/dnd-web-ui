@@ -1,0 +1,18 @@
+---
+description: Catalog content and admin UI conventions
+globs: src/lib/content/**,src/app/admin/**
+alwaysApply: false
+---
+
+# Catalog and Admin
+
+Checklist for new catalog entities:
+
+1. Migration table with `slug`, `name`, `source`, `data JSONB`
+2. Zod schema in `src/lib/schemas/`
+3. PHB fallback TS in `src/lib/dnd/phb/` if applicable
+4. Server CRUD in `catalog.ts` (`"use server"`) + client reads in `catalog-client.ts`
+5. Admin manager under `src/app/admin/` + entry in `admin/database/page.tsx` CATEGORIES
+6. Merge tests in `catalog-merge.test.ts` or new colocated test
+
+Slug is the stable ID; upsert with `onConflict: "slug"`.

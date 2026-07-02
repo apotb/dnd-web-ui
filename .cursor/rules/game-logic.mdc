@@ -1,0 +1,13 @@
+---
+description: Game logic conventions for dnd, combat, and character modules
+globs: src/lib/dnd/**,src/lib/combat/**,src/lib/character/**
+alwaysApply: false
+---
+
+# Game Logic
+
+- Pure TypeScript — no React imports in game logic
+- Colocated `*.test.ts` next to logic; register new test files in `package.json` `"test"` script
+- Combat state schema: `src/lib/schemas/combat-state.ts`
+- Player combat actions → Postgres RPC; DM → direct `combat_state` persist
+- Follow existing section-header style (`// ── ... ──`) in larger lib files
