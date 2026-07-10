@@ -28,6 +28,8 @@ import {
   spellListLabel,
 } from "@/lib/dnd/spell-display";
 
+const EMPTY_EXCLUDE_SLUGS: string[] = [];
+
 export interface SpellPreparationPickerProps {
   classListId: string;
   maxSpellLevel: number;
@@ -112,7 +114,7 @@ export function SpellPreparationPicker({
   selectedSlugs,
   onSelectedSlugsChange,
   spellbookSlugs,
-  excludeSlugs = [],
+  excludeSlugs = EMPTY_EXCLUDE_SLUGS,
   selectionKind = "prepared",
   active = true,
   showSummary = true,
@@ -125,7 +127,6 @@ export function SpellPreparationPicker({
   const [results, setResults] = useState<CatalogSpellRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const excludedSlugSet = useMemo(() => new Set(excludeSlugs), [excludeSlugs]);
   const selectedSlugSet = useMemo(() => new Set(selectedSlugs), [selectedSlugs]);
   const selectedCount = selectedSlugs.length;
   const atLimit = selectedCount >= prepareLimit;
@@ -150,7 +151,7 @@ export function SpellPreparationPicker({
         (s) =>
           s.level > 0 &&
           s.level <= maxSpellLevel &&
-          !excludedSlugSet.has(s.slug)
+          !excludeSlugs.includes(s.slug)
       );
       if (spellbookSlugs?.length) {
         if (q.trim()) {
@@ -165,7 +166,7 @@ export function SpellPreparationPicker({
       setResults(filtered);
       setLoading(false);
     },
-    [classListId, excludedSlugSet, maxSpellLevel, spellbookSlugs]
+    [classListId, excludeSlugs, maxSpellLevel, spellbookSlugs]
   );
 
   useEffect(() => {
@@ -248,7 +249,7 @@ export function SpellPreparationPicker({
           scrollMode === "contained" ? `overflow-y-auto ${scrollClassName}` : ""
         }`}
       >
-        {loading ? (
+        {loading && results.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4">Loading…</p>
         ) : grouped.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4">No spells found.</p>

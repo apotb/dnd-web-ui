@@ -40,6 +40,8 @@ import type { AbilityKey, CharacterData } from "@/lib/schemas/character";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 
+const EMPTY_SLUGS: string[] = [];
+
 interface LevelUpModalProps {
   characterId: string;
   data: CharacterData;
@@ -409,11 +411,10 @@ export function LevelUpModal({
               classListId={currentStep.classListId}
               maxSpellLevel={currentStep.maxSpellLevel}
               prepareLimit={currentStep.count}
-              selectedSlugs={draft.preparedSpellIds ?? []}
+              selectedSlugs={draft.preparedSpellIds ?? EMPTY_SLUGS}
               onSelectedSlugsChange={(slugs) =>
                 patchDraft({ preparedSpellIds: slugs })
               }
-              scrollMode="parent"
             />
           </div>
         );
@@ -505,11 +506,10 @@ export function LevelUpModal({
               classListId={currentStep.classListId}
               maxSpellLevel={currentStep.maxSpellLevel}
               prepareLimit={currentStep.count}
-              selectedSlugs={draft.spellIds ?? []}
+              selectedSlugs={draft.spellIds ?? EMPTY_SLUGS}
               onSelectedSlugsChange={(slugs) => patchDraft({ spellIds: slugs })}
               excludeSlugs={existingKnownSpellSlugs}
               selectionKind="selected"
-              scrollMode="parent"
             />
           </div>
         );
