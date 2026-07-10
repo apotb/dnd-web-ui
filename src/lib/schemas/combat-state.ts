@@ -78,6 +78,15 @@ export const pendingAttackTargetSchema = z.object({
   finalDamage: z.number().int().min(0).nullable().optional(),
 });
 
+export const pendingSpellMaterialChoiceSchema = z.object({
+  groupIndex: z.number().int(),
+  itemSlug: z.string(),
+  inventoryItemId: z.string(),
+  itemName: z.string(),
+  quantity: z.number().int().min(1),
+  consumed: z.boolean(),
+});
+
 export const pendingSpellDetailsSchema = z.object({
   spellId: z.string(),
   characterSpellId: z.string().optional(),
@@ -90,6 +99,9 @@ export const pendingSpellDetailsSchema = z.object({
   duration: z.string().optional(),
   components: z.string().optional(),
   materialLine: z.string().optional(),
+  materialChoices: z.array(pendingSpellMaterialChoiceSchema).optional(),
+  materialSatisfiedByFocus: z.boolean().optional(),
+  materialConsumptionSummary: z.string().optional(),
   concentration: z.boolean().optional(),
   ritual: z.boolean().optional(),
   description: z.string().optional(),

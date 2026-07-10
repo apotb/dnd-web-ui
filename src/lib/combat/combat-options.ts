@@ -121,6 +121,7 @@ export interface CombatOption {
     level: number;
     castSlotLevel: number;
     castingCost: "action" | "bonus-action";
+    materialSelections?: Array<{ groupIndex: number; inventoryItemId: string }>;
   };
   /** Opens the leveled spell picker for action-cost spells (cantrips and bonus-action spells stay direct). */
   spellcasting?: {
@@ -134,9 +135,10 @@ export const COMBAT_CAST_SPELL_ACTION_ID = "core:cast-spell";
 
 function buildCantripCastCombatOptions(
   character: CharacterData,
-  castingCost: "action" | "bonus-action"
+  castingCost: "action" | "bonus-action",
+  catalogItems: Record<string, Item> = {}
 ): CombatOption[] {
-  return listCombatCastableCantripSpells(character, { castingCost }).map(
+  return listCombatCastableCantripSpells(character, { castingCost, catalogItems }).map(
     ({ spell, slug, castingCost: cost }) => ({
       id: `spell-cast:${spell.id}`,
       name: spell.name,
@@ -156,9 +158,10 @@ function buildCantripCastCombatOptions(
 
 function buildLeveledSpellCastCombatOptions(
   character: CharacterData,
-  castingCost: "action" | "bonus-action"
+  castingCost: "action" | "bonus-action",
+  catalogItems: Record<string, Item> = {}
 ): CombatOption[] {
-  return listCombatCastableLeveledSpells(character, { castingCost }).map((entry) => ({
+  return listCombatCastableLeveledSpells(character, { castingCost, catalogItems }).map((entry) => ({
     id: `spell-cast:${entry.spell.id}`,
     name: entry.spell.name,
     subtitle: formatDeclareCastSpellSubtitle(entry.spell, entry.slug, {
@@ -176,9 +179,18 @@ function buildLeveledSpellCastCombatOptions(
   }));
 }
 
-function buildCastSpellCombatOption(character: CharacterData): CombatOption | null {
-  const cantrips = listCombatCastableCantripSpells(character, { castingCost: "action" });
-  const leveled = listCombatCastableLeveledSpells(character, { castingCost: "action" });
+function buildCastSpellCombatOption(
+  character: CharacterData,
+  catalogItems: Record<string, Item> = {}
+): CombatOption | null {
+  const cantrips = listCombatCastableCantripSpells(character, {
+    castingCost: "action",
+    catalogItems,
+  });
+  const leveled = listCombatCastableLeveledSpells(character, {
+    castingCost: "action",
+    catalogItems,
+  });
   if (cantrips.length === 0 && leveled.length === 0) return null;
 
   const tooltipLines = ["Choose a prepared spell or utility cantrip."];
@@ -801,7 +813,7 @@ function buildPartyOptionGroups(
   const castSpellOption =
     options?.battleOver || turn.actionUsed
       ? null
-      : buildCastSpellCombatOption(character.data);
+      : buildCastSpellCombatOption(character.data, catalogItems);
 
   const attackOptions: CombatOption[] =
     options?.battleOver || turn.actionUsed
@@ -890,11 +902,11 @@ function buildPartyOptionGroups(
   const cantripBonusCastOptions =
     options?.battleOver || turn.bonusActionUsed
       ? []
-      : buildCantripCastCombatOptions(character.data, "bonus-action");
+      : buildCantripCastCombatOptions(character.data, "bonus-action", catalogItems);
   const bonusLeveledSpellCastOptions =
     options?.battleOver || turn.bonusActionUsed
       ? []
-      : buildLeveledSpellCastCombatOptions(character.data, "bonus-action");
+      : buildLeveledSpellCastCombatOptions(character.data, "bonus-action", catalogItems);
 
   return {
     actions: [...attackOptions, ...actionOptions],

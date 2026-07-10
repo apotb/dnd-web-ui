@@ -2858,7 +2858,7 @@ export function CombatBoard({
   function handleSpellPickerConfirm(selection: CombatSpellPickerSelection) {
     if (!actingTokenCharacter || !pendingSpellcasting) return;
 
-    const { entry, castSlotLevel } = selection;
+    const { entry, castSlotLevel, materialSelections } = selection;
     const castingCost = pendingSpellcasting.castingCost;
     setPendingSpellcasting(null);
 
@@ -2874,6 +2874,7 @@ export function CombatBoard({
         level: entry.spell.level,
         castSlotLevel,
         castingCost,
+        materialSelections,
       },
     });
   }
@@ -2892,7 +2893,7 @@ export function CombatBoard({
     }
   }
 
-  async function handleConfirmSpellCast() {
+  async function handleConfirmSpellCast(materialSelections: Array<{ groupIndex: number; inventoryItemId: string }>) {
     if (!pendingSpellCast?.spellCast || !actingToken) return;
 
     if (hasPendingAttackForAttacker(combatState, actingToken.id)) {
@@ -2901,6 +2902,13 @@ export function CombatBoard({
     }
 
     setSubmittingAttack(true);
+    const combatOption: CombatOption = {
+      ...pendingSpellCast,
+      spellCast: {
+        ...pendingSpellCast.spellCast,
+        materialSelections,
+      },
+    };
     const { next, error, characterUpdates } = await submitCombatSpellCast(
       campaignId,
       combatState,
@@ -2908,9 +2916,10 @@ export function CombatBoard({
         userId,
         isDm,
         attacker: actingToken,
-        combatOption: pendingSpellCast,
+        combatOption,
         charactersById,
         enemiesBySlug,
+        catalogItems,
       }
     );
     setSubmittingAttack(false);
@@ -5111,17 +5120,20 @@ export function CombatBoard({
       {pendingSpellcasting && actingTokenCharacter ? (
         <CombatSpellPickerModal
           character={actingTokenCharacter.data}
+          catalogItems={catalogItems}
           castingCost={pendingSpellcasting.castingCost}
           preselectedEntry={pendingSpellcasting.preselectedEntry}
           onCancel={() => setPendingSpellcasting(null)}
           onConfirm={handleSpellPickerConfirm}
         />
       ) : null}
-      {pendingSpellCast ? (
+      {pendingSpellCast && actingTokenCharacter ? (
         <CombatSpellCastModal
           option={pendingSpellCast}
+          character={actingTokenCharacter.data}
+          catalogItems={catalogItems}
           onCancel={() => setPendingSpellCast(null)}
-          onConfirm={() => void handleConfirmSpellCast()}
+          onConfirm={(materialSelections) => void handleConfirmSpellCast(materialSelections)}
         />
       ) : null}
       {pendingOpportunityAttackMove ? (

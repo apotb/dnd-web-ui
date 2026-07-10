@@ -44,6 +44,7 @@ import {
   attachSpellDetailsToPending,
   resolvePendingSpellDetailsForDeclareCast,
 } from "@/lib/combat/pending-spell-details";
+import type { SpellMaterialCastPlan } from "@/lib/dnd/spell-materials";
 
 export interface AttackSubmissionInput {
   attackRoll?: number | null;
@@ -206,6 +207,7 @@ export function createPendingAttack(
     skipDmReview?: boolean;
     catalogItems?: Record<string, Item>;
     classCatalog?: PhbClass[];
+    materialPlan?: SpellMaterialCastPlan | null;
   }
 ): PendingAttack {
   const spec = parseAttackRangeSpec(attack);
@@ -358,15 +360,15 @@ export function createPendingAttack(
     pending = transitionToDmReview(pending);
   }
 
-  return attachSpellDetailsToPending(pending, option, attack);
+  return attachSpellDetailsToPending(pending, option, attack, options?.materialPlan);
 }
 
 export function createPendingSpellCast(
   attacker: CombatToken,
   option: CombatOption,
-  options?: { skipDmReview?: boolean }
+  options?: { skipDmReview?: boolean; materialPlan?: SpellMaterialCastPlan | null }
 ): PendingAttack | null {
-  const spellDetails = resolvePendingSpellDetailsForDeclareCast(option);
+  const spellDetails = resolvePendingSpellDetailsForDeclareCast(option, options?.materialPlan);
   if (!spellDetails) return null;
 
   const actionCost = spellDetails.castingCost;

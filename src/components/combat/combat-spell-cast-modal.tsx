@@ -8,6 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  SpellMaterialPicker,
+  isSpellMaterialSelectionComplete,
+  type SpellMaterialSelection,
+} from "@/components/combat/spell-material-picker";
 import type { CombatOption } from "@/lib/combat/combat-options";
 import { ACTION_COST_LABELS } from "@/lib/dnd/character-actions";
 import { CombatDeclareBeforeEmphasis } from "@/components/combat/combat-declare-before-emphasis";
@@ -18,11 +23,16 @@ import {
 import type { CombatCastableSpell } from "@/lib/dnd/combat-spells";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import type { CatalogSpellRow } from "@/lib/content/catalog-client";
+import type { CharacterData } from "@/lib/schemas/character";
+import type { Item } from "@/lib/schemas/item";
+import { useState } from "react";
 
 interface CombatSpellCastModalProps {
   option: CombatOption;
+  character: CharacterData;
+  catalogItems: Record<string, Item>;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (materialSelections: SpellMaterialSelection[]) => void;
 }
 
 function catalogRowFromSpellCast(
@@ -51,12 +61,17 @@ function catalogRowFromSpellCast(
 
 export function CombatSpellCastModal({
   option,
+  character,
+  catalogItems,
   onCancel,
   onConfirm,
 }: CombatSpellCastModalProps) {
   const spellCast = option.spellCast;
   const catalogRow = spellCast ? catalogRowFromSpellCast(option, spellCast) : null;
   const catalog = spellCast ? getSpell(spellCast.spellId) : undefined;
+  const [materialSelections, setMaterialSelections] = useState<SpellMaterialSelection[]>(
+    spellCast?.materialSelections ?? []
+  );
   const economyLabel =
     spellCast?.castingCost === "bonus-action"
       ? ACTION_COST_LABELS["bonus-action"]
@@ -68,6 +83,15 @@ export function CombatSpellCastModal({
       : spellCast && spellCast.castSlotLevel > 0
         ? `Cast with ${formatSlotLevelLabel(spellCast.castSlotLevel)} slot`
         : null;
+
+  const canConfirm =
+    spellCast != null &&
+    isSpellMaterialSelectionComplete(
+      character,
+      spellCast.spellId,
+      catalogItems,
+      materialSelections
+    );
 
   return (
     <Dialog
@@ -92,6 +116,15 @@ export function CombatSpellCastModal({
               {castAtLabel ? (
                 <p className="text-sm text-muted-foreground">{castAtLabel}</p>
               ) : null}
+              {spellCast ? (
+                <SpellMaterialPicker
+                  character={character}
+                  spellSlug={spellCast.spellId}
+                  catalogItems={catalogItems}
+                  value={materialSelections}
+                  onChange={setMaterialSelections}
+                />
+              ) : null}
               {catalog?.description ? (
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                   {catalog.description}
@@ -107,7 +140,11 @@ export function CombatSpellCastModal({
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="button" onClick={onConfirm}>
+          <Button
+            type="button"
+            disabled={!canConfirm}
+            onClick={() => onConfirm(materialSelections)}
+          >
             {spellCast?.castingCost === "bonus-action" ? "Use Bonus Action" : "Cast Spell"}
           </Button>
         </div>

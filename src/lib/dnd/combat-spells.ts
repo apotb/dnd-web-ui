@@ -26,6 +26,8 @@ import {
   formatSlotSummary,
 } from "@/lib/dnd/spellcasting";
 import type { CharacterData, Spell } from "@/lib/schemas/character";
+import type { Item } from "@/lib/schemas/item";
+import { characterCanCastSpellMaterials } from "@/lib/dnd/spell-materials";
 
 /** Compact button subtitle: spell type + range. Roll math belongs in tooltips. */
 export function formatSpellCombatSubtitle(
@@ -69,7 +71,11 @@ export interface EligibleCastSlot {
   max: number;
 }
 
-function isCombatSpellEligible(character: CharacterData, spell: Spell): boolean {
+function isCombatSpellEligible(
+  character: CharacterData,
+  spell: Spell,
+  catalogItems?: Record<string, Item>
+): boolean {
   if (!character.spells.spellcastingAbility) return false;
   if (isManagedGrantSpell(spell) && !canCastGrantSpell(spell, character)) {
     return false;
@@ -81,6 +87,22 @@ function isCombatSpellEligible(character: CharacterData, spell: Spell): boolean 
     !canCastSpellWithRemainingSlots(character.spells.slots, spell.level)
   ) {
     return false;
+  }
+  if (catalogItems) {
+    const slug = resolveSpellSlug(spell);
+    if (slug) {
+      const catalog = getSpell(slug);
+      if (
+        !characterCanCastSpellMaterials(
+          character,
+          slug,
+          catalogItems,
+          catalog?.components
+        )
+      ) {
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -112,13 +134,13 @@ function sortCombatCastableSpells(entries: CombatCastableSpell[]): CombatCastabl
 /** Prepared leveled spells for the combat spell picker (includes offensive spells). */
 export function listCombatCastableLeveledSpells(
   character: CharacterData,
-  options: { castingCost: "action" | "bonus-action" }
+  options: { castingCost: "action" | "bonus-action"; catalogItems?: Record<string, Item> }
 ): CombatCastableSpell[] {
   const result: CombatCastableSpell[] = [];
 
   for (const spell of character.spells.known) {
     if (spell.level <= 0) continue;
-    if (!isCombatSpellEligible(character, spell)) continue;
+    if (!isCombatSpellEligible(character, spell, options.catalogItems)) continue;
 
     const resolved = resolveCombatCatalogSpell(spell);
     if (!resolved || resolved.castingCost !== options.castingCost) continue;
@@ -136,11 +158,18 @@ export function listCombatCastableLeveledSpells(
 
 /** Action spells for the Cast a Spell picker: utility cantrips plus leveled spells. */
 export function listCombatCastableActionSpellsForPicker(
-  character: CharacterData
+  character: CharacterData,
+  catalogItems?: Record<string, Item>
 ): CombatCastableSpell[] {
   return sortCombatCastableSpells([
-    ...listCombatCastableCantripSpells(character, { castingCost: "action" }),
-    ...listCombatCastableLeveledSpells(character, { castingCost: "action" }),
+    ...listCombatCastableCantripSpells(character, {
+      castingCost: "action",
+      catalogItems,
+    }),
+    ...listCombatCastableLeveledSpells(character, {
+      castingCost: "action",
+      catalogItems,
+    }),
   ]);
 }
 
@@ -172,13 +201,13 @@ export function resolveCombatCastableSpell(
  */
 export function listCombatCastableCantripSpells(
   character: CharacterData,
-  options: { castingCost: "action" | "bonus-action" }
+  options: { castingCost: "action" | "bonus-action"; catalogItems?: Record<string, Item> }
 ): CombatCastableSpell[] {
   const result: CombatCastableSpell[] = [];
 
   for (const spell of character.spells.known) {
     if (spell.level !== 0) continue;
-    if (!isCombatSpellEligible(character, spell)) continue;
+    if (!isCombatSpellEligible(character, spell, options.catalogItems)) continue;
 
     const slug = resolveSpellSlug(spell);
     if (!slug || hasOffensiveSpellAttackMetadata(slug)) continue;

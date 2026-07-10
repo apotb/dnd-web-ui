@@ -2,6 +2,7 @@ import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyCombatHpDamage } from "@/lib/character/combat-derivation";
 import { parseDamageNotation } from "@/lib/dnd/dice";
 import { consumeLoadedAmmunition, isRecoverableAmmunition } from "@/lib/dnd/ammunition";
+import { consumeSpellMaterials } from "@/lib/dnd/spell-materials";
 import { consumeThrownWeaponInventoryItem } from "@/lib/character/equip-rules";
 import {
   placeAmmoPickupMarker,
@@ -307,6 +308,13 @@ export function applyResolvedAttack(
           inventoryItems,
           pending.thrownInventoryItemId,
           !pending.isMainHandWeapon
+        );
+        inventoryChanged = true;
+      }
+      if (pending.spellDetails?.materialChoices?.length) {
+        inventoryItems = consumeSpellMaterials(
+          inventoryItems,
+          pending.spellDetails.materialChoices
         );
         inventoryChanged = true;
       }

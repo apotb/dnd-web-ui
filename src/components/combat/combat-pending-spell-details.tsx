@@ -46,6 +46,12 @@ export function CombatPendingSpellDetails({ details }: CombatPendingSpellDetails
         />
       ) : null}
 
+      {details.materialConsumptionSummary ? (
+        <p className="combat-pending-spell-material retro-muted">
+          {details.materialConsumptionSummary}
+        </p>
+      ) : null}
+
       {details.targetingSummary ? (
         <p className="combat-pending-spell-targeting">{details.targetingSummary}</p>
       ) : null}

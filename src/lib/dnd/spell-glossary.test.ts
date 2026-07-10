@@ -13,6 +13,7 @@ describe("getSpellMaterialNotice", () => {
       {
         description: "holy water or powdered silver and iron",
         consumed: true,
+        costly: false,
       }
     );
   });

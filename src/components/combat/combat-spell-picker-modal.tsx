@@ -23,16 +23,24 @@ import {
   listCombatCastableLeveledSpells,
 } from "@/lib/dnd/combat-spells";
 import { spellLevelLabel } from "@/lib/dnd/spell-display";
+import {
+  SpellMaterialPicker,
+  isSpellMaterialSelectionComplete,
+  type SpellMaterialSelection,
+} from "@/components/combat/spell-material-picker";
+import type { Item } from "@/lib/schemas/item";
 import type { CharacterData } from "@/lib/schemas/character";
 import { cn } from "@/lib/utils";
 
 export interface CombatSpellPickerSelection {
   entry: CombatCastableSpell;
   castSlotLevel: number;
+  materialSelections: SpellMaterialSelection[];
 }
 
 interface CombatSpellPickerModalProps {
   character: CharacterData;
+  catalogItems: Record<string, Item>;
   castingCost: "action" | "bonus-action";
   /** When set, skip spell list and only ask for slot level. */
   preselectedEntry?: CombatCastableSpell;
@@ -63,6 +71,7 @@ function groupSpellsByLevel(
 
 export function CombatSpellPickerModal({
   character,
+  catalogItems,
   castingCost,
   preselectedEntry,
   onCancel,
@@ -71,9 +80,9 @@ export function CombatSpellPickerModal({
   const spells = useMemo(() => {
     if (preselectedEntry) return [preselectedEntry];
     return castingCost === "action"
-      ? listCombatCastableActionSpellsForPicker(character)
-      : listCombatCastableLeveledSpells(character, { castingCost });
-  }, [character, castingCost, preselectedEntry]);
+      ? listCombatCastableActionSpellsForPicker(character, catalogItems)
+      : listCombatCastableLeveledSpells(character, { castingCost, catalogItems });
+  }, [character, catalogItems, castingCost, preselectedEntry]);
   const groups = useMemo(() => groupSpellsByLevel(spells), [spells]);
 
   const [selected, setSelected] = useState<CombatCastableSpell | null>(
@@ -85,6 +94,8 @@ export function CombatSpellPickerModal({
       : null
   );
 
+  const [materialSelections, setMaterialSelections] = useState<SpellMaterialSelection[]>([]);
+
   const slotOnly = preselectedEntry != null;
   const step = selected == null ? "spell" : "slot";
   const eligibleSlots = selected
@@ -94,10 +105,13 @@ export function CombatSpellPickerModal({
 
   function handleSelectSpell(entry: CombatCastableSpell) {
     if (entry.spell.level === 0) {
-      onConfirm({ entry, castSlotLevel: 0 });
+      setSelected(entry);
+      setCastSlotLevel(0);
+      setMaterialSelections([]);
       return;
     }
     setSelected(entry);
+    setMaterialSelections([]);
     setCastSlotLevel(
       getDefaultCastSlotLevel(character.spells.slots, entry.spell.level)
     );
@@ -114,8 +128,18 @@ export function CombatSpellPickerModal({
 
   function handleConfirm() {
     if (!selected || castSlotLevel == null) return;
-    onConfirm({ entry: selected, castSlotLevel });
+    onConfirm({ entry: selected, castSlotLevel, materialSelections });
   }
+
+  const canConfirm =
+    selected != null &&
+    castSlotLevel != null &&
+    isSpellMaterialSelectionComplete(
+      character,
+      selected.slug,
+      catalogItems,
+      materialSelections
+    );
 
   const title =
     step === "slot" && selected
@@ -167,10 +191,21 @@ export function CombatSpellPickerModal({
               </div>
             )
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-4">
               {selected ? (
                 <SpellMaterialLine components={selected.catalog.components ?? ""} />
               ) : null}
+              {selected ? (
+                <SpellMaterialPicker
+                  character={character}
+                  spellSlug={selected.slug}
+                  catalogItems={catalogItems}
+                  value={materialSelections}
+                  onChange={setMaterialSelections}
+                />
+              ) : null}
+              {selected && selected.spell.level > 0 ? (
+                <div className="space-y-2">
               {eligibleSlots.map((slot) => {
                 const isSelected = castSlotLevel === slot.slotLevel;
                 return (
@@ -198,6 +233,8 @@ export function CombatSpellPickerModal({
                 </button>
                 );
               })}
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -215,7 +252,7 @@ export function CombatSpellPickerModal({
           {step === "slot" ? (
             <Button
               type="button"
-              disabled={castSlotLevel == null}
+              disabled={!canConfirm}
               onClick={handleConfirm}
             >
               Continue

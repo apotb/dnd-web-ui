@@ -4,12 +4,30 @@ import { formatSlotLevelLabel } from "@/lib/dnd/combat-spells";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import type { PhbSpell } from "@/lib/dnd/phb/types";
 import { formatSpellMaterialLine } from "@/lib/dnd/spell-glossary";
+import {
+  formatSpellMaterialConsumptionSummary,
+  type SpellMaterialCastPlan,
+} from "@/lib/dnd/spell-materials";
 import type {
   PendingAttack,
   PendingAttackTarget,
   PendingSpellDetails,
 } from "@/lib/schemas/combat-state";
 import { parseAttackRangeSpec } from "@/lib/combat/targeting";
+
+function applyMaterialPlanToSpellDetails(
+  details: PendingSpellDetails,
+  materialPlan?: SpellMaterialCastPlan | null
+): PendingSpellDetails {
+  if (!materialPlan) return details;
+  return {
+    ...details,
+    materialChoices: materialPlan.materialChoices,
+    materialSatisfiedByFocus: materialPlan.materialSatisfiedByFocus,
+    materialConsumptionSummary:
+      formatSpellMaterialConsumptionSummary(materialPlan) ?? undefined,
+  };
+}
 
 export function buildPendingSpellDetailsFromCatalog(
   catalog: PhbSpell,
@@ -21,34 +39,38 @@ export function buildPendingSpellDetailsFromCatalog(
     castingCost: "action" | "bonus-action";
     isDeclarationOnly?: boolean;
     targetingSummary?: string | null;
+    materialPlan?: SpellMaterialCastPlan | null;
   }
 ): PendingSpellDetails {
   const materialLine = catalog.components
     ? formatSpellMaterialLine(catalog.components)
     : null;
 
-  return {
-    spellId: options.spellId,
-    characterSpellId: options.characterSpellId,
-    spellLevel: options.spellLevel,
-    castSlotLevel: options.castSlotLevel,
-    castingCost: options.castingCost,
-    school: catalog.school ?? undefined,
-    castingTime: catalog.castingTime ?? undefined,
-    range: catalog.range ?? undefined,
-    duration: catalog.duration ?? undefined,
-    components: catalog.components ?? undefined,
-    materialLine: materialLine ?? undefined,
-    concentration: catalog.concentration ?? false,
-    ritual: catalog.ritual ?? false,
-    description: catalog.description ?? undefined,
-    isDeclarationOnly: options.isDeclarationOnly ?? false,
-    targetingSummary: options.targetingSummary ?? undefined,
-    castSlotLabel:
-      options.castSlotLevel > 0
-        ? formatSlotLevelLabel(options.castSlotLevel)
-        : undefined,
-  };
+  return applyMaterialPlanToSpellDetails(
+    {
+      spellId: options.spellId,
+      characterSpellId: options.characterSpellId,
+      spellLevel: options.spellLevel,
+      castSlotLevel: options.castSlotLevel,
+      castingCost: options.castingCost,
+      school: catalog.school ?? undefined,
+      castingTime: catalog.castingTime ?? undefined,
+      range: catalog.range ?? undefined,
+      duration: catalog.duration ?? undefined,
+      components: catalog.components ?? undefined,
+      materialLine: materialLine ?? undefined,
+      concentration: catalog.concentration ?? false,
+      ritual: catalog.ritual ?? false,
+      description: catalog.description ?? undefined,
+      isDeclarationOnly: options.isDeclarationOnly ?? false,
+      targetingSummary: options.targetingSummary ?? undefined,
+      castSlotLabel:
+        options.castSlotLevel > 0
+          ? formatSlotLevelLabel(options.castSlotLevel)
+          : undefined,
+    },
+    options.materialPlan
+  );
 }
 
 export function formatPendingSpellTargetingSummary(
@@ -82,7 +104,8 @@ export function resolvePendingSpellDetailsForAttack(
   option: CombatOption,
   attack: DerivedAttack,
   targets: PendingAttackTarget[],
-  aoeCenter: { x: number; y: number } | null
+  aoeCenter: { x: number; y: number } | null,
+  materialPlan?: SpellMaterialCastPlan | null
 ): PendingSpellDetails | null {
   const spellCast = option.spellCast;
   const slug = attack.spellCatalogSlug ?? spellCast?.spellId;
@@ -106,11 +129,13 @@ export function resolvePendingSpellDetailsForAttack(
     castingCost,
     isDeclarationOnly: false,
     targetingSummary: formatPendingSpellTargetingSummary(targets, attack, aoeCenter),
+    materialPlan,
   });
 }
 
 export function resolvePendingSpellDetailsForDeclareCast(
-  option: CombatOption
+  option: CombatOption,
+  materialPlan?: SpellMaterialCastPlan | null
 ): PendingSpellDetails | null {
   const spellCast = option.spellCast;
   if (!spellCast) return null;
@@ -126,13 +151,15 @@ export function resolvePendingSpellDetailsForDeclareCast(
     castingCost: spellCast.castingCost,
     isDeclarationOnly: true,
     targetingSummary: catalog.range ? `Range: ${catalog.range}` : null,
+    materialPlan,
   });
 }
 
 export function attachSpellDetailsToPending(
   pending: PendingAttack,
   option: CombatOption,
-  attack?: DerivedAttack | null
+  attack?: DerivedAttack | null,
+  materialPlan?: SpellMaterialCastPlan | null
 ): PendingAttack {
   if (pending.spellDetails) return pending;
 
@@ -141,9 +168,10 @@ export function attachSpellDetailsToPending(
         option,
         attack,
         pending.targets,
-        pending.aoeCenter ?? null
+        pending.aoeCenter ?? null,
+        materialPlan
       )
-    : resolvePendingSpellDetailsForDeclareCast(option);
+    : resolvePendingSpellDetailsForDeclareCast(option, materialPlan);
 
   if (!spellDetails) return pending;
   return { ...pending, spellDetails };

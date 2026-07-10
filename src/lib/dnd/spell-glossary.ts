@@ -70,6 +70,11 @@ export interface SpellMaterialNotice {
   /** Material description without wrapping parens or consumed suffix. */
   description: string;
   consumed: boolean;
+  costly: boolean;
+}
+
+function isCostlyMaterialText(text: string): boolean {
+  return /\bworth\b/i.test(text) || /\bcosts?\b/i.test(text) || /\d+\s*gp\b/i.test(text);
 }
 
 /** Human-readable material requirement for spell cards and combat UI. */
@@ -78,7 +83,7 @@ export function getSpellMaterialNotice(components: string): SpellMaterialNotice 
 
   const raw = extractMaterialComponentText(components);
   if (!raw) {
-    return { description: "Material component required", consumed: false };
+    return { description: "Material component required", consumed: false, costly: false };
   }
 
   let description = raw.trim();
@@ -94,7 +99,7 @@ export function getSpellMaterialNotice(components: string): SpellMaterialNotice 
       .trim();
   }
 
-  return { description, consumed };
+  return { description, consumed, costly: isCostlyMaterialText(raw) };
 }
 
 /** Tooltip / log line for material requirements. */

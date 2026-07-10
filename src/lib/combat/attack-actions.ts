@@ -21,6 +21,11 @@ import { saveCharacterData } from "@/lib/character/save-character-data";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import { findBattleAmmunitionContainer } from "@/lib/dnd/ammunition";
+import { getSpell } from "@/lib/dnd/phb/spells";
+import {
+  autoResolveMaterialSelections,
+  buildMaterialCastPlan,
+} from "@/lib/dnd/spell-materials";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 import { persistCombatState } from "@/lib/hooks/use-realtime-combat-state";
@@ -202,6 +207,34 @@ export async function submitCombatAttack(
     }
   }
 
+  let materialPlan = null;
+  if (options.attack.spellCatalogSlug && options.catalogItems) {
+    const attackerCharacter = getAttackerCharacter(options.attacker, options.charactersById);
+    if (attackerCharacter) {
+      const catalog = getSpell(options.attack.spellCatalogSlug);
+      const auto = autoResolveMaterialSelections(
+        attackerCharacter.data.inventory.items,
+        options.attack.spellCatalogSlug,
+        options.catalogItems,
+        catalog?.components
+      );
+      if (auto.error) {
+        return { next: state, error: auto.error };
+      }
+      const { plan, error: materialError } = buildMaterialCastPlan(
+        attackerCharacter.data.inventory.items,
+        options.attack.spellCatalogSlug,
+        options.catalogItems,
+        auto.selections,
+        catalog?.components
+      );
+      if (materialError || !plan) {
+        return { next: state, error: materialError ?? "Missing spell material components." };
+      }
+      materialPlan = plan;
+    }
+  }
+
   const pending = createPendingAttack(
     state,
     options.attacker,
@@ -212,7 +245,7 @@ export async function submitCombatAttack(
     options.submission,
     options.charactersById,
     options.enemiesBySlug,
-    { skipDmReview, catalogItems: options.catalogItems, classCatalog: options.classCatalog }
+    { skipDmReview, catalogItems: options.catalogItems, classCatalog: options.classCatalog, materialPlan }
   );
 
   if (skipDmReview && pending.status === "awaiting-dm-review") {
@@ -245,6 +278,7 @@ export async function submitCombatSpellCast(
     combatOption: CombatOption;
     charactersById: Record<string, ParsedCharacter>;
     enemiesBySlug?: Record<string, { data: EnemyData }>;
+    catalogItems?: Record<string, import("@/lib/schemas/item").Item>;
   }
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   if (!options.combatOption.spellCast) {
@@ -253,6 +287,24 @@ export async function submitCombatSpellCast(
 
   if (hasPendingAttackForAttacker(state, options.attacker.id)) {
     return { next: state, error: "You already have an action pending." };
+  }
+
+  const attackerCharacter = getAttackerCharacter(options.attacker, options.charactersById);
+  const spellCast = options.combatOption.spellCast;
+  const catalog = getSpell(spellCast.spellId);
+  let materialPlan = null;
+  if (attackerCharacter && options.catalogItems) {
+    const { plan, error: materialError } = buildMaterialCastPlan(
+      attackerCharacter.data.inventory.items,
+      spellCast.spellId,
+      options.catalogItems,
+      spellCast.materialSelections ?? [],
+      catalog?.components
+    );
+    if (materialError || !plan) {
+      return { next: state, error: materialError ?? "Missing spell material components." };
+    }
+    materialPlan = plan;
   }
 
   const skipDmReview = shouldSkipDmReviewForAttacker(
@@ -265,6 +317,7 @@ export async function submitCombatSpellCast(
 
   const pending = createPendingSpellCast(options.attacker, options.combatOption, {
     skipDmReview,
+    materialPlan,
   });
   if (!pending) {
     return { next: state, error: "Could not build spell cast for approval." };

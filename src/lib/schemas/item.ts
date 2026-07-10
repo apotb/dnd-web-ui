@@ -83,6 +83,11 @@ export const containerPropertiesSchema = z.object({
   acceptsItemSlug: z.string(),
 });
 
+export const spellMaterialPropertiesSchema = z.object({
+  aliases: z.array(z.string()).default([]),
+  consumedByDefault: z.boolean().default(false),
+});
+
 export const QUIVER_ITEM_SLUG = "quiver";
 export const CROSSBOW_BOLT_CASE_ITEM_SLUG = "case-crossbow";
 
@@ -131,6 +136,7 @@ export type WeaponProperties = z.infer<typeof weaponPropertiesSchema>;
 export type ArmorProperties = z.infer<typeof armorPropertiesSchema>;
 export type ShieldProperties = z.infer<typeof shieldPropertiesSchema>;
 export type ContainerProperties = z.infer<typeof containerPropertiesSchema>;
+export type SpellMaterialProperties = z.infer<typeof spellMaterialPropertiesSchema>;
 
 export function getWeaponProperties(item: Item): WeaponProperties | null {
   if (item.category !== "weapon") return null;
@@ -154,6 +160,17 @@ export function getContainerProperties(item: Item): ContainerProperties | null {
   const result = containerPropertiesSchema.safeParse(item.properties);
   if (result.success) return result.data;
   return DEFAULT_AMMO_CONTAINER_PROPERTIES[item.slug] ?? null;
+}
+
+export function getSpellMaterialProperties(item: Item): SpellMaterialProperties | null {
+  const raw = item.properties.spellMaterial;
+  if (!raw) return null;
+  const result = spellMaterialPropertiesSchema.safeParse(raw);
+  return result.success ? result.data : null;
+}
+
+export function isCostlySpellMaterialItem(item: Item): boolean {
+  return (item.cost_gp ?? 0) > 0;
 }
 
 /** Build tooltip text with item stats and description. */
