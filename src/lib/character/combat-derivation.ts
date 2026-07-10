@@ -12,7 +12,7 @@ import type { Item } from "@/lib/schemas/item";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
 import type { PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 import { abilityModifier, formatModifier } from "@/lib/dnd/calculations";
-import { averageHpGain } from "@/lib/dnd/level-up";
+import { averageHitDieRoll } from "@/lib/dnd/level-up";
 import {
   applyExhaustionToSpeed,
   getExhaustionMaxHpSheetNote,
@@ -156,7 +156,7 @@ export function getSpeciesHpBonus(
   return { bonus: 0 };
 }
 
-/** Level-1 max HP from class hit die, Constitution, and species bonuses. */
+/** Level-1 max HP from class hit die and species bonuses (excludes CON). */
 export function calculateLevel1MaxHpBreakdown(
   data: CharacterData,
   catalogClasses?: PhbClass[],
@@ -164,30 +164,33 @@ export function calculateLevel1MaxHpBreakdown(
 ): MaxHpBreakdown {
   const cls = resolveCharacterClass(data, catalogClasses);
   const hitDie = cls?.hitDie ?? 8;
-  const conMod = abilityModifier(data.abilityScores.con);
   const speciesBonus = getSpeciesHpBonus(data, speciesList);
 
-  const sources: CombatStatSource[] = [
-    { label: "Hit die", value: hitDie },
-    { label: "Constitution", value: conMod },
-  ];
+  const sources: CombatStatSource[] = [{ label: "Hit die", value: hitDie }];
   if (speciesBonus.bonus !== 0 && speciesBonus.label) {
     sources.push({ label: speciesBonus.label, value: speciesBonus.bonus });
   }
 
-  const total = Math.max(1, hitDie + conMod + speciesBonus.bonus);
+  const total = Math.max(1, hitDie + speciesBonus.bonus);
   return { total, sources };
 }
 
-/** Average HP gain per level after 1st (mean die roll rounded down + CON). */
+/** Average die-only HP gain per level after 1st (mean die roll rounded down). */
 export function averageLevelUpHpGain(
   data: CharacterData,
   catalogClasses?: PhbClass[]
 ): number {
   const cls = resolveCharacterClass(data, catalogClasses);
   const hitDie = cls?.hitDie ?? 8;
-  const conMod = abilityModifier(data.abilityScores.con);
-  return averageHpGain(hitDie, conMod);
+  return averageHitDieRoll(hitDie);
+}
+
+/** Strip bundled CON modifier from legacy level-up HP gains (one-time migration). */
+export function stripConFromLevelUpHpGains(
+  gains: number[],
+  conMod: number
+): number[] {
+  return gains.map((gain) => Math.max(1, gain - conMod));
 }
 
 /** Cumulative max HP including level-up gains after 1st level. */
@@ -197,17 +200,22 @@ export function calculateMaxHpBreakdown(
   speciesList?: PhbSpecies[]
 ): MaxHpBreakdown {
   const level1 = calculateLevel1MaxHpBreakdown(data, catalogClasses, speciesList);
+  const level = getCharacterLevel(data);
+  const conMod = abilityModifier(data.abilityScores.con);
+  const conTotal = conMod * level;
   const gains = data.combat.levelUpHpGains ?? [];
-  if (gains.length === 0) return level1;
-
   const gainTotal = gains.reduce((sum, g) => sum + g, 0);
-  return {
-    total: level1.total + gainTotal,
-    sources: [
-      ...level1.sources,
-      { label: "Level-up", value: gainTotal },
-    ],
-  };
+
+  const sources: CombatStatSource[] = [
+    ...level1.sources,
+    { label: "Constitution", value: conTotal },
+  ];
+  if (gains.length > 0) {
+    sources.push({ label: "Level-up", value: gainTotal });
+  }
+
+  const total = Math.max(1, level1.total + conTotal + gainTotal);
+  return { total, sources };
 }
 
 export function applyExhaustionToMaxHpBreakdown(

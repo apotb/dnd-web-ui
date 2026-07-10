@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   formatSpellMaterialLine,
+  formatSpellDurationForDisplay,
   getSpellMaterialNotice,
 } from "./spell-glossary";
 
@@ -26,6 +27,24 @@ describe("formatSpellMaterialLine", () => {
     assert.equal(
       formatSpellMaterialLine("V, S, M (a drop of blood)"),
       "Material: a drop of blood"
+    );
+  });
+});
+
+describe("formatSpellDurationForDisplay", () => {
+  it("strips Concentration prefix when the C badge is shown", () => {
+    assert.equal(
+      formatSpellDurationForDisplay("Concentration, up to 1 minute", {
+        concentration: true,
+      }),
+      "up to 1 minute"
+    );
+  });
+
+  it("keeps duration unchanged for non-concentration spells", () => {
+    assert.equal(
+      formatSpellDurationForDisplay("1 minute", { concentration: false }),
+      "1 minute"
     );
   });
 });

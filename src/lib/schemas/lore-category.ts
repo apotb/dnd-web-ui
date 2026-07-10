@@ -75,3 +75,27 @@ export function itemCountsByCategory<T extends { category: string }>(
     ])
   );
 }
+
+export function moveCategory(
+  categories: LoreCategory[],
+  categoryId: string,
+  direction: -1 | 1
+): LoreCategory[] | null {
+  const sorted = sortCategories(categories);
+  const index = sorted.findIndex((category) => category.id === categoryId);
+  if (index < 0) return null;
+
+  const swapIndex = index + direction;
+  if (swapIndex < 0 || swapIndex >= sorted.length) return null;
+
+  const reordered = [...sorted];
+  const current = reordered[index];
+  const swap = reordered[swapIndex];
+  reordered[index] = { ...swap, sortOrder: current.sortOrder };
+  reordered[swapIndex] = { ...current, sortOrder: swap.sortOrder };
+
+  const updatedById = new Map(
+    reordered.map((category) => [category.id, category])
+  );
+  return categories.map((category) => updatedById.get(category.id) ?? category);
+}

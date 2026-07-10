@@ -2,16 +2,18 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { isAsiLevel } from "./asi-levels.ts";
 import {
-  averageHpGain,
   averageHitDieRoll,
-  computeHpGain,
+  computeLevelUpDieGain,
+  computeLevelUpHpIncrease,
   getLevelUpSteps,
   getNewFeaturesAtLevel,
   validateLevelUpDraft,
+  validateLevelUpStep,
   type LevelUpStep,
   type LevelUpStepKind,
 } from "./level-up.ts";
 import { canCharacterLevelUp, getCharacterLevel } from "./xp.ts";
+import { applyLevelUp } from "@/lib/character/apply-level-up";
 import type { CharacterData } from "@/lib/schemas/character";
 import { PHB_CLASSES } from "./phb/classes.ts";
 
@@ -40,6 +42,7 @@ function assertStepsMatchReviewOrder(steps: LevelUpStep[]): void {
       (kind === "prepareSpells" && name.includes("prepared spell")) ||
       (kind === "cantrips" && name.includes("cantrip")) ||
       (kind === "spellsKnown" && name.includes("known")) ||
+      (kind === "swapKnownSpell" && name.includes("Swap one known spell")) ||
       (kind === "wizardSpellbook" && name.includes("spellbook")) ||
       (kind === "rangerPicks" && name === "Ranger choices") ||
       (kind === "subclassChoices" && name === "Subclass choices") ||
@@ -227,12 +230,17 @@ describe("hp gain", () => {
     assert.equal(averageHitDieRoll(10), 5);
   });
 
-  it("averageHpGain adds CON to rounded-down die average", () => {
-    assert.equal(averageHpGain(10, 2), 7);
+  it("computeLevelUpDieGain returns die-only average", () => {
+    assert.equal(computeLevelUpDieGain(10, "average"), 5);
   });
 
-  it("computeHpGain roll adds con mod", () => {
-    assert.equal(computeHpGain(10, 2, "roll", 7), 9);
+  it("computeLevelUpDieGain roll stores die result only", () => {
+    assert.equal(computeLevelUpDieGain(10, "roll", 7), 7);
+  });
+
+  it("computeLevelUpHpIncrease adds CON with minimum 1", () => {
+    assert.equal(computeLevelUpHpIncrease(10, 2, "average"), 7);
+    assert.equal(computeLevelUpHpIncrease(10, 2, "roll", 7), 9);
   });
 });
 
@@ -363,7 +371,122 @@ describe("ranger level 1 to 2", () => {
     const spellsKnown = steps.find((s) => s.kind === "spellsKnown");
     assert.ok(spellsKnown && spellsKnown.kind === "spellsKnown");
     assert.equal(spellsKnown.count, 2);
+    assert.ok(!steps.some((s) => s.kind === "swapKnownSpell"));
     assert.ok(steps.some((s) => s.kind === "hp"));
     assertStepsMatchReviewOrder(steps);
+  });
+});
+
+describe("known caster spell swap on level-up", () => {
+  const catalogs = { classes: PHB_CLASSES };
+
+  it("includes optional swap step when the character already knows leveled spells", () => {
+    const data = characterAtLevel1("bard", "Bard", 900, {
+      basicInfo: { level: 2 },
+      spells: {
+        known: [
+          {
+            id: "1",
+            spellId: "charm-person",
+            name: "Charm Person",
+            level: 1,
+            prepared: true,
+            notes: "",
+          },
+        ],
+        prepared: [],
+        slots: { "1": { max: 3, used: 0 } },
+        grantUses: {},
+      },
+    });
+    const steps = getLevelUpSteps(data, catalogs, 3);
+    const swap = steps.find((s) => s.kind === "swapKnownSpell");
+    assert.ok(swap && swap.kind === "swapKnownSpell");
+    const spellsKnownIdx = steps.findIndex((s) => s.kind === "spellsKnown");
+    const swapIdx = steps.findIndex((s) => s.kind === "swapKnownSpell");
+    assert.ok(spellsKnownIdx >= 0 && swapIdx > spellsKnownIdx);
+  });
+
+  it("validates partial swap selections", () => {
+    const data = characterAtLevel1("bard", "Bard", 900, {
+      basicInfo: { level: 2 },
+      spells: {
+        known: [
+          {
+            id: "1",
+            spellId: "charm-person",
+            name: "Charm Person",
+            level: 1,
+            prepared: true,
+            notes: "",
+          },
+        ],
+        prepared: [],
+        slots: { "1": { max: 3, used: 0 } },
+        grantUses: {},
+      },
+    });
+    const step = {
+      kind: "swapKnownSpell" as const,
+      classListId: "bard",
+      maxSpellLevel: 2,
+    };
+    assert.equal(
+      validateLevelUpStep(data, catalogs, 3, step, {
+        spellSwap: { replaceSlug: "charm-person" },
+      }),
+      "Choose both the spell to replace and the new spell, or skip this step."
+    );
+    assert.equal(
+      validateLevelUpStep(data, catalogs, 3, step, {
+        spellSwap: {
+          replaceSlug: "charm-person",
+          newSlug: "healing-word",
+        },
+      }),
+      null
+    );
+  });
+
+  it("applies an optional known spell swap", () => {
+    const data = characterAtLevel1("ranger", "Ranger", 900, {
+      basicInfo: { level: 2 },
+      featureChoices: { fightingStyle: "archery" },
+      spells: {
+        known: [
+          {
+            id: "keep-me",
+            spellId: "hunters-mark",
+            name: "Hunter's Mark",
+            level: 1,
+            prepared: true,
+            notes: "",
+          },
+        ],
+        prepared: [],
+        slots: { "1": { max: 2, used: 0 } },
+        grantUses: {},
+      },
+    });
+    const next = applyLevelUp(
+      data,
+      {
+        hp: { method: "average", gain: 5 },
+        subclassId: "hunter",
+        subclassName: "Ranger Archetype: Hunter",
+        spellIds: ["cure-wounds"],
+        spellSwap: {
+          replaceSlug: "hunters-mark",
+          newSlug: "alarm",
+        },
+      },
+      catalogs
+    );
+    assert.ok(next.spells.known.some((spell) => spell.spellId === "alarm"));
+    assert.ok(
+      !next.spells.known.some((spell) => spell.spellId === "hunters-mark")
+    );
+    assert.ok(next.spells.known.some((spell) => spell.spellId === "cure-wounds"));
+    assert.equal(next.spells.known.find((spell) => spell.id === "keep-me")?.spellId, "alarm");
   });
 });

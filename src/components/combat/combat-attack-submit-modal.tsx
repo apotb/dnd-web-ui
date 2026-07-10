@@ -3,12 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { CombatBattleTooltipSummary } from "@/components/combat/combat-battle-tooltip-summary";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
+import { canSelectTwoHandedWeaponGrip } from "@/lib/dnd/attacks";
 import {
   battleTooltipFallbackCharacter,
   buildBattleAttackTooltipParts,
 } from "@/lib/combat/battle-tooltip";
 import { formatAttackDisadvantageLabel } from "@/lib/combat/targeting";
+import { getTokenAc } from "@/lib/combat/attack-resolution";
+import { getTokenHpDisplay } from "@/lib/combat/hp-adjust";
 import type { CharacterData } from "@/lib/schemas/character";
+import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import {
   areDamageRollsComplete,
@@ -59,9 +63,11 @@ interface CombatAttackSubmitModalProps {
   combatState?: CombatState;
   attackDisadvantageByTokenId?: Record<string, boolean>;
   charactersById?: Record<string, ParsedCharacter>;
+  enemiesBySlug?: Record<string, { data: EnemyData }>;
   catalogItems?: Record<string, Item>;
   classCatalog?: PhbClass[];
   damageTakenByTokenId: Record<string, number>;
+  showDmUi?: boolean;
   onCancel: () => void;
   onSubmit: (values: AttackSubmitValues) => void;
   submitting?: boolean;
@@ -74,6 +80,47 @@ function parseOptionalInt(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function resolveTargetContext(
+  token: CombatToken,
+  charactersById: Record<string, ParsedCharacter>,
+  enemiesBySlug: Record<string, { data: EnemyData }>
+) {
+  return {
+    character: token.characterId ? charactersById[token.characterId] ?? null : null,
+    enemyData: token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null,
+  };
+}
+
+function formatTargetStatLine(
+  token: CombatToken,
+  charactersById: Record<string, ParsedCharacter>,
+  enemiesBySlug: Record<string, { data: EnemyData }>,
+  damageTakenByTokenId: Record<string, number>,
+  showDmUi: boolean
+): string {
+  const { character, enemyData } = resolveTargetContext(token, charactersById, enemiesBySlug);
+
+  if (token.kind === "party" || token.kind === "ally") {
+    const { currentHp, maxHp } = getTokenHpDisplay(token, character, enemyData);
+    if (showDmUi) {
+      const ac = getTokenAc(token, character, enemyData);
+      return `AC ${ac} · HP ${currentHp}/${maxHp}`;
+    }
+    return `HP ${currentHp}/${maxHp}`;
+  }
+
+  if (token.kind === "enemy") {
+    const damageTaken = damageTakenByTokenId[token.id] ?? 0;
+    if (showDmUi) {
+      const ac = getTokenAc(token, character, enemyData);
+      return `AC ${ac} · Battle damage taken: ${damageTaken}`;
+    }
+    return `Battle damage taken: ${damageTaken}`;
+  }
+
+  return `Battle damage taken: ${damageTakenByTokenId[token.id] ?? 0}`;
+}
+
 export function CombatAttackSubmitModal({
   attack,
   optionName,
@@ -83,9 +130,11 @@ export function CombatAttackSubmitModal({
   combatState,
   attackDisadvantageByTokenId = {},
   charactersById = {},
+  enemiesBySlug = {},
   catalogItems = {},
   classCatalog = [],
   damageTakenByTokenId,
+  showDmUi = false,
   onCancel,
   onSubmit,
   submitting = false,
@@ -170,6 +219,11 @@ export function CombatAttackSubmitModal({
     );
   }, [attackerCharacter, attack, catalogItems, classCatalog, weaponGrip]);
 
+  const twoHandedGripAllowed = useMemo(
+    () => canSelectTwoHandedWeaponGrip(attackerCharacter, catalogItems),
+    [attackerCharacter, catalogItems]
+  );
+
   const singleTargetDisadvantage =
     targets.length === 1
       ? attackDisadvantageByTokenId[targets[0].id] === true ||
@@ -203,6 +257,12 @@ export function CombatAttackSubmitModal({
     setWeaponGrip("one-handed");
     setProtectionByTargetId({});
   }, [attack.id]);
+
+  useEffect(() => {
+    if (!twoHandedGripAllowed && weaponGrip === "two-handed") {
+      setWeaponGrip("one-handed");
+    }
+  }, [twoHandedGripAllowed, weaponGrip]);
 
   useEffect(() => {
     setDamageRolls(emptyDamageRolls(effectiveDamageDice));
@@ -355,7 +415,13 @@ export function CombatAttackSubmitModal({
                   </label>
                 ) : null}
                 <span className="retro-muted">
-                  Battle damage taken: {damageTakenByTokenId[target.id] ?? 0}
+                  {formatTargetStatLine(
+                    target,
+                    charactersById,
+                    enemiesBySlug,
+                    damageTakenByTokenId,
+                    showDmUi
+                  )}
                 </span>
               </div>
             );
@@ -390,6 +456,7 @@ export function CombatAttackSubmitModal({
               value={weaponGrip}
               onChange={setWeaponGrip}
               disabled={submitting}
+              twoHandedDisabled={!twoHandedGripAllowed}
             />
             <DamageRollField
               damageDice={effectiveDamageDice}
@@ -422,6 +489,7 @@ export function CombatAttackSubmitModal({
               value={weaponGrip}
               onChange={setWeaponGrip}
               disabled={submitting}
+              twoHandedDisabled={!twoHandedGripAllowed}
             />
             <DamageRollField
               damageDice={effectiveDamageDice}

@@ -102,6 +102,7 @@ export function createDefaultCombatState(
     autoApproveDm: true,
     xpPool: 0,
     battleParticipantCharacterIds: [],
+    battleAmmoPrepared: false,
     reactionUsedTokenIds: [],
   };
 
@@ -975,6 +976,7 @@ export function resetCombatBoard(
     autoApproveDm: true,
     xpPool: 0,
     battleParticipantCharacterIds: [],
+    battleAmmoPrepared: false,
     reactionUsedTokenIds: [],
   };
 }
@@ -1094,7 +1096,14 @@ export function updateTokenInState(
   const existing = state.tokens.find((token) => token.id === tokenId);
   if (!existing) return state;
 
-  const candidate = clampTokenToGrid({ ...existing, ...patch }, state);
+  const candidate = clampTokenToGrid(
+    {
+      ...existing,
+      ...patch,
+      ...(patch.x != null || patch.y != null ? { placed: true } : {}),
+    },
+    state
+  );
 
   return {
     ...state,

@@ -1,5 +1,6 @@
 import { isHostileToken, isTokenEngaged } from "@/lib/combat/engagement";
 import { isCellBlocked } from "@/lib/combat/collision";
+import type { TokenStatusContext } from "@/lib/combat/feature-effects";
 import { isMeleeWeaponAttack, type DerivedAttack } from "@/lib/dnd/attacks";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { isHiddenEnemy } from "@/lib/schemas/combat-state";
@@ -245,21 +246,23 @@ export function attackRequiresLineOfSight(attack: DerivedAttack): boolean {
 export function hasRangedAttackAdjacentDisadvantage(
   attacker: CombatToken,
   state: CombatState,
-  attack: DerivedAttack
+  attack: DerivedAttack,
+  context?: TokenStatusContext
 ): boolean {
-  return isRangedAttackRoll(attack) && isTokenEngaged(attacker, state);
+  return isRangedAttackRoll(attack) && isTokenEngaged(attacker, state, context);
 }
 
 export function getAttackRollDisadvantage(
   attacker: CombatToken,
   target: CombatToken,
   state: CombatState,
-  attack: DerivedAttack
+  attack: DerivedAttack,
+  context?: TokenStatusContext
 ): boolean {
   const spec = parseAttackRangeSpec(attack);
   return (
     isAttackAtLongRange(attacker, target, state, spec) ||
-    hasRangedAttackAdjacentDisadvantage(attacker, state, attack)
+    hasRangedAttackAdjacentDisadvantage(attacker, state, attack, context)
   );
 }
 
@@ -267,11 +270,12 @@ export function formatAttackDisadvantageLabel(
   attacker: CombatToken,
   target: CombatToken,
   state: CombatState,
-  attack: DerivedAttack
+  attack: DerivedAttack,
+  context?: TokenStatusContext
 ): string | null {
   const spec = parseAttackRangeSpec(attack);
   const longRange = isAttackAtLongRange(attacker, target, state, spec);
-  const adjacent = hasRangedAttackAdjacentDisadvantage(attacker, state, attack);
+  const adjacent = hasRangedAttackAdjacentDisadvantage(attacker, state, attack, context);
   if (!longRange && !adjacent) return null;
   if (longRange && adjacent) return "Disadvantage (long range, adjacent enemy)";
   if (longRange) return "Long range (disadvantage)";

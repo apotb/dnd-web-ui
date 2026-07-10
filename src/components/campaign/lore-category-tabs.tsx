@@ -7,31 +7,75 @@ interface LoreCategoryTabsProps {
   categories: LoreCategory[];
   activeCategoryId: string | null;
   editable: boolean;
-  itemCountsByCategory: Map<string, number>;
+  renamingCategoryId: string | null;
+  onRenamingCategoryIdChange: (categoryId: string | null) => void;
   emptyMessage?: string;
   onSelect: (categoryId: string | null) => void;
   onAdd: (label: string) => void;
   onRename: (categoryId: string, label: string) => void;
-  onRemove: (categoryId: string) => void;
+}
+
+function LoreCategoryRenameRow({
+  category,
+  onRename,
+  onCancel,
+}: {
+  category: LoreCategory;
+  onRename: (categoryId: string, label: string) => void;
+  onCancel: () => void;
+}) {
+  const [renameLabel, setRenameLabel] = useState(category.label);
+
+  function submitRename() {
+    const label = renameLabel.trim();
+    if (!label) return;
+    onRename(category.id, label);
+    onCancel();
+  }
+
+  return (
+    <div className="lore-category-rename-row">
+      <input
+        className="candy-input"
+        value={renameLabel}
+        onChange={(event) => setRenameLabel(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") submitRename();
+          if (event.key === "Escape") onCancel();
+        }}
+        autoFocus
+      />
+      <button
+        type="button"
+        className="candy-btn candy-btn-sm"
+        onClick={submitRename}
+      >
+        Save
+      </button>
+      <button
+        type="button"
+        className="candy-btn candy-btn-sm"
+        onClick={onCancel}
+      >
+        Cancel
+      </button>
+    </div>
+  );
 }
 
 export function LoreCategoryTabs({
   categories,
   activeCategoryId,
   editable,
-  itemCountsByCategory,
+  renamingCategoryId,
+  onRenamingCategoryIdChange,
   emptyMessage = "No categories yet.",
   onSelect,
   onAdd,
   onRename,
-  onRemove,
 }: LoreCategoryTabsProps) {
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryLabel, setNewCategoryLabel] = useState("");
-  const [renamingCategoryId, setRenamingCategoryId] = useState<string | null>(
-    null
-  );
-  const [renameLabel, setRenameLabel] = useState("");
 
   function submitNewCategory() {
     const label = newCategoryLabel.trim();
@@ -41,12 +85,8 @@ export function LoreCategoryTabs({
     setAddingCategory(false);
   }
 
-  function submitRename(categoryId: string) {
-    const label = renameLabel.trim();
-    if (!label) return;
-    onRename(categoryId, label);
-    setRenamingCategoryId(null);
-    setRenameLabel("");
+  function cancelRename() {
+    onRenamingCategoryIdChange(null);
   }
 
   if (categories.length === 0 && !editable) {
@@ -64,37 +104,14 @@ export function LoreCategoryTabs({
         }}
       >
         {categories.map((category) => {
-          const itemCount = itemCountsByCategory.get(category.id) ?? 0;
-          const canRemove = itemCount === 0;
-
           if (editable && renamingCategoryId === category.id) {
             return (
-              <div key={category.id} className="lore-category-rename-row">
-                <input
-                  className="candy-input"
-                  value={renameLabel}
-                  onChange={(event) => setRenameLabel(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") submitRename(category.id);
-                    if (event.key === "Escape") setRenamingCategoryId(null);
-                  }}
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className="candy-btn candy-btn-sm"
-                  onClick={() => submitRename(category.id)}
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  className="retro-inline-link"
-                  onClick={() => setRenamingCategoryId(null)}
-                >
-                  Cancel
-                </button>
-              </div>
+              <LoreCategoryRenameRow
+                key={category.id}
+                category={category}
+                onRename={onRename}
+                onCancel={cancelRename}
+              />
             );
           }
 
@@ -110,35 +127,6 @@ export function LoreCategoryTabs({
               >
                 {category.label}
               </button>
-              {editable ? (
-                <span className="lore-category-tab-actions">
-                  <button
-                    type="button"
-                    className="retro-inline-link"
-                    title="Rename category"
-                    onClick={() => {
-                      setRenamingCategoryId(category.id);
-                      setRenameLabel(category.label);
-                    }}
-                  >
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    className="retro-inline-link"
-                    style={{ color: canRemove ? "#b00020" : undefined }}
-                    disabled={!canRemove}
-                    title={
-                      canRemove
-                        ? "Remove category"
-                        : "Cannot remove a category that contains items"
-                    }
-                    onClick={() => onRemove(category.id)}
-                  >
-                    Remove
-                  </button>
-                </span>
-              ) : null}
             </div>
           );
         })}
@@ -169,7 +157,7 @@ export function LoreCategoryTabs({
               </button>
               <button
                 type="button"
-                className="retro-inline-link"
+                className="candy-btn candy-btn-sm"
                 onClick={() => {
                   setAddingCategory(false);
                   setNewCategoryLabel("");

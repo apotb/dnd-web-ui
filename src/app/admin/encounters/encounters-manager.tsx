@@ -4,6 +4,10 @@ import { useMemo, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { resolveCombatImageUrl } from "@/lib/combat/storage";
 import {
+  cleanupEncounterOwnedImages,
+  cloneEncounterPayloadImages,
+} from "@/lib/combat/encounter-image-storage";
+import {
   EncounterDeleteConfirmModal,
   EncounterRenameModal,
 } from "@/components/combat/encounter-action-modals";
@@ -17,6 +21,7 @@ import {
   type EncounterSort,
 } from "@/lib/combat/saved-encounters";
 import type { EnemyRecord } from "@/lib/combat/state-utils";
+import { parseSavedEncounterBlockedCells, parseSavedEncounterData } from "@/lib/schemas/saved-encounter";
 import type { Encounter } from "@/lib/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,17 +82,28 @@ export function EncountersManager({ entries, enemiesBySlug }: EncountersManagerP
 
     startTransition(async () => {
       setMessage(null);
-      const { data, error } = await supabase
+      const data = parseSavedEncounterData(row.data);
+      const payload = {
+        backgroundPath: row.background_path,
+        gridWidth: row.grid_width,
+        gridHeight: row.grid_height,
+        tileFeet: row.tile_feet,
+        blockedCells: parseSavedEncounterBlockedCells(row.blocked_cells),
+        data,
+        totalCr: row.total_cr,
+      };
+
+      const { data: inserted, error } = await supabase
         .from("encounters")
         .insert({
           name: duplicateName,
-          background_path: row.background_path,
-          grid_width: row.grid_width,
-          grid_height: row.grid_height,
-          tile_feet: row.tile_feet,
-          blocked_cells: row.blocked_cells,
-          data: row.data,
-          total_cr: row.total_cr,
+          background_path: payload.backgroundPath,
+          grid_width: payload.gridWidth,
+          grid_height: payload.gridHeight,
+          tile_feet: payload.tileFeet,
+          blocked_cells: payload.blockedCells,
+          data: payload.data,
+          total_cr: payload.totalCr,
         })
         .select("*")
         .single();
@@ -96,9 +112,45 @@ export function EncountersManager({ entries, enemiesBySlug }: EncountersManagerP
         setMessage(error.message);
         return;
       }
-      if (data) {
-        setList((current) => [...current, data as Encounter]);
+      if (!inserted) return;
+
+      const { payload: clonedPayload, error: cloneError } =
+        await cloneEncounterPayloadImages(supabase, inserted.id, payload);
+
+      if (cloneError) {
+        setMessage(cloneError);
+        setList((current) => [...current, inserted as Encounter]);
+        return;
       }
+
+      if (
+        clonedPayload.backgroundPath !== payload.backgroundPath ||
+        JSON.stringify(clonedPayload.data.markers) !==
+          JSON.stringify(payload.data.markers)
+      ) {
+        const { error: updateError } = await supabase
+          .from("encounters")
+          .update({
+            background_path: clonedPayload.backgroundPath,
+            data: clonedPayload.data,
+          })
+          .eq("id", inserted.id);
+
+        if (updateError) {
+          setMessage(updateError.message);
+          setList((current) => [...current, inserted as Encounter]);
+          return;
+        }
+      }
+
+      setList((current) => [
+        ...current,
+        {
+          ...(inserted as Encounter),
+          background_path: clonedPayload.backgroundPath,
+          data: clonedPayload.data,
+        },
+      ]);
     });
   }
 
@@ -112,6 +164,12 @@ export function EncountersManager({ entries, enemiesBySlug }: EncountersManagerP
         setMessage(error.message);
         return;
       }
+      await cleanupEncounterOwnedImages(
+        supabase,
+        deleteTarget.id,
+        deleteTarget.background_path,
+        parseSavedEncounterData(deleteTarget.data)
+      );
       setList((current) => current.filter((entry) => entry.id !== deleteTarget.id));
       setDeleteTarget(null);
     });

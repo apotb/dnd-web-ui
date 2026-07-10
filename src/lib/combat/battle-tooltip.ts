@@ -15,7 +15,7 @@ import {
   type CharacterData,
 } from "@/lib/schemas/character";
 import type { EnemyNamedBlock } from "@/lib/schemas/enemy";
-import { formatThrownWeaponLine } from "@/lib/dnd/ammunition";
+import { formatBattleAmmunitionLine, formatThrownWeaponLine } from "@/lib/dnd/ammunition";
 import { buildSpellPickerHeader, stripRedundantSpellNotes } from "@/lib/dnd/spell-display";
 import * as spellGlossary from "@/lib/dnd/spell-glossary";
 
@@ -174,7 +174,17 @@ export function buildBattleAttackTooltipParts(
   }
 
   if (attack.ammunitionName != null && attack.ammunitionRemaining != null) {
-    metadata.push(formatAmmoLine(attack.ammunitionName, attack.ammunitionRemaining));
+    if (attack.ammunitionCapacity != null && attack.ammunitionCapacity > 0) {
+      metadata.push(
+        formatBattleAmmunitionLine(
+          attack.ammunitionName,
+          attack.ammunitionRemaining,
+          attack.ammunitionCapacity
+        )
+      );
+    } else {
+      metadata.push(formatAmmoLine(attack.ammunitionName, attack.ammunitionRemaining));
+    }
   }
 
   if (

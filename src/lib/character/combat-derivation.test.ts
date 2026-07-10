@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   calculateLevel1MaxHpBreakdown,
   calculateMaxHpBreakdown,
+  stripConFromLevelUpHpGains,
 } from "./combat-derivation.ts";
 import type { CharacterData } from "@/lib/schemas/character";
 
@@ -39,6 +40,7 @@ function minimalData(levelUpHpGains: number[]): CharacterData {
       speed: 30,
       hitDice: "1d10",
       levelUpHpGains,
+      hpGainsDieOnly: true,
       hitDiceSpent: 0,
       deathSaves: { successes: 0, failures: 0 },
       conditions: [],
@@ -102,13 +104,36 @@ describe("cumulative max hp", () => {
     const data = minimalData([]);
     const level1 = calculateLevel1MaxHpBreakdown(data);
     const total = calculateMaxHpBreakdown(data);
-    assert.equal(level1.total, 11);
+    assert.equal(level1.total, 10);
     assert.equal(total.total, 11);
+    const conSource = total.sources.find((s) => s.label === "Constitution");
+    assert.equal(conSource?.value, 1);
   });
 
-  it("adds level-up hp gains", () => {
-    const data = minimalData([7, 6]);
+  it("adds level-up hp gains and CON × level", () => {
+    const data = minimalData([5, 4]);
     const total = calculateMaxHpBreakdown(data);
-    assert.equal(total.total, 11 + 7 + 6);
+    assert.equal(total.total, 10 + 3 + 5 + 4);
+    const conSource = total.sources.find((s) => s.label === "Constitution");
+    assert.equal(conSource?.value, 3);
+    const levelUpSource = total.sources.find((s) => s.label === "Level-up");
+    assert.equal(levelUpSource?.value, 9);
+  });
+
+  it("retroactively applies CON when score increases", () => {
+    const data = minimalData([5, 4]);
+    data.abilityScores.con = 14;
+    const total = calculateMaxHpBreakdown(data);
+    assert.equal(total.total, 10 + 6 + 5 + 4);
+  });
+});
+
+describe("stripConFromLevelUpHpGains", () => {
+  it("strips current CON mod from bundled legacy gains", () => {
+    assert.deepEqual(stripConFromLevelUpHpGains([7, 6], 1), [6, 5]);
+  });
+
+  it("clamps die gains to minimum 1", () => {
+    assert.deepEqual(stripConFromLevelUpHpGains([1], 3), [1]);
   });
 });

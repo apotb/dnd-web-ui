@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import { applyObjectPickup } from "@/lib/combat/object-pickup";
+import { applyAmmoRefill } from "@/lib/combat/ammo-refill";
 import { applyEquipmentChange } from "@/lib/combat/object-equipment-change";
 import {
   applyActionUsed,
@@ -276,6 +277,68 @@ export async function recordCombatEquipmentChange(
     const { error } = await supabase.rpc("record_combat_object_interactions", {
       p_campaign_id: campaignId,
       p_count: interactionCount,
+    });
+    if (error) {
+      return { next: state, error: error.message };
+    }
+  }
+
+  const { error: saveError } = await saveCharacterData(
+    characterId,
+    {
+      ...options.character.data,
+      inventory: {
+        ...options.character.data.inventory,
+        items: inventoryItems,
+      },
+    },
+    undefined,
+    { isDm: options.isDm, originalData: options.character.data }
+  );
+  if (saveError) {
+    return { next: state, error: saveError };
+  }
+
+  return { next, characterId, inventoryItems };
+}
+
+export async function recordCombatAmmoRefill(
+  campaignId: string,
+  state: CombatState,
+  options: {
+    isDm: boolean;
+    actorTokenId: string;
+    character: ParsedCharacter;
+    catalogItems: Record<string, Item>;
+  }
+): Promise<{
+  next: CombatState;
+  error?: string;
+  characterId?: string;
+  inventoryItems?: ParsedCharacter["data"]["inventory"]["items"];
+}> {
+  const result = applyAmmoRefill(
+    state,
+    options.actorTokenId,
+    options.character,
+    options.catalogItems
+  );
+  if (!result.ok) {
+    return { next: state, error: result.error };
+  }
+
+  const { next, inventoryItems, characterId } = result;
+
+  if (options.isDm) {
+    const error = await persistCombatState(campaignId, next);
+    if (error) {
+      return { next: state, error };
+    }
+  } else {
+    const supabase = createClient();
+    const { error } = await supabase.rpc("record_combat_object_interactions", {
+      p_campaign_id: campaignId,
+      p_count: 1,
     });
     if (error) {
       return { next: state, error: error.message };

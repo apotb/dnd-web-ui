@@ -1,4 +1,10 @@
 import type { InventoryItem } from "@/lib/schemas/character";
+import {
+  CROSSBOW_BOLT_CASE_ITEM_SLUG,
+  QUIVER_ITEM_SLUG,
+} from "@/lib/schemas/item";
+
+const AMMO_CONTAINER_SLUGS = new Set([QUIVER_ITEM_SLUG, CROSSBOW_BOLT_CASE_ITEM_SLUG]);
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
@@ -6,7 +12,12 @@ function normalizeName(name: string): string {
 
 /** Identity key for stackable inventory rows. Returns null when rows cannot merge. */
 export function inventoryStackKey(item: InventoryItem): string | null {
-  if (item.itemId) return `catalog:${item.itemId}`;
+  if (item.itemId) {
+    if (AMMO_CONTAINER_SLUGS.has(item.itemId) && item.loadedQuantity > 0) {
+      return null;
+    }
+    return `catalog:${item.itemId}`;
+  }
   const name = normalizeName(item.name);
   if (!name) return null;
   return `custom:${name}:${item.weightLb ?? ""}:${item.costGp ?? ""}:${item.notes.trim()}`;

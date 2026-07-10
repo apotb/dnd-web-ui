@@ -19,6 +19,10 @@ import {
   describeObjectInteractionCost,
   getAvailableObjectInteractions,
 } from "@/lib/combat/object-equipment-change";
+import {
+  canRefillAmmoContainers,
+  computeAmmoRefill,
+} from "@/lib/dnd/ammunition";
 import type { InventoryItem } from "@/lib/schemas/character";
 import type { CombatTurn } from "@/lib/schemas/combat-state";
 import type { Item } from "@/lib/schemas/item";
@@ -31,6 +35,7 @@ interface CombatEquipmentChangeModalProps {
   turn: Pick<CombatTurn, "freeObjectInteractionUsed" | "actionUsed">;
   submitting?: boolean;
   onConfirm: (nextItems: InventoryItem[]) => void;
+  onConfirmRefill?: () => void;
   onCancel: () => void;
 }
 
@@ -41,6 +46,7 @@ export function CombatEquipmentChangeModal({
   turn,
   submitting = false,
   onConfirm,
+  onConfirmRefill,
   onCancel,
 }: CombatEquipmentChangeModalProps) {
   const [draftItems, setDraftItems] = useState<InventoryItem[]>(() =>
@@ -60,11 +66,20 @@ export function CombatEquipmentChangeModal({
     );
   });
 
+  const refillPreviews = useMemo(
+    () => computeAmmoRefill(initialItems, catalogItems),
+    [catalogItems, initialItems]
+  );
+  const canRefill = canRefillAmmoContainers(initialItems, catalogItems);
+
   const toggleCount = countEquipmentToggles(initialItems, draftItems, catalogItems);
   const availableInteractions = getAvailableObjectInteractions(turn);
-  const costLabel = describeObjectInteractionCost(toggleCount, turn);
-  const canConfirm =
+  const equipmentCostLabel = describeObjectInteractionCost(toggleCount, turn);
+  const refillCostLabel = describeObjectInteractionCost(1, turn);
+  const canConfirmEquipment =
     toggleCount > 0 && toggleCount <= availableInteractions && !submitting;
+  const canConfirmRefill =
+    canRefill && availableInteractions >= 1 && !submitting && Boolean(onConfirmRefill);
   const usesNaturalArmor = hasNaturalArmorSpecies(speciesDisplayName);
 
   function applyWeaponToggle(index: number, hand: "main" | "off", wield: boolean) {
@@ -87,10 +102,10 @@ export function CombatEquipmentChangeModal({
         className="supply-picker-modal retro-box combat-equipment-change-modal"
         onClick={(event) => event.stopPropagation()}
       >
-        <p className="retro-box-title">Change Equipment</p>
+        <p className="retro-box-title">Use an Object</p>
         <p className="retro-muted">
-          Each draw, sheath, equip, or unequip uses one object interaction. Your
-          first interaction each turn is free; a second costs your action.
+          Draw, sheath, equip, unequip, or refill quivers and bolt cases. Your first
+          object interaction each turn is free; a second costs your action.
         </p>
         {equippableRows.length === 0 ? (
           <p className="retro-muted">No equippable items in your inventory.</p>
@@ -187,12 +202,45 @@ export function CombatEquipmentChangeModal({
             })}
           </ul>
         )}
+        {canRefill ? (
+          <div className="combat-ammo-refill-section">
+            <p className="combat-ammo-refill-title">Refill quiver / bolt case</p>
+            {refillPreviews.map((preview) => (
+              <div key={preview.ammoSlug} className="combat-ammo-refill-preview">
+                <p className="retro-muted">
+                  Move {preview.totalMoved} {preview.ammoName}
+                  {preview.totalMoved === 1 ? "" : "s"} from inventory (
+                  {preview.looseAvailable} loose).
+                </p>
+                <ul className="combat-ammo-refill-list">
+                  {preview.containers.map((container) => (
+                    <li key={container.containerId}>
+                      {container.containerName}: {container.beforeLoaded}/
+                      {container.capacity} → {container.afterLoaded}/{container.capacity}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {refillCostLabel ? (
+              <p className="combat-equipment-change-cost">{refillCostLabel}</p>
+            ) : null}
+            <button
+              type="button"
+              className="candy-btn candy-btn-primary"
+              disabled={!canConfirmRefill}
+              onClick={() => onConfirmRefill?.()}
+            >
+              {submitting ? "…" : "Refill quiver"}
+            </button>
+          </div>
+        ) : null}
         {toggleCount > availableInteractions ? (
           <p className="combat-equipment-change-warning">
             Too many changes for your remaining object interactions this turn.
           </p>
-        ) : costLabel ? (
-          <p className="combat-equipment-change-cost">{costLabel}</p>
+        ) : equipmentCostLabel && toggleCount > 0 ? (
+          <p className="combat-equipment-change-cost">{equipmentCostLabel}</p>
         ) : null}
         <div className="supply-picker-actions combat-equipment-change-footer">
           <button type="button" className="candy-btn" onClick={onCancel} disabled={submitting}>
@@ -209,10 +257,10 @@ export function CombatEquipmentChangeModal({
           <button
             type="button"
             className="candy-btn candy-btn-primary"
-            disabled={!canConfirm}
+            disabled={!canConfirmEquipment}
             onClick={() => onConfirm(draftItems)}
           >
-            {submitting ? "…" : "Confirm"}
+            {submitting ? "…" : "Confirm equipment"}
           </button>
         </div>
       </div>

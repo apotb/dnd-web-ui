@@ -207,7 +207,7 @@ export function isFullListPreparedCaster(cls: PhbClass): boolean {
   return isPreparedCaster(cls) && !isWizard(cls);
 }
 
-/** Prepared casters (incl. wizard) may change prepared spells only after a long rest. */
+/** Prepared casters may change prepared spells only after a long rest. */
 export function canReprepareSpellsOnLongRest(cls: PhbClass): boolean {
   return isPreparedCaster(cls) && !isKnownCaster(cls);
 }
@@ -255,6 +255,20 @@ export function getWizardSpellbookSpells(known: Spell[]): Spell[] {
     });
 }
 
+/** Spells shown on the character sheet spellcasting list (wizard: prepared leveled only). */
+export function getSpellcastingSheetSpells(
+  known: Spell[],
+  cls: PhbClass | undefined
+): Spell[] {
+  if (!cls || !isWizard(cls)) {
+    return known;
+  }
+  return known.filter(
+    (spell) =>
+      spell.level === 0 || isManagedGrantSpell(spell) || spell.prepared
+  );
+}
+
 /** DM session toggle to add, swap, or remove class spells on the sheet (wizard spellbook or no-cantrip prepared casters). */
 export function canModifyPlayerSpells(
   isDm: boolean,
@@ -270,6 +284,7 @@ export function canModifyPlayerSpells(
     return false;
   }
   if (isWizard(cls)) return true;
+  if (isKnownCaster(cls)) return true;
   if (characterLevel == null) return false;
   return isNoCantripPreparedCaster(cls, characterLevel);
 }
@@ -303,6 +318,10 @@ export function canEditSpellOnSheet(
     return false;
   }
 
+  if (isKnownCaster(cls) && spell.level > 0) {
+    return false;
+  }
+
   return !isFullListPreparedCaster(cls);
 }
 
@@ -321,6 +340,9 @@ export function canAddSpellsOnSheet(
     return false;
   }
   if (isFullListPreparedCaster(cls)) {
+    return false;
+  }
+  if (isKnownCaster(cls)) {
     return false;
   }
   return true;
@@ -501,6 +523,23 @@ export function countPlayerLeveledKnown(known: Spell[]): number {
 
 export function countGrantedCantrips(known: Spell[]): number {
   return known.filter((s) => s.level === 0 && isManagedGrantSpell(s)).length;
+}
+
+/** Character-sheet cantrip count line (merged player + grant total). */
+export function formatCantripCountDisplay(known: Spell[]): string | null {
+  const total = countPlayerCantrips(known) + countGrantedCantrips(known);
+  return total > 0 ? `Cantrips: ${total}` : null;
+}
+
+/** Character-sheet spells-known count line (merged player + grant total). */
+export function formatSpellsKnownCountDisplay(known: Spell[]): string {
+  const total = countPlayerLeveledKnown(known) + countGrantedLeveled(known);
+  return `Spells known: ${total}`;
+}
+
+/** Character-sheet prepared-spells count line (includes always-prepared grants). */
+export function formatPreparedSpellsCountDisplay(known: Spell[]): string {
+  return `Prepared spells: ${countPreparedLeveled(known)}`;
 }
 
 export function countGrantedLeveled(known: Spell[]): number {

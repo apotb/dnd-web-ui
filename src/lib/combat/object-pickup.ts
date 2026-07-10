@@ -1,11 +1,13 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { mergeIntoInventory } from "@/lib/character/inventory-stack";
+import { distributePickedUpAmmo, isRecoverableAmmunition } from "@/lib/dnd/ammunition";
 import { isBattleOver } from "@/lib/combat/battle-over";
 import { areTokensWithinMeleeRange } from "@/lib/combat/engagement";
 import {
   applyObjectInteractionCosts,
   hasEquippableInventoryItems,
 } from "@/lib/combat/object-equipment-change";
+import { canRefillAmmoContainers } from "@/lib/dnd/ammunition";
 import { removeTokenFromState } from "@/lib/combat/state-utils";
 import {
   canUserActForToken,
@@ -90,8 +92,12 @@ export function canStartObjectInteraction(context: ObjectInteractionContext): bo
     context.character &&
     context.catalogItems &&
     hasEquippableInventoryItems(context.character, context.catalogItems);
+  const hasRefill =
+    context.character &&
+    context.catalogItems &&
+    canRefillAmmoContainers(context.character.data.inventory.items, context.catalogItems);
 
-  return hasPickups || Boolean(hasEquipment);
+  return hasPickups || Boolean(hasEquipment) || Boolean(hasRefill);
 }
 
 function catalogItemToInventoryItem(item: Item, quantity: number): InventoryItem {
@@ -106,6 +112,7 @@ function catalogItemToInventoryItem(item: Item, quantity: number): InventoryItem
     wieldOff: false,
     attuned: false,
     notes: "",
+    loadedQuantity: 0,
   };
 }
 
@@ -165,10 +172,18 @@ export function applyObjectPickup(
   let next = costResult.next;
 
   const quantity = Math.max(1, marker.pickupQuantity ?? 1);
-  const inventoryItems = mergeIntoInventory(
-    character.data.inventory.items,
-    catalogItemToInventoryItem(catalogItem, quantity)
-  );
+  const ammoSlug = catalogItem.slug.trim().toLowerCase();
+  const inventoryItems = isRecoverableAmmunition(ammoSlug)
+    ? distributePickedUpAmmo(
+        character.data.inventory.items,
+        ammoSlug,
+        quantity,
+        catalogItems
+      )
+    : mergeIntoInventory(
+        character.data.inventory.items,
+        catalogItemToInventoryItem(catalogItem, quantity)
+      );
 
   next = removeTokenFromState(next, markerId);
 

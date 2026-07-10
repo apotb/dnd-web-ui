@@ -20,13 +20,24 @@ export const SPELL_SCHOOL_TOOLTIPS: Record<string, string> = {
 export const SPELL_COMPONENT_TOOLTIPS = {
   V: "Verbal — requires speaking mystic words.",
   S: "Somatic — requires precise hand gestures.",
-  M: "Material — requires particular materials (see spell text).",
+  M: "Material — requires particular materials.",
 } as const;
 
 export const SPELL_FLAG_TOOLTIPS = {
   R: "Ritual — can be cast as a ritual (adds 10 minutes; no spell slot if you have the Ritual Casting feature).",
   C: "Concentration — you must maintain concentration for the spell's duration.",
 } as const;
+
+/** Omit "Concentration" prefix when the C badge already conveys it. */
+export function formatSpellDurationForDisplay(
+  duration: string,
+  options?: { concentration?: boolean }
+): string {
+  const trimmed = duration.trim();
+  if (!trimmed) return "";
+  if (!options?.concentration) return trimmed;
+  return trimmed.replace(/^Concentration,?\s+/i, "").trim();
+}
 
 export type SpellComponentLetter = keyof typeof SPELL_COMPONENT_TOOLTIPS;
 

@@ -13,6 +13,7 @@ import { FightingStylePicker } from "@/components/character/fighting-style-picke
 import { RangerFeaturePickers } from "@/components/character/ranger-feature-pickers";
 import { findCatalogRulesDescription } from "@/lib/character/feature-choices";
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
+import { isManagedGrantSpell } from "@/lib/character/spell-sources";
 import { getRangerPicksFromChoices } from "@/lib/dnd/phb/ranger-feature-slots";
 import {
   fetchCatalogClassesClient,
@@ -25,7 +26,8 @@ import {
 } from "@/lib/dnd/calculations";
 import { getFeatAbilityBonusConfig } from "@/lib/dnd/feat-ability-bonuses";
 import {
-  computeHpGain,
+  computeLevelUpDieGain,
+  computeLevelUpHpIncrease,
   getLevelUpSteps,
   getAllSelectedFeatIds,
   validateLevelUpDraft,
@@ -93,11 +95,21 @@ export function LevelUpModal({
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [spellPickerOpen, setSpellPickerOpen] = useState(false);
-  const [spellPickerTarget, setSpellPickerTarget] = useState<"wizard" | null>(null);
+  const [spellPickerTarget, setSpellPickerTarget] = useState<"wizard" | "swap" | null>(
+    null
+  );
 
   const targetLevel = getCharacterLevel(data) + 1;
   const catalogs = useMemo(() => ({ classes }), [classes]);
 
+  const replaceableKnownSpells = useMemo(
+    () =>
+      data.spells.known.filter(
+        (spell) =>
+          spell.level > 0 && spell.spellId && !isManagedGrantSpell(spell)
+      ),
+    [data.spells.known]
+  );
   const existingKnownSpellSlugs = useMemo(
     () =>
       data.spells.known
@@ -198,6 +210,14 @@ export function LevelUpModal({
       if (!ids.includes(spell.slug)) ids.push(spell.slug);
       patchDraft({ wizardSpellIds: ids });
     }
+    if (spellPickerTarget === "swap") {
+      patchDraft({
+        spellSwap: {
+          ...draft.spellSwap,
+          newSlug: spell.slug,
+        },
+      });
+    }
     setSpellPickerOpen(false);
     setSpellPickerTarget(null);
   }
@@ -227,7 +247,7 @@ export function LevelUpModal({
                   patchDraft({
                     hp: {
                       method: "average",
-                      gain: currentStep.averageGain,
+                      gain: currentStep.averageRoll,
                     },
                   })
                 }
@@ -267,16 +287,15 @@ export function LevelUpModal({
                     onChange={(e) => {
                       const val = parseInt(e.target.value, 10);
                       const rollResult = Number.isFinite(val) ? val : undefined;
-                      const hpGain = rollResult
-                        ? computeHpGain(
+                      const dieGain = rollResult
+                        ? computeLevelUpDieGain(
                             currentStep.hitDie,
-                            currentStep.conMod,
                             "roll",
                             rollResult
                           )
                         : 0;
                       patchDraft({
-                        hp: { method: "roll", rollResult, gain: hpGain },
+                        hp: { method: "roll", rollResult, gain: dieGain },
                       });
                     }}
                   />
@@ -286,8 +305,17 @@ export function LevelUpModal({
                 </p>
               </>
             ) : null}
-            {hp ? (
-              <p className="retro-muted">You gain {hp.gain} max HP.</p>
+            {hp?.method ? (
+              <p className="retro-muted">
+                You gain{" "}
+                {computeLevelUpHpIncrease(
+                  currentStep.hitDie,
+                  currentStep.conMod,
+                  hp.method,
+                  hp.rollResult
+                )}{" "}
+                max HP.
+              </p>
             ) : null}
           </div>
         );
@@ -514,6 +542,81 @@ export function LevelUpModal({
           </div>
         );
 
+      case "swapKnownSpell": {
+        const replacing = draft.spellSwap !== undefined;
+        const replaceSlug = draft.spellSwap?.replaceSlug;
+        const newSlug = draft.spellSwap?.newSlug;
+        return (
+          <div className="space-y-4">
+            <p className="retro-muted">
+              You may replace one spell you know with another from your class list
+              (up to level {currentStep.maxSpellLevel}). This is optional.
+            </p>
+            <div className="level-up-hp-methods">
+              <button
+                type="button"
+                className={`candy-btn${!replacing ? " candy-btn-active" : ""}`}
+                onClick={() => patchDraft({ spellSwap: undefined })}
+              >
+                Keep all spells
+              </button>
+              <button
+                type="button"
+                className={`candy-btn${replacing ? " candy-btn-active" : ""}`}
+                onClick={() => patchDraft({ spellSwap: draft.spellSwap ?? {} })}
+              >
+                Replace a spell
+              </button>
+            </div>
+            {replacing ? (
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Spell to replace</p>
+                <div className="flex flex-wrap gap-2">
+                  {replaceableKnownSpells.map((spell) => (
+                    <button
+                      key={spell.id}
+                      type="button"
+                      className={`candy-btn${
+                        replaceSlug === spell.spellId ? " candy-btn-active" : ""
+                      }`}
+                      onClick={() =>
+                        patchDraft({
+                          spellSwap: {
+                            replaceSlug: spell.spellId!,
+                            newSlug:
+                              replaceSlug === spell.spellId ? newSlug : undefined,
+                          },
+                        })
+                      }
+                    >
+                      {spell.name}
+                    </button>
+                  ))}
+                </div>
+                {replaceSlug ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">New spell</p>
+                    {newSlug ? (
+                      <p className="text-sm retro-muted">{newSlug}</p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="candy-btn"
+                      onClick={() => {
+                        setSpellPickerTarget("swap");
+                        setSpellPickerOpen(true);
+                      }}
+                    >
+                      {newSlug ? "Change new spell" : "Choose new spell"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        );
+      }
+
       case "wizardSpellbook":
         return (
           <div className="space-y-3">
@@ -722,6 +825,8 @@ export function LevelUpModal({
         return "Cantrips";
       case "spellsKnown":
         return "Spells known";
+      case "swapKnownSpell":
+        return "Swap a known spell";
       case "wizardSpellbook":
         return "Spellbook";
       case "asiOrFeat":
@@ -732,7 +837,10 @@ export function LevelUpModal({
   })();
 
   const spellStep =
-    currentStep?.kind === "wizardSpellbook" ? currentStep : null;
+    currentStep?.kind === "wizardSpellbook" ||
+    currentStep?.kind === "swapKnownSpell"
+      ? currentStep
+      : null;
 
   return (
     <>
@@ -785,20 +893,27 @@ export function LevelUpModal({
             setSpellPickerTarget(null);
           }}
           onSelect={onSpellPicked}
-          defaultClassListId="wizard"
-          maxSpellLevel={
-            spellStep?.kind === "wizardSpellbook"
-              ? spellStep.maxSpellLevel
-              : undefined
+          defaultClassListId={
+            spellStep?.kind === "swapKnownSpell"
+              ? spellStep.classListId
+              : "wizard"
           }
+          maxSpellLevel={spellStep?.maxSpellLevel}
           excludeSlugs={[
             ...(draft.wizardSpellIds ?? []),
             ...(draft.preparedSpellIds ?? []),
-            ...existingKnownSpellSlugs,
+            ...(draft.spellIds ?? []),
+            ...existingKnownSpellSlugs.filter(
+              (slug) => slug !== draft.spellSwap?.replaceSlug
+            ),
           ]}
           initialLevel="1"
           lockLevelFilter={false}
-          title="Add to spellbook"
+          title={
+            spellStep?.kind === "swapKnownSpell"
+              ? "Choose replacement spell"
+              : "Add to spellbook"
+          }
         />
       ) : null}
     </>

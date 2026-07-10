@@ -188,24 +188,9 @@ export function getSpellcastingAbilityModifier(data: CharacterData): number | nu
 export function formatSpellcastingAbilityModifierTooltip(
   data: CharacterData
 ): string | null {
-  const ability = data.spells.spellcastingAbility;
-  if (!ability) return null;
-
-  const mods = getAbilityModifiers(data.abilityScores);
-  const lines: string[] = [];
-  const breakdown = data.abilityScoreBreakdown?.[ability];
-
-  if (breakdown?.sources?.length) {
-    lines.push(
-      ...breakdown.sources.map(
-        (s) => `${s.label}: ${s.value >= 0 ? "+" : ""}${s.value}`
-      )
-    );
-    lines.push(`Score: ${data.abilityScores[ability]}`);
-  }
-
-  lines.push(`${ABILITY_FULL_LABELS[ability]}: ${formatModifier(mods[ability])}`);
-  return lines.join("\n");
+  const mod = getSpellcastingAbilityModifier(data);
+  if (mod === null) return null;
+  return `Spellcasting Ability Modifier: ${formatModifier(mod)}`;
 }
 
 export function formatSpellSaveDcTooltip(data: CharacterData): string | null {

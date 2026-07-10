@@ -32,7 +32,7 @@ export default async function CombatPage({
   );
 
   let combatState = normalizeCombatState(parseCombatState(campaign?.combat_state ?? {}));
-  if (combatState.tokens.filter((token) => token.kind === "party").length === 0) {
+  if (combatState.tokens.length === 0) {
     combatState = createDefaultCombatState(characters);
   }
 

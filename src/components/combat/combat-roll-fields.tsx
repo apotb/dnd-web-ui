@@ -150,6 +150,7 @@ interface WeaponGripFieldProps {
   value: WeaponGrip;
   onChange: (grip: WeaponGrip) => void;
   disabled?: boolean;
+  twoHandedDisabled?: boolean;
 }
 
 export function WeaponGripField({
@@ -157,6 +158,7 @@ export function WeaponGripField({
   value,
   onChange,
   disabled = false,
+  twoHandedDisabled = false,
 }: WeaponGripFieldProps) {
   if (!isVersatileWeaponAttack(attack)) return null;
 
@@ -185,12 +187,17 @@ export function WeaponGripField({
             name={groupName}
             value="two-handed"
             checked={value === "two-handed"}
-            disabled={disabled}
+            disabled={disabled || twoHandedDisabled}
             onChange={() => onChange("two-handed")}
           />
           <span>Two-handed ({twoHandedDice})</span>
         </label>
       </div>
+      {twoHandedDisabled ? (
+        <p className="retro-muted combat-attack-submit-hint">
+          Two-handed grip requires a free off hand.
+        </p>
+      ) : null}
     </div>
   );
 }

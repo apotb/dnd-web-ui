@@ -20,6 +20,7 @@ import {
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
+import { findBattleAmmunitionContainer } from "@/lib/dnd/ammunition";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 import { persistCombatState } from "@/lib/hooks/use-realtime-combat-state";
@@ -181,6 +182,25 @@ export async function submitCombatAttack(
     options.charactersById,
     state
   );
+
+  if (options.attack.ammunitionItemId && options.catalogItems) {
+    const attackerCharacter = options.attacker.characterId
+      ? options.charactersById[options.attacker.characterId]
+      : null;
+    if (
+      attackerCharacter &&
+      !findBattleAmmunitionContainer(
+        attackerCharacter.data.inventory.items,
+        options.attack.ammunitionItemId,
+        options.catalogItems
+      )
+    ) {
+      return {
+        next: state,
+        error: "No ammunition loaded in a quiver or bolt case.",
+      };
+    }
+  }
 
   const pending = createPendingAttack(
     state,

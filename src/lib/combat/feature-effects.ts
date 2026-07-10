@@ -1,9 +1,10 @@
+import type { ParsedCharacter } from "@/lib/character/utils";
 import type { CharacterActionEntry } from "@/lib/dnd/character-actions";
 import { ACTION_COST_LABELS } from "@/lib/dnd/character-actions";
 import { formatBattleActionTooltip } from "@/lib/combat/battle-tooltip";
 import type { AbilityKey } from "@/lib/schemas/character";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
-import { getConditionBySlug, getConditionDisplayName } from "@/lib/dnd/conditions";
+import { getConditionBySlug, getConditionDisplayName, conditionSlugsIncapacitate } from "@/lib/dnd/conditions";
 import { applyActionUsed, applyBonusActionUsed } from "@/lib/combat/turn";
 
 export const SHELL_DEFENSE_EFFECT_ID = "shell-defense";
@@ -142,8 +143,70 @@ export function getCombatEffectSaveRollMode(
   return null;
 }
 
-export function canTakeReactions(token: CombatToken): boolean {
+export function canTakeReactions(token: CombatToken, context?: TokenStatusContext): boolean {
+  if (isTokenIncapacitated(token, context)) return false;
   return !getActiveEffectDefs(token).some((def) => def.blocksReactions);
+}
+
+export interface TokenStatusContext {
+  conditionsByCharacterId?: Record<string, string[]>;
+  hpByCharacterId?: Record<string, number>;
+}
+
+export function buildTokenStatusContext(
+  characters: ParsedCharacter[]
+): TokenStatusContext {
+  return {
+    conditionsByCharacterId: Object.fromEntries(
+      characters.map((character) => [character.id, character.data.combat.conditions ?? []])
+    ),
+    hpByCharacterId: Object.fromEntries(
+      characters.map((character) => [character.id, character.data.combat.currentHp])
+    ),
+  };
+}
+
+function getTokenConditionSlugs(
+  token: CombatToken,
+  context?: TokenStatusContext
+): string[] {
+  const fromCharacter =
+    token.characterId && context?.conditionsByCharacterId
+      ? context.conditionsByCharacterId[token.characterId] ?? []
+      : [];
+  const fromEffects = getTokenStatusEntries(token).map((entry) => entry.slug);
+  return [...fromCharacter, ...fromEffects];
+}
+
+function getEffectiveTokenHp(
+  token: CombatToken,
+  context?: TokenStatusContext
+): number | null {
+  if (token.currentHp != null) return token.currentHp;
+  if (
+    (token.kind === "party" || token.kind === "ally") &&
+    token.characterId &&
+    context?.hpByCharacterId
+  ) {
+    const fromCharacter = context.hpByCharacterId[token.characterId];
+    if (fromCharacter != null) return fromCharacter;
+  }
+  if (token.kind === "enemy" && token.maxHp != null) {
+    return Math.max(0, token.maxHp - (token.damageTaken ?? 0));
+  }
+  return null;
+}
+
+/** Whether the token cannot take actions or reactions (0 HP, incapacitating condition, etc.). */
+export function isTokenIncapacitated(
+  token: CombatToken,
+  context?: TokenStatusContext
+): boolean {
+  if (token.kind === "marker") return false;
+  const effectiveHp = getEffectiveTokenHp(token, context);
+  if (effectiveHp != null && effectiveHp <= 0) return true;
+  if (isTokenRestrictedByEffects(token)) return true;
+  return conditionSlugsIncapacitate(getTokenConditionSlugs(token, context));
 }
 
 export function getTokenStatusEntries(

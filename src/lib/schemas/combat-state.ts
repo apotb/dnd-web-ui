@@ -236,6 +236,8 @@ export const combatStateSchema = z.object({
   xpPool: z.number().int().min(0).default(0),
   /** Party character IDs that were on the combat board at any point this encounter. */
   battleParticipantCharacterIds: z.array(z.string()).default([]),
+  /** True after party ammo has been auto-loaded into quivers/cases at battle start. */
+  battleAmmoPrepared: z.boolean().default(false),
 });
 
 export type BlockedCell = z.infer<typeof blockedCellSchema>;

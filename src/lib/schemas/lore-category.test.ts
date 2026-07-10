@@ -5,7 +5,9 @@ import {
   countItemsInCategory,
   ensureCategories,
   DEFAULT_NOTABLE_CATEGORIES,
+  moveCategory,
   newCategory,
+  sortCategories,
 } from "./lore-category";
 
 describe("lore-category", () => {
@@ -44,5 +46,44 @@ describe("lore-category", () => {
     assert.equal(category.label, "Guilds");
     assert.equal(category.sortOrder, 3);
     assert.ok(category.id);
+  });
+
+  it("moves a category right by swapping sort order", () => {
+    const categories = [
+      { id: "a", label: "Alpha", sortOrder: 0 },
+      { id: "b", label: "Beta", sortOrder: 1 },
+      { id: "c", label: "Gamma", sortOrder: 2 },
+    ];
+    const moved = moveCategory(categories, "a", 1);
+    assert.ok(moved);
+    const sorted = sortCategories(moved);
+    assert.deepEqual(
+      sorted.map((category) => category.id),
+      ["b", "a", "c"]
+    );
+  });
+
+  it("moves a category left by swapping sort order", () => {
+    const categories = [
+      { id: "a", label: "Alpha", sortOrder: 0 },
+      { id: "b", label: "Beta", sortOrder: 1 },
+      { id: "c", label: "Gamma", sortOrder: 2 },
+    ];
+    const moved = moveCategory(categories, "c", -1);
+    assert.ok(moved);
+    const sorted = sortCategories(moved);
+    assert.deepEqual(
+      sorted.map((category) => category.id),
+      ["a", "c", "b"]
+    );
+  });
+
+  it("returns null when moving past the ends", () => {
+    const categories = [
+      { id: "a", label: "Alpha", sortOrder: 0 },
+      { id: "b", label: "Beta", sortOrder: 1 },
+    ];
+    assert.equal(moveCategory(categories, "a", -1), null);
+    assert.equal(moveCategory(categories, "b", 1), null);
   });
 });

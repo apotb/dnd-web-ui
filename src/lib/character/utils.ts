@@ -4,7 +4,7 @@ import {
   stripDmNotesFromCharacterData,
   type CharacterData,
 } from "@/lib/schemas/character";
-import { averageLevelUpHpGain } from "@/lib/character/combat-derivation";
+import { averageLevelUpHpGain, stripConFromLevelUpHpGains } from "@/lib/character/combat-derivation";
 import { syncSavingThrowsFromClass } from "@/lib/character/class-derivation";
 import { syncAcFromEquipment } from "@/lib/character/ac-derivation";
 import { sanitizeEquippedItems } from "@/lib/character/equip-rules";
@@ -18,6 +18,7 @@ import { migrateLanguageChoices } from "@/lib/character/language-choices";
 import { normalizeCombatConditions } from "@/lib/dnd/conditions";
 import { syncSpellcastingFromClass, migrateFullListPreparedCasterSpells } from "@/lib/dnd/spellcasting";
 import { getCharacterLevel, levelFromXp, xpForLevel } from "@/lib/dnd/xp";
+import { abilityModifier } from "@/lib/dnd/calculations";
 import type { Character } from "@/lib/types/database";
 
 export type ParsedCharacter = Omit<Character, "data"> & { data: CharacterData };
@@ -263,11 +264,36 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
     };
   }
 
-  // --- Level-up HP gains backfill for characters above level 1 ---
+  // --- Level-up HP gains: strip bundled CON from legacy saves ---
   const combatRaw = raw.combat as Record<string, unknown> | undefined;
   const charData = raw as unknown as CharacterData;
+  if (combatRaw) {
+    const existingGains = combatRaw.levelUpHpGains;
+    const hpGainsDieOnly = combatRaw.hpGainsDieOnly === true;
+    if (
+      !hpGainsDieOnly &&
+      Array.isArray(existingGains) &&
+      existingGains.length > 0
+    ) {
+      const conMod = abilityModifier(charData.abilityScores.con);
+      raw = {
+        ...raw,
+        combat: {
+          ...combatRaw,
+          levelUpHpGains: stripConFromLevelUpHpGains(
+            existingGains as number[],
+            conMod
+          ),
+          hpGainsDieOnly: true,
+        },
+      };
+    }
+  }
+
+  // --- Level-up HP gains backfill for characters above level 1 ---
+  const combatAfterMigration = raw.combat as Record<string, unknown> | undefined;
   const committedLevel = getCharacterLevel(charData);
-  const existingGains = combatRaw?.levelUpHpGains;
+  const existingGains = combatAfterMigration?.levelUpHpGains;
   if (
     committedLevel > 1 &&
     (!Array.isArray(existingGains) || existingGains.length === 0)
@@ -277,8 +303,9 @@ function migrateCharacterData(raw: Record<string, unknown>): Record<string, unkn
     raw = {
       ...raw,
       combat: {
-        ...(combatRaw ?? {}),
+        ...(combatAfterMigration ?? {}),
         levelUpHpGains: gains,
+        hpGainsDieOnly: true,
       },
     };
   }

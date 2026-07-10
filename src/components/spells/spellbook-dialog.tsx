@@ -20,9 +20,19 @@ interface SpellbookDialogProps {
   open: boolean;
   onClose: () => void;
   spells: Spell[];
+  title?: string;
+  countNoun?: string;
+  emptyHint?: string;
 }
 
-export function SpellbookDialog({ open, onClose, spells }: SpellbookDialogProps) {
+export function SpellbookDialog({
+  open,
+  onClose,
+  spells,
+  title = "Spellbook",
+  countNoun = "spellbook",
+  emptyHint = "Copy spells into your spellbook during downtime, or ask your DM to add them with Edit spells.",
+}: SpellbookDialogProps) {
   const [catalogSpells, setCatalogSpells] = useState<Record<string, CatalogSpellRow>>(
     {}
   );
@@ -65,11 +75,11 @@ export function SpellbookDialog({ open, onClose, spells }: SpellbookDialogProps)
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Spellbook</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <p className="text-sm text-muted-foreground">
             {spells.length === 0
-              ? "No leveled spells in your spellbook yet."
-              : `${spells.length} spell${spells.length === 1 ? "" : "s"} in your spellbook`}
+              ? `No leveled spells in your ${countNoun} yet.`
+              : `${spells.length} spell${spells.length === 1 ? "" : "s"} in your ${countNoun}`}
           </p>
         </DialogHeader>
 
@@ -78,8 +88,7 @@ export function SpellbookDialog({ open, onClose, spells }: SpellbookDialogProps)
             <p className="text-sm text-muted-foreground py-4">Loading…</p>
           ) : grouped.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4">
-              Copy spells into your spellbook during downtime, or ask your DM to add
-              them with Edit spells.
+              {emptyHint}
             </p>
           ) : (
             grouped.map(([level, levelSpells]) => (

@@ -14,6 +14,7 @@ import {
   getTokenStatusLabels,
   hasCombatEffect,
   isRegisteredFeatureEnterAction,
+  isTokenIncapacitated,
   isTokenInShellDefense,
   resolveEffectiveSaveRoll,
   SHELL_DEFENSE_EFFECT_ID,
@@ -173,6 +174,22 @@ describe("feature-effects", () => {
         },
       }),
       true
+    );
+  });
+
+  it("treats party tokens as incapacitated at 0 HP from character sheet context", () => {
+    const token = makeToken({
+      characterId: "fighter-char",
+      currentHp: undefined,
+    });
+
+    assert.equal(
+      isTokenIncapacitated(token, { hpByCharacterId: { "fighter-char": 0 } }),
+      true
+    );
+    assert.equal(
+      isTokenIncapacitated(token, { hpByCharacterId: { "fighter-char": 5 } }),
+      false
     );
   });
 });

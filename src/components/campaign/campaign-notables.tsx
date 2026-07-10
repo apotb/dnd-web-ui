@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { User } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { createClient } from "@/lib/supabase/client";
@@ -12,12 +11,14 @@ import {
   removeNotablePortrait,
   uploadNotablePortrait,
 } from "@/lib/campaign/notable-portrait-storage";
+import { LoreCategoryEditingHeader } from "@/components/campaign/lore-category-editing-header";
 import { LoreCategoryTabs } from "@/components/campaign/lore-category-tabs";
 import { LoreEventEditor, LoreEventView } from "@/components/campaign/lore-event-fields";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
 import { useRealtimeNotablesData } from "@/lib/hooks/use-realtime-notables-data";
 import {
   itemCountsByCategory,
+  moveCategory,
   newCategory,
 } from "@/lib/schemas/lore-category";
 import {
@@ -78,6 +79,7 @@ export function CampaignNotables({
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [restoredCategoryTab, setRestoredCategoryTab] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [renamingCategoryId, setRenamingCategoryId] = useState<string | null>(null);
   const [notablePendingRemoval, setNotablePendingRemoval] =
     useState<Notable | null>(null);
   const [removingNotable, setRemovingNotable] = useState(false);
@@ -103,6 +105,20 @@ export function CampaignNotables({
     setActiveCategory(parseStoredNotableCategory(stored, categoryIds));
     setRestoredCategoryTab(true);
   }, [campaignId, restoredCategoryTab, liveNotablesData.categories]);
+
+  useEffect(() => {
+    if (message !== "Saved") return;
+    const timer = setTimeout(() => setMessage(null), 2000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
+  function handleEditingChange(nextEditing: boolean) {
+    setEditing(nextEditing);
+    if (!nextEditing) {
+      setMessage(null);
+      setRenamingCategoryId(null);
+    }
+  }
 
   const notablesData = editable ? draft : liveNotablesData;
   const categories = notablesData.categories;
@@ -174,6 +190,19 @@ export function CampaignNotables({
     if (activeCategory === categoryId) {
       selectCategory(null);
     }
+    setRenamingCategoryId(null);
+  }
+
+  function moveCategoryInDraft(direction: -1 | 1) {
+    if (!editable || !activeCategory) return;
+    const nextCategories = moveCategory(draft.categories, activeCategory, direction);
+    if (!nextCategories) return;
+    setDraft({ ...draft, categories: nextCategories });
+  }
+
+  function startRenameCategory() {
+    if (!editable || !activeCategory) return;
+    setRenamingCategoryId(activeCategory);
   }
 
   async function saveNotablesData(nextDraft: NotablesData) {
@@ -290,28 +319,30 @@ export function CampaignNotables({
 
   return (
     <div className="retro-stack party-overview-stack">
-      {canEditNotables ? (
-        <label
-          className={`notable-editing-toggle candy-btn cursor-pointer select-none w-fit${editing ? " candy-btn-active" : ""}`}
-          style={{ flex: "0 1 auto" }}
-        >
-          <Checkbox
-            checked={editing}
-            onCheckedChange={(checked) => setEditing(checked === true)}
-          />
-          <span>Editing</span>
-        </label>
-      ) : null}
+      <LoreCategoryEditingHeader
+        canEdit={canEditNotables}
+        editing={editing}
+        onEditingChange={handleEditingChange}
+        editable={editable}
+        activeCategoryId={activeCategory}
+        categories={categories}
+        itemCountsByCategory={categoryItemCounts}
+        renamingCategoryId={renamingCategoryId}
+        onMoveLeft={() => moveCategoryInDraft(-1)}
+        onMoveRight={() => moveCategoryInDraft(1)}
+        onRename={startRenameCategory}
+        onRemove={() => activeCategory && removeCategory(activeCategory)}
+      />
 
       <LoreCategoryTabs
         categories={categories}
         activeCategoryId={activeCategory}
         editable={editable}
-        itemCountsByCategory={categoryItemCounts}
+        renamingCategoryId={renamingCategoryId}
+        onRenamingCategoryIdChange={setRenamingCategoryId}
         onSelect={selectCategory}
         onAdd={addCategory}
         onRename={renameCategory}
-        onRemove={removeCategory}
       />
 
       <div className="retro-stack notable-stack">

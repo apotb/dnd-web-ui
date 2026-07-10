@@ -561,6 +561,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
       speed,
       hitDice: `1d${cls?.hitDie ?? 8}`,
       levelUpHpGains: [],
+      hpGainsDieOnly: true,
       hitDiceSpent: 0,
       lastLongRestDate: null,
       deathSaves: { successes: 0, failures: 0 },
@@ -618,6 +619,7 @@ export function buildCharacterExport(state: CharacterCreatorState, catalog?: Cre
           attuned: false,
           magicItem: false,
           notes: "",
+          loadedQuantity: 0,
         };
       }),
       notes: "",

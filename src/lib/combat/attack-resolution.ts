@@ -1,8 +1,7 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyHpDamage } from "@/lib/character/combat-derivation";
 import { parseDamageNotation } from "@/lib/dnd/dice";
-import { consumeInventoryItem } from "@/lib/dnd/supplies";
-import { isRecoverableAmmunition } from "@/lib/dnd/ammunition";
+import { consumeLoadedAmmunition, isRecoverableAmmunition } from "@/lib/dnd/ammunition";
 import { consumeThrownWeaponInventoryItem } from "@/lib/character/equip-rules";
 import {
   placeAmmoPickupMarker,
@@ -48,7 +47,7 @@ export function getTokenAc(
   let ac = 10;
   if (token.kind === "party" && character) {
     ac = character.data.combat.ac;
-  } else if (token.kind === "enemy" && enemyData) {
+  } else if ((token.kind === "enemy" || token.kind === "ally") && enemyData) {
     ac = enemyData.armorClass.value;
   }
   return ac + getCombatEffectAcBonus(token);
@@ -60,8 +59,12 @@ export function getTokenCurrentHp(
   enemyData: EnemyData | null
 ): number {
   if (token.currentHp != null) return token.currentHp;
-  if (token.kind === "party" && character) return character.data.combat.currentHp;
-  if (token.kind === "enemy" && enemyData) return enemyData.hitPoints.average;
+  if ((token.kind === "party" || token.kind === "ally") && character) {
+    return character.data.combat.currentHp;
+  }
+  if ((token.kind === "enemy" || token.kind === "ally") && enemyData) {
+    return enemyData.hitPoints.average;
+  }
   return 0;
 }
 
@@ -71,8 +74,12 @@ export function getTokenMaxHp(
   enemyData: EnemyData | null
 ): number {
   if (token.maxHp != null) return token.maxHp;
-  if (token.kind === "party" && character) return character.data.combat.maxHp;
-  if (token.kind === "enemy" && enemyData) return enemyData.hitPoints.average;
+  if ((token.kind === "party" || token.kind === "ally") && character) {
+    return character.data.combat.maxHp;
+  }
+  if ((token.kind === "enemy" || token.kind === "ally") && enemyData) {
+    return enemyData.hitPoints.average;
+  }
   return 0;
 }
 
@@ -280,7 +287,7 @@ export function applyResolvedAttack(
       const consumedAmmo =
         Boolean(pending.ammunitionInventoryItemId) && Boolean(pending.ammunitionQuantity);
       if (pending.ammunitionInventoryItemId && pending.ammunitionQuantity) {
-        inventoryItems = consumeInventoryItem(
+        inventoryItems = consumeLoadedAmmunition(
           inventoryItems,
           pending.ammunitionInventoryItemId
         );

@@ -4,7 +4,8 @@ import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import { getFeatAbilityBonusConfig } from "@/lib/dnd/feat-ability-bonuses";
 import {
-  computeHpGain,
+  computeLevelUpDieGain,
+  computeLevelUpHpIncrease,
   getLevelUpSteps,
   validateLevelUpDraft,
   type LevelUpDraft,
@@ -14,6 +15,7 @@ import { getRangerPicksFromChoices } from "@/lib/dnd/phb/ranger-feature-slots";
 import { getSpell } from "@/lib/dnd/phb/spells";
 import { ABILITY_KEYS } from "@/lib/dnd/phb/point-buy";
 import { syncSpellcastingFromClass } from "@/lib/dnd/spellcasting";
+import { isManagedGrantSpell } from "@/lib/character/spell-sources";
 import { getCharacterLevel } from "@/lib/dnd/xp";
 import type {
   AbilityKey,
@@ -176,21 +178,26 @@ export function applyLevelUp(
 
   for (const step of steps) {
     if (step.kind === "hp" && draft.hp) {
-      const gain =
+      const dieGain =
         draft.hp.gain ||
-        computeHpGain(
+        computeLevelUpDieGain(
           step.hitDie,
-          step.conMod,
           draft.hp.method,
           draft.hp.rollResult
         );
-      hpGainedThisLevel = gain;
-      const gains = [...(next.combat.levelUpHpGains ?? []), gain];
+      hpGainedThisLevel = computeLevelUpHpIncrease(
+        step.hitDie,
+        step.conMod,
+        draft.hp.method,
+        draft.hp.rollResult
+      );
+      const gains = [...(next.combat.levelUpHpGains ?? []), dieGain];
       next = {
         ...next,
         combat: {
           ...next.combat,
           levelUpHpGains: gains,
+          hpGainsDieOnly: true,
         },
       };
     }
@@ -265,6 +272,35 @@ export function applyLevelUp(
         spells: {
           ...next.spells,
           known: [...next.spells.known, ...newSpells],
+        },
+      };
+    }
+
+    if (
+      step.kind === "swapKnownSpell" &&
+      draft.spellSwap?.replaceSlug &&
+      draft.spellSwap?.newSlug
+    ) {
+      const { replaceSlug, newSlug } = draft.spellSwap;
+      const phb = getSpell(newSlug);
+      next = {
+        ...next,
+        spells: {
+          ...next.spells,
+          known: next.spells.known.map((spell) =>
+            spell.spellId === replaceSlug &&
+            spell.level > 0 &&
+            !isManagedGrantSpell(spell)
+              ? {
+                  ...spell,
+                  spellId: newSlug,
+                  name: phb?.name ?? newSlug,
+                  level: phb?.level ?? spell.level,
+                  prepared: true,
+                  notes: phb?.school ?? spell.notes,
+                }
+              : spell
+          ),
         },
       };
     }

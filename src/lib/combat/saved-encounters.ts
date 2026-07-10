@@ -174,6 +174,7 @@ export function savedEncounterToCombatState(
     autoApproveDm: true,
     xpPool: 0,
     battleParticipantCharacterIds: [],
+    battleAmmoPrepared: false,
     reactionUsedTokenIds: [],
   };
 

@@ -53,6 +53,7 @@ import {
   abilityModifier,
   formatModifier,
   formatSpellAttackTooltip,
+  formatSpellcastingAbilityModifierTooltip,
   formatSpellSaveDcTooltip,
   getAbilityModifiers,
   getPassivePerception,
@@ -81,16 +82,15 @@ import {
   canShowDmCantripEditToggle,
   getDmSpellEditToggleLabel,
   canUseClassSpellcasting,
-  countGrantedCantrips,
-  countGrantedLeveled,
-  countPlayerCantrips,
-  countPlayerLeveledKnown,
-  countPlayerPreparedLeveled,
   formatSlotSummary,
   formatLevelPreparedSummary,
+  formatCantripCountDisplay,
+  formatPreparedSpellsCountDisplay,
+  formatSpellsKnownCountDisplay,
   formatPreparedSpellLimitTooltip,
   getSpellSlotAtLevel,
   getSpellcastingLimits,
+  getSpellcastingSheetSpells,
   getWizardSpellbookSpells,
   isFullListPreparedCaster,
   isKnownCaster,
@@ -173,12 +173,14 @@ import {
 } from "@/lib/character/feature-grant-sync";
 import {
   buildSpellGrantSourceMap,
-  buildSpellGrantUsageMap,
+  buildSpellGrantNotesMap,
   hasManagedSpellGrants,
   isManagedGrantSpell,
   spellGrantSourceLabel,
 } from "@/lib/character/spell-sources";
 import {
+  formatGrantUsesDisplayLine,
+  getGrantUsageSpec,
   getGrantUsesRemaining,
   useGrantSpell,
 } from "@/lib/character/spell-grant-uses";
@@ -989,6 +991,10 @@ export function CharacterSheet({
     () => (resolvedClass ? isFullListPreparedCaster(resolvedClass) : false),
     [resolvedClass]
   );
+  const knownCasterClass = useMemo(
+    () => (resolvedClass ? isKnownCaster(resolvedClass) : false),
+    [resolvedClass]
+  );
   const classSpellcastingActive = useMemo(
     () =>
       resolvedClass ? canUseClassSpellcasting(resolvedClass, level) : false,
@@ -1002,24 +1008,16 @@ export function CharacterSheet({
     () => formatSlotSummary(data.spells.slots),
     [data.spells.slots]
   );
-  const cantripCount = useMemo(
-    () => countPlayerCantrips(data.spells.known),
+  const cantripCountDisplay = useMemo(
+    () => formatCantripCountDisplay(data.spells.known),
     [data.spells.known]
   );
-  const grantedCantripCount = useMemo(
-    () => countGrantedCantrips(data.spells.known),
+  const spellsKnownCountDisplay = useMemo(
+    () => formatSpellsKnownCountDisplay(data.spells.known),
     [data.spells.known]
   );
-  const leveledKnownCount = useMemo(
-    () => countPlayerLeveledKnown(data.spells.known),
-    [data.spells.known]
-  );
-  const grantedLeveledCount = useMemo(
-    () => countGrantedLeveled(data.spells.known),
-    [data.spells.known]
-  );
-  const preparedLeveledCount = useMemo(
-    () => countPlayerPreparedLeveled(data.spells.known),
+  const preparedSpellsCountDisplay = useMemo(
+    () => formatPreparedSpellsCountDisplay(data.spells.known),
     [data.spells.known]
   );
   const wizardSpellbookSpells = useMemo(
@@ -1039,6 +1037,10 @@ export function CharacterSheet({
   const spellAttackBonus = useMemo(() => getSpellAttackBonus(data), [data]);
   const spellSaveDcTooltip = useMemo(() => formatSpellSaveDcTooltip(data), [data]);
   const spellAttackTooltip = useMemo(() => formatSpellAttackTooltip(data), [data]);
+  const spellcastingAbilityTooltip = useMemo(
+    () => formatSpellcastingAbilityModifierTooltip(data),
+    [data]
+  );
   const preparedSpellLimitTooltip = useMemo(() => {
     if (!resolvedClass || spellLimits?.preparedSpells === null) return null;
     return formatPreparedSpellLimitTooltip(
@@ -1177,11 +1179,20 @@ export function CharacterSheet({
     [level, data.spells.slots]
   );
   const availableClassSpellCount = useMemo(() => {
-    if (!fullListPreparedCaster || !classSpellListId) return 0;
+    if (!classSpellListId || !fullListPreparedCaster) return 0;
     return getSpellsForList(classSpellListId).filter(
       (spell) => spell.level > 0 && spell.level <= maxCastableSpellLevel
     ).length;
-  }, [fullListPreparedCaster, classSpellListId, maxCastableSpellLevel]);
+  }, [classSpellListId, fullListPreparedCaster, maxCastableSpellLevel]);
+
+  const sheetDisplaySpells = useMemo(
+    () => getSpellcastingSheetSpells(data.spells.known, resolvedClass),
+    [data.spells.known, resolvedClass]
+  );
+  const sheetDisplaySpellIds = useMemo(
+    () => new Set(sheetDisplaySpells.map((spell) => spell.id)),
+    [sheetDisplaySpells]
+  );
 
   const knownSpellGroups = useMemo(
     () =>
@@ -1299,8 +1310,8 @@ export function CharacterSheet({
     () => buildSpellGrantSourceMap(data, featureCatalogs),
     [data, featureCatalogs]
   );
-  const spellGrantUsageMap = useMemo(
-    () => buildSpellGrantUsageMap(data, featureCatalogs),
+  const spellGrantNotesMap = useMemo(
+    () => buildSpellGrantNotesMap(data, featureCatalogs),
     [data, featureCatalogs]
   );
   const grantedFeatures = useMemo(
@@ -2508,6 +2519,7 @@ export function CharacterSheet({
                       ? ABILITY_FULL_LABELS[resolvedClass.spellcasting.ability]
                       : "—"
                   }
+                  tooltip={spellcastingAbilityTooltip}
                 />
                 <Stat
                   label="Spell Save DC"
@@ -2527,27 +2539,20 @@ export function CharacterSheet({
 
               <div className="space-y-1 text-xs">
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  <span className={cantripCount > spellLimits.cantripsKnown ? "text-destructive font-medium" : "text-muted-foreground"}>
-                    Cantrips: {cantripCount}/{spellLimits.cantripsKnown}
-                    {grantedCantripCount > 0 ? ` + ${grantedCantripCount}` : ""}
-                  </span>
+                  {cantripCountDisplay ? (
+                    <span className="text-muted-foreground">
+                      {cantripCountDisplay}
+                    </span>
+                  ) : null}
                   {spellLimits.spellsKnown !== null ? (
-                    <span className={leveledKnownCount > spellLimits.spellsKnown ? "text-destructive font-medium" : "text-muted-foreground"}>
-                      Spells known: {leveledKnownCount}/{spellLimits.spellsKnown}
-                      {grantedLeveledCount > 0 ? ` + ${grantedLeveledCount}` : ""}
+                    <span className="text-muted-foreground">
+                      {spellsKnownCountDisplay}
                     </span>
                   ) : null}
                   {spellLimits.preparedSpells !== null ? (
                     <Tooltip content={preparedSpellLimitTooltip}>
-                      <span
-                        className={
-                          preparedLeveledCount > spellLimits.preparedSpells
-                            ? "text-destructive font-medium cursor-default"
-                            : "text-muted-foreground cursor-default"
-                        }
-                      >
-                        Prepared spells: {preparedLeveledCount}/{spellLimits.preparedSpells}
-                        {grantedLeveledCount > 0 ? ` + ${grantedLeveledCount}` : ""}
+                      <span className="text-muted-foreground cursor-default">
+                        {preparedSpellsCountDisplay}
                       </span>
                     </Tooltip>
                   ) : null}
@@ -2561,34 +2566,42 @@ export function CharacterSheet({
                 </>
               ) : null}
 
-              {data.spells.known.length === 0 ? (
+              {sheetDisplaySpells.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {editable && classSpellcastingActive && spellLimits
-                    ? fullListPreparedCaster
-                      ? spellLimits.cantripsKnown > 0
-                        ? canEditPlayerCantrips
-                          ? "Add cantrips from the catalog or take a long rest to change prepared spells."
-                          : "Cantrips are set at creation. Take a long rest to change prepared spells."
-                        : "Take a long rest to prepare spells from your class list."
-                      : isWizardClass || dmSpellEditToggleLabel === "Edit spells"
-                        ? canEditWizardSpells
-                          ? 'Click "+ Add Spell" to pick from the catalog.'
-                          : "Spells are set at creation. Take a long rest to change prepared spells."
-                        : canEditPlayerCantrips
-                          ? 'Click "+ Add Spell" to pick from the catalog.'
-                          : 'Click "+ Add Spell" to add leveled spells. Cantrips are set at creation.'
+                    ? isWizardClass
+                      ? canEditWizardSpells
+                        ? 'Click "+ Add Spell" to pick from the catalog.'
+                        : "Take a long rest to change prepared spells."
+                      : fullListPreparedCaster
+                        ? spellLimits.cantripsKnown > 0
+                          ? canEditPlayerCantrips
+                            ? "Add cantrips from the catalog or take a long rest to change prepared spells."
+                            : "Cantrips are set at creation. Take a long rest to change prepared spells."
+                          : "Take a long rest to prepare spells from your class list."
+                        : knownCasterClass
+                          ? canEditWizardSpells
+                            ? 'Click "+ Add Spell" to pick from the catalog.'
+                            : "Spells are learned on level-up."
+                          : canEditPlayerCantrips
+                            ? 'Click "+ Add Spell" to pick from the catalog.'
+                            : 'Click "+ Add Spell" to add leveled spells. Cantrips are set at creation.'
                     : "No spells."}
                 </p>
               ) : (
                 <div className="space-y-4">
                   {knownSpellGroups.map((group) => {
+                      const visibleSpells = group.spells.filter(({ spell }) =>
+                        sheetDisplaySpellIds.has(spell.id)
+                      );
+                      if (visibleSpells.length === 0) return null;
                       const slotInfo =
                         group.level > 0 && spellLimits
                           ? getSpellSlotAtLevel(data.spells.slots, group.level)
                           : null;
                       const levelPreparedSummary = spellLimits
                         ? formatLevelPreparedSummary(
-                            group.spells.map(({ spell }) => spell),
+                            visibleSpells.map(({ spell }) => spell),
                             group.level,
                             {
                               cantripsKnown: spellLimits.cantripsKnown,
@@ -2652,7 +2665,7 @@ export function CharacterSheet({
                           ) : null}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {group.spells.map(({ spell, index: i }) => {
+                        {visibleSpells.map(({ spell, index: i }) => {
                           const catalogSpell = spell.spellId
                             ? catalogSpells[spell.spellId]
                             : null;
@@ -2660,8 +2673,11 @@ export function CharacterSheet({
                           const spellTooltip = catalogSpell?.description || null;
                           const isGrantSpell = isManagedGrantSpell(spell);
                           const grantSource = spellGrantSourceLabel(spell, spellGrantSourceMap);
-                          const grantUsage = spell.grantKey
-                            ? spellGrantUsageMap.get(spell.grantKey)
+                          const grantUsageSpec = spell.grantKey
+                            ? getGrantUsageSpec(spell.grantKey, data, featureCatalogs)
+                            : undefined;
+                          const grantNotes = spell.grantKey
+                            ? spellGrantNotesMap.get(spell.grantKey)
                             : undefined;
                           const grantUsesRemaining =
                             isGrantSpell && spell.grantKey
@@ -2689,11 +2705,6 @@ export function CharacterSheet({
                               dmCantripEditMode,
                               level
                             );
-                          const showPreparedBadge =
-                            spell.level > 0 &&
-                            spell.prepared &&
-                            !isGrantSpell &&
-                            spellLimits?.isWizard === true;
 
                           return (
                             <div
@@ -2737,28 +2748,29 @@ export function CharacterSheet({
                                     {grantSource}
                                   </Badge>
                                 ) : null}
-                                {showPreparedBadge ? (
-                                  <Badge variant="secondary" className="text-xs shrink-0">
-                                    Prepared
-                                  </Badge>
-                                ) : null}
                               </div>
                               {catalogSpell ? (
                                 <SpellGlossaryMeta
                                   spell={catalogSpell}
-                                  usageLabel={grantUsage}
                                   showMaterialLine
+                                  showDuration
                                 />
                               ) : spell.notes && !isGrantSpell ? (
                                 <p className="text-xs text-muted-foreground capitalize truncate">
                                   {spell.notes}
                                 </p>
+                              ) : grantNotes ? (
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {grantNotes}
+                                </p>
                               ) : null}
-                              {grantUsesRemaining ? (
+                              {grantUsesRemaining && grantUsageSpec ? (
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                                   <span>
-                                    Uses: {grantUsesRemaining.current}/
-                                    {grantUsesRemaining.max} remaining
+                                    {formatGrantUsesDisplayLine(
+                                      grantUsesRemaining,
+                                      grantUsageSpec
+                                    )}
                                   </span>
                                   {canMutate && spell.grantKey ? (
                                     <Button
@@ -3005,13 +3017,17 @@ export function CharacterSheet({
             />
           ) : null}
 
-          {fullListPreparedCaster && classSpellListId && classSpellcastingActive ? (
+          {fullListPreparedCaster &&
+          classSpellListId &&
+          classSpellcastingActive ? (
             <ClassSpellListDialog
               open={classSpellListOpen}
               onClose={() => setClassSpellListOpen(false)}
               classListId={classSpellListId}
               maxSpellLevel={maxCastableSpellLevel}
-              preparedSlugs={preparedLeveledSlugs}
+              markedSlugs={preparedLeveledSlugs}
+              badgeLabel="Prepared"
+              title="See spells"
             />
           ) : null}
 
@@ -3544,6 +3560,7 @@ export function CharacterSheet({
                       attuned: false,
                       magicItem: false,
                       notes: "",
+                      loadedQuantity: 0,
                     })
                   );
                 }
@@ -3576,6 +3593,7 @@ export function CharacterSheet({
                     attuned: false,
                     magicItem: catalogItem.is_magic,
                     notes: "",
+                    loadedQuantity: 0,
                   })
                 );
               }

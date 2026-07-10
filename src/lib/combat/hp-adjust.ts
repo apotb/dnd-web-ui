@@ -19,12 +19,35 @@ export function combatTokenHpFingerprint(state: CombatState): string {
   );
 }
 
+export function combatTokenLayoutFingerprint(state: CombatState): string {
+  return JSON.stringify(
+    state.tokens.map((token) => ({
+      id: token.id,
+      x: token.x,
+      y: token.y,
+      width: token.width,
+      height: token.height,
+    }))
+  );
+}
+
+export function combatStatePersistAwaitFingerprint(state: CombatState): string {
+  return `${combatTokenHpFingerprint(state)}|${combatTokenLayoutFingerprint(state)}`;
+}
+
 export function getTokenHpDisplay(
   token: CombatToken,
   character: ParsedCharacter | null,
   enemyData: EnemyData | null
 ): { currentHp: number; maxHp: number } {
   if (token.kind === "party" && character) {
+    return {
+      currentHp: token.currentHp ?? character.data.combat.currentHp,
+      maxHp: token.maxHp ?? character.data.combat.maxHp,
+    };
+  }
+
+  if (token.kind === "ally" && character) {
     return {
       currentHp: token.currentHp ?? character.data.combat.currentHp,
       maxHp: token.maxHp ?? character.data.combat.maxHp,
@@ -42,17 +65,30 @@ export function mergeLiveStatePreservingTokenHp(
   draft: CombatState,
   liveState: CombatState
 ): CombatState {
+  return mergeLiveStatePreservingDraftTokens(draft, liveState);
+}
+
+export function mergeLiveStatePreservingDraftTokens(
+  draft: CombatState,
+  liveState: CombatState
+): CombatState {
   const draftById = new Map(draft.tokens.map((token) => [token.id, token]));
   return {
     ...liveState,
     tokens: liveState.tokens.map((token) => {
       const local = draftById.get(token.id);
-      if (!local || local.currentHp == null) return token;
+      if (!local) return token;
       return {
         ...token,
-        currentHp: local.currentHp,
-        maxHp: local.maxHp ?? token.maxHp,
-        damageTaken: local.damageTaken ?? token.damageTaken,
+        x: local.x,
+        y: local.y,
+        ...(local.currentHp != null
+          ? {
+              currentHp: local.currentHp,
+              maxHp: local.maxHp ?? token.maxHp,
+              damageTaken: local.damageTaken ?? token.damageTaken,
+            }
+          : {}),
       };
     }),
   };

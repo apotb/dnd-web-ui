@@ -216,6 +216,17 @@ html.campaign-bg-active .lore-category-tab-actions {
   border: 1px solid #000;
 }
 
+html.campaign-bg-active .lore-category-editing-header .candy-btn-sm:not(:disabled) {
+  background: #fff;
+}
+
+html.campaign-bg-active .lore-category-add-row,
+html.campaign-bg-active .lore-category-rename-row {
+  padding: 4px 8px;
+  background: #fff;
+  border: 1px solid #000;
+}
+
 
 .campaign-bg-toggle {
   position: fixed;
@@ -922,6 +933,7 @@ html.campaign-bg-active .lore-category-tab-actions {
 }
 
 .party-overview-stack > .notable-editing-toggle,
+.party-overview-stack > .lore-category-editing-header,
 .party-overview-stack > .lore-category-tabs,
 .party-overview-stack > p.retro-hint,
 .party-overview-stack > p.retro-note {
@@ -1047,6 +1059,33 @@ html.campaign-bg-active .lore-category-tab-actions {
   flex-wrap: wrap;
   gap: 6px;
   font-size: 11px;
+}
+
+.lore-category-editing-header {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.lore-category-editing-header .notable-editing-toggle {
+  flex: 0 0 auto;
+}
+
+.lore-category-editing-header .candy-btn-sm {
+  display: inline-block;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.lore-category-editing-header .candy-btn-sm:disabled {
+  opacity: 1;
+  background: #ccc;
+  color: #666;
+  border-color: #999;
+  cursor: not-allowed;
 }
 
 .lore-category-tab-actions .retro-inline-link:disabled {
@@ -4272,6 +4311,27 @@ html.campaign-bg-active .retro-back-link {
   justify-content: space-between;
 }
 
+.combat-ammo-refill-section {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.combat-ammo-refill-title {
+  font-weight: 600;
+  margin: 0;
+}
+
+.combat-ammo-refill-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
 .combat-marker-dialog-object-settings {
   display: flex;
   flex-direction: column;
@@ -4514,6 +4574,11 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-weapon-grip-option input {
   margin: 0;
+}
+
+.combat-weapon-grip-option:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .combat-attack-panel {
@@ -4961,7 +5026,10 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-grid-fullscreen {
   width: min(100vw, calc(100vh * var(--grid-width) / var(--grid-height)));
+  height: min(100vh, calc(100vw * var(--grid-height) / var(--grid-width)));
+  max-width: 100vw;
   max-height: 100vh;
+  aspect-ratio: auto;
   flex-shrink: 0;
 }
 
@@ -4970,6 +5038,7 @@ html.campaign-bg-active .retro-back-link {
   inset: 0;
   z-index: 10000;
   background: #000;
+  overflow: hidden;
 }
 
 .combat-board-fullscreen-close {
@@ -5002,6 +5071,7 @@ html.campaign-bg-active .retro-back-link {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .combat-grid-dragging .combat-token:not(.combat-token-dragging) {
@@ -5064,7 +5134,8 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .combat-token-dm {
-  cursor: pointer;
+  cursor: grab;
+  pointer-events: auto;
 }
 
 .combat-token-dm.combat-token-dragging {

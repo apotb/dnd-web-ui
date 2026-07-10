@@ -354,9 +354,7 @@ export function CharacterRestButtons({
           maxSpellLevel={maxCastableSpellLevel}
           prepareLimit={spellLimits.preparedSpells}
           currentlyPreparedSlugs={preparedLeveledSlugs}
-          spellbookSlugs={
-            isWizard(resolvedClass!) ? spellbookSlugs : undefined
-          }
+          spellbookSlugs={isWizard(resolvedClass!) ? spellbookSlugs : undefined}
           title={
             isWizard(resolvedClass!)
               ? "Prepare spells from spellbook"

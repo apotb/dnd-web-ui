@@ -30,11 +30,15 @@ import {
 import { TWO_HUMANOID_SPECIES_OPTION } from "@/lib/dnd/phb/favored-enemy-humanoids";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
+import { getSpell } from "@/lib/dnd/phb/spells";
+import { isManagedGrantSpell } from "@/lib/character/spell-sources";
 import {
   classHasSpellcastingAtLevel,
+  countPlayerLeveledKnown,
   getCantripsKnownLimit,
   getPreparedSpellPickCount,
   getSpellsKnownPickCount,
+  isKnownCaster,
   isWizard,
 } from "@/lib/dnd/spellcasting";
 import { abilityModifier } from "@/lib/dnd/calculations";
@@ -51,6 +55,7 @@ export type LevelUpStepKind =
   | "rangerPicks"
   | "cantrips"
   | "spellsKnown"
+  | "swapKnownSpell"
   | "wizardSpellbook"
   | "asiOrFeat";
 
@@ -73,8 +78,9 @@ export interface HpStep extends LevelUpStepBase {
   kind: "hp";
   hitDie: number;
   conMod: number;
-  /** Mean die roll rounded down (floor(d/2)). */
+  /** Mean die roll rounded down (floor(d/2)); die-only, excludes CON. */
   averageRoll: number;
+  /** Same as averageRoll; stored in levelUpHpGains when taking average. */
   averageGain: number;
 }
 
@@ -119,6 +125,12 @@ export interface SpellsKnownStep extends LevelUpStepBase {
   maxSpellLevel: number;
 }
 
+export interface SwapKnownSpellStep extends LevelUpStepBase {
+  kind: "swapKnownSpell";
+  classListId: string;
+  maxSpellLevel: number;
+}
+
 export interface WizardSpellbookStep extends LevelUpStepBase {
   kind: "wizardSpellbook";
   count: number;
@@ -140,6 +152,7 @@ export type LevelUpStep =
   | RangerPicksStep
   | CantripsStep
   | SpellsKnownStep
+  | SwapKnownSpellStep
   | WizardSpellbookStep
   | AsiOrFeatStep;
 
@@ -176,6 +189,10 @@ export interface LevelUpDraft {
   featureChoices?: Partial<FeatureChoices>;
   cantripIds?: string[];
   spellIds?: string[];
+  spellSwap?: {
+    replaceSlug?: string;
+    newSlug?: string;
+  };
   preparedSpellIds?: string[];
   wizardSpellIds?: string[];
   asiOrFeat?: LevelUpAsiDraft | LevelUpFeatDraft;
@@ -227,6 +244,46 @@ function getMaxCastableAtLevel(
     1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9,
   ];
   return row[Math.min(targetLevel, 20) - 1] ?? 1;
+}
+
+function listPlayerLeveledKnownSlugs(
+  known: CharacterData["spells"]["known"]
+): string[] {
+  return known
+    .filter(
+      (spell) =>
+        spell.level > 0 && spell.spellId && !isManagedGrantSpell(spell)
+    )
+    .map((spell) => spell.spellId as string);
+}
+
+function validateKnownSpellSwap(
+  data: CharacterData,
+  draft: LevelUpDraft,
+  maxSpellLevel: number
+): string | null {
+  const swap = draft.spellSwap;
+  if (!swap?.replaceSlug && !swap?.newSlug) return null;
+  if (!swap.replaceSlug || !swap.newSlug) {
+    return "Choose both the spell to replace and the new spell, or skip this step.";
+  }
+  if (!listPlayerLeveledKnownSlugs(data.spells.known).includes(swap.replaceSlug)) {
+    return "Choose a spell you currently know to replace.";
+  }
+  const knownSlugs = new Set(
+    data.spells.known
+      .filter((spell) => spell.spellId)
+      .map((spell) => spell.spellId as string)
+  );
+  if (knownSlugs.has(swap.newSlug) && swap.newSlug !== swap.replaceSlug) {
+    return "You already know that spell.";
+  }
+  const phb = getSpell(swap.newSlug);
+  if (!phb) return "Choose a valid spell from your class list.";
+  if (phb.level < 1 || phb.level > maxSpellLevel) {
+    return `Choose a spell up to level ${maxSpellLevel}.`;
+  }
+  return null;
 }
 
 function resolveClassHitDie(cls: PhbClass): number {
@@ -306,21 +363,28 @@ export function averageHitDieRoll(hitDie: number): number {
   return Math.floor(hitDie / 2);
 }
 
-export function averageHpGain(hitDie: number, conMod: number): number {
-  return Math.max(1, averageHitDieRoll(hitDie) + conMod);
+/** Die roll or average only (excludes CON modifier). */
+export function computeLevelUpDieGain(
+  hitDie: number,
+  method: HpGainMethod,
+  rollResult?: number
+): number {
+  if (method === "average") {
+    return averageHitDieRoll(hitDie);
+  }
+  const roll = rollResult ?? 0;
+  return Math.max(1, roll);
 }
 
-export function computeHpGain(
+/** Total max HP gained this level (die + CON, minimum 1). */
+export function computeLevelUpHpIncrease(
   hitDie: number,
   conMod: number,
   method: HpGainMethod,
   rollResult?: number
 ): number {
-  if (method === "average") {
-    return averageHpGain(hitDie, conMod);
-  }
-  const roll = rollResult ?? 0;
-  return Math.max(1, roll + conMod);
+  const dieGain = computeLevelUpDieGain(hitDie, method, rollResult);
+  return Math.max(1, dieGain + conMod);
 }
 
 const SPELL_STEP_KINDS: LevelUpStepKind[] = [
@@ -328,6 +392,7 @@ const SPELL_STEP_KINDS: LevelUpStepKind[] = [
   "prepareSpells",
   "wizardSpellbook",
   "spellsKnown",
+  "swapKnownSpell",
 ];
 
 const TRAILING_STEP_KINDS: LevelUpStepKind[] = [
@@ -400,6 +465,12 @@ function previewForChoiceStep(step: LevelUpStep): LevelUpFeaturePreview | null {
       return {
         name: `+${step.count} spell${step.count === 1 ? "" : "s"} known`,
         description: `Choose up to ${step.maxSpellLevel}${step.maxSpellLevel === 1 ? "st" : step.maxSpellLevel === 2 ? "nd" : step.maxSpellLevel === 3 ? "rd" : "th"}-level spells.`,
+        source: "other",
+      };
+    case "swapKnownSpell":
+      return {
+        name: "Swap one known spell (optional)",
+        description: `Replace one spell you know with another from your class list (up to ${step.maxSpellLevel}${step.maxSpellLevel === 1 ? "st" : step.maxSpellLevel === 2 ? "nd" : step.maxSpellLevel === 3 ? "rd" : "th"} level).`,
         source: "other",
       };
     case "wizardSpellbook":
@@ -592,7 +663,7 @@ function collectChoiceSteps(
       hitDie,
       conMod,
       averageRoll,
-      averageGain: averageHpGain(hitDie, conMod),
+      averageGain: averageRoll,
     });
   }
 
@@ -645,6 +716,18 @@ function collectChoiceSteps(
           maxSpellLevel: getMaxCastableAtLevel(cls, targetLevel),
         });
       }
+    }
+
+    if (
+      isKnownCaster(cls) &&
+      classHasSpellcastingAtLevel(cls, targetLevel) &&
+      countPlayerLeveledKnown(data.spells.known) >= 1
+    ) {
+      choiceSteps.push({
+        kind: "swapKnownSpell",
+        classListId: cls.spellcasting?.spellListId ?? cls.id,
+        maxSpellLevel: getMaxCastableAtLevel(cls, targetLevel),
+      });
     }
   }
 
@@ -833,6 +916,11 @@ export function validateLevelUpDraft(
         if ((draft.spellIds?.length ?? 0) !== step.count) {
           return `Choose ${step.count} spell${step.count === 1 ? "" : "s"}.`;
         }
+        break;
+      }
+      case "swapKnownSpell": {
+        const err = validateKnownSpellSwap(data, draft, step.maxSpellLevel);
+        if (err) return err;
         break;
       }
       case "wizardSpellbook": {

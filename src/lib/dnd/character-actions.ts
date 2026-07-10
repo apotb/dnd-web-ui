@@ -328,6 +328,20 @@ export function getActionSheetSection(action: CharacterActionEntry): ActionCost 
   return action.cost;
 }
 
+function movementSectionSort(
+  a: CharacterActionEntry,
+  b: CharacterActionEntry
+): number {
+  const order = (id: string) => {
+    if (id === "core:move") return 0;
+    if (id === "core:dash") return 1;
+    return 2;
+  };
+  const diff = order(a.id) - order(b.id);
+  if (diff !== 0) return diff;
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
 export function groupActionsByCost(
   actions: CharacterActionEntry[]
 ): Map<ActionCost, CharacterActionEntry[]> {
@@ -341,7 +355,7 @@ export function groupActionsByCost(
   return grouped;
 }
 
-/** Group actions for the character sheet Actions card (Dash appears under Movement). */
+/** Group actions for the character sheet Actions card (Dash appears under Movement, after Move). */
 export function groupActionsBySheetSection(
   actions: CharacterActionEntry[]
 ): Map<ActionCost, CharacterActionEntry[]> {
@@ -352,6 +366,7 @@ export function groupActionsBySheetSection(
   for (const action of actions) {
     grouped.get(getActionSheetSection(action))?.push(action);
   }
+  grouped.get("movement")?.sort(movementSectionSort);
   return grouped;
 }
 

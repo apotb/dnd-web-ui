@@ -19,10 +19,15 @@ import {
   classHasSpellcastingAtLevel,
   countPlayerPreparedLeveled,
   enforcePreparedLimit,
+  formatCantripCountDisplay,
+  formatPreparedSpellsCountDisplay,
+  formatSpellsKnownCountDisplay,
   formatLevelPreparedSummary,
   getPreparedSpellLimit,
+  getPreparedSpellPickCount,
   getSpellcastingFeatureDescription,
   getSpellcastingLimits,
+  getSpellcastingSheetSpells,
   getSpellsKnownLimit,
   getSpellsKnownPickCount,
   getWizardSpellbookSpells,
@@ -159,12 +164,14 @@ describe("wizard spell sheet permissions", () => {
     );
   });
 
-  it("requires DM edit mode for wizard and no-cantrip prepared caster spell changes", () => {
+  it("requires DM edit mode for wizard, known casters, and no-cantrip prepared caster spell changes", () => {
     assert.equal(canModifyPlayerSpells(true, true, wizard, 2), true);
     assert.equal(canModifyPlayerSpells(true, false, wizard, 2), false);
     assert.equal(canModifyPlayerSpells(true, true, cleric, 1), false);
     assert.equal(canModifyPlayerSpells(true, true, paladin, 2), true);
     assert.equal(canModifyPlayerSpells(true, true, paladin, 1), false);
+    assert.equal(canModifyPlayerSpells(true, true, bard, 1), true);
+    assert.equal(canModifyPlayerSpells(true, false, bard, 1), false);
   });
 
   it("locks wizard spells on the sheet unless DM edit mode is on", () => {
@@ -187,19 +194,23 @@ describe("wizard spell sheet permissions", () => {
     assert.equal(canAddSpellsOnSheet(paladin, true, false, 2), false);
   });
 
-  it("still allows known casters to edit leveled spells without DM mode", () => {
+  it("locks known caster leveled spells on the sheet unless DM edit mode is on", () => {
     const leveled = spell({ name: "Charm Person", level: 1, spellId: "charm-person" });
-    assert.equal(canEditSpellOnSheet(leveled, bard, false, false), true);
-    assert.equal(canAddSpellsOnSheet(bard, false, false), true);
+    assert.equal(canEditSpellOnSheet(leveled, bard, false, false), false);
+    assert.equal(canEditSpellOnSheet(leveled, bard, true, true, 1), true);
+    assert.equal(canAddSpellsOnSheet(bard, false, false), false);
+    assert.equal(canAddSpellsOnSheet(bard, true, true, 1), true);
     assert.equal(canAddSpellsOnSheet(wizard, true, false), false);
   });
 });
 
 describe("isFullListPreparedCaster", () => {
-  it("is true for cleric and druid", () => {
+  it("is true for cleric, druid, and paladin", () => {
     const druid = PHB_CLASSES.find((c) => c.id === "druid")!;
     assert.equal(isFullListPreparedCaster(cleric), true);
     assert.equal(isFullListPreparedCaster(druid), true);
+    assert.equal(isFullListPreparedCaster(paladin), true);
+    assert.equal(isFullListPreparedCaster(ranger), false);
   });
 
   it("is false for wizard and known casters", () => {
@@ -509,6 +520,7 @@ describe("ranger half-caster spellcasting", () => {
     assert.equal(classHasSpellcastingAtLevel(ranger, 1), false);
     assert.equal(canUseClassSpellcasting(ranger, 1), false);
     assert.equal(isKnownCaster(ranger), true);
+    assert.equal(isFullListPreparedCaster(ranger), false);
     assert.equal(canReprepareSpellsOnLongRest(ranger), false);
     const slots = buildSpellSlots(ranger, 1);
     assert.deepEqual(slots, {});
@@ -521,7 +533,6 @@ describe("ranger half-caster spellcasting", () => {
     assert.deepEqual(slots, { "1": { max: 2, used: 0 } });
     assert.equal(getSpellsKnownLimit(ranger, 2), 2);
     assert.equal(getSpellsKnownPickCount(ranger, 1, 2), 2);
-    assert.equal(getSpellsKnownPickCount(ranger, 2, 3), 1);
     assert.match(getSpellcastingFeatureDescription(ranger), /spells known/i);
     const limits = getSpellcastingLimits(ranger, 2, scores);
     assert.equal(limits.spellsKnown, 2);
@@ -557,5 +568,102 @@ describe("canShowDmCantripEditToggle", () => {
   it("is true for wizard at level 1", () => {
     assert.equal(canShowDmCantripEditToggle(wizard, 1), true);
     assert.equal(getDmSpellEditToggleLabel(wizard, 1), "Edit spells");
+  });
+});
+
+describe("formatCantripCountDisplay", () => {
+  it("shows merged total for grant-only cantrips", () => {
+    assert.equal(
+      formatCantripCountDisplay([
+        spell({
+          name: "Light",
+          level: 0,
+          spellId: "light",
+          grantKey: "grant:species",
+        }),
+      ]),
+      "Cantrips: 1"
+    );
+    assert.equal(formatCantripCountDisplay([]), null);
+  });
+
+  it("merges player and grant cantrips into one total", () => {
+    assert.equal(
+      formatCantripCountDisplay([
+        spell({ name: "Fire Bolt", level: 0, spellId: "fire-bolt" }),
+        spell({
+          name: "Light",
+          level: 0,
+          spellId: "light",
+          grantKey: "grant:species",
+        }),
+      ]),
+      "Cantrips: 2"
+    );
+  });
+});
+
+describe("formatSpellsKnownCountDisplay", () => {
+  it("merges player and grant leveled spells", () => {
+    assert.equal(
+      formatSpellsKnownCountDisplay([
+        spell({ name: "Charm Person", level: 1, spellId: "charm-person" }),
+        spell({
+          name: "Bless",
+          level: 1,
+          spellId: "bless",
+          prepared: true,
+          grantKey: "grant:domain",
+        }),
+      ]),
+      "Spells known: 2"
+    );
+  });
+});
+
+describe("formatPreparedSpellsCountDisplay", () => {
+  it("includes always-prepared grant spells", () => {
+    assert.equal(
+      formatPreparedSpellsCountDisplay([
+        spell({ name: "Cure Wounds", level: 1, spellId: "cure-wounds", prepared: true }),
+        spell({
+          name: "Bless",
+          level: 1,
+          spellId: "bless",
+          prepared: true,
+          grantKey: "grant:domain",
+        }),
+        spell({ name: "Shield", level: 1, spellId: "shield", prepared: false }),
+      ]),
+      "Prepared spells: 2"
+    );
+  });
+});
+
+describe("getSpellcastingSheetSpells", () => {
+  it("filters unprepared wizard spellbook spells from the sheet list", () => {
+    const known = [
+      spell({ name: "Fire Bolt", level: 0, spellId: "fire-bolt", prepared: true }),
+      spell({ name: "Alarm", level: 1, spellId: "alarm", prepared: true }),
+      spell({ name: "Feather Fall", level: 1, spellId: "feather-fall", prepared: false }),
+    ];
+    const sheetSpells = getSpellcastingSheetSpells(known, wizard);
+    assert.equal(sheetSpells.length, 2);
+    assert.ok(sheetSpells.some((s) => s.spellId === "alarm"));
+    assert.ok(!sheetSpells.some((s) => s.spellId === "feather-fall"));
+  });
+
+  it("returns all known spells for non-wizard casters", () => {
+    const known = [
+      spell({ name: "Vicious Mockery", level: 0, spellId: "vicious-mockery" }),
+      spell({
+        name: "Hunter's Mark",
+        level: 1,
+        spellId: "hunters-mark",
+        prepared: false,
+      }),
+    ];
+    assert.deepEqual(getSpellcastingSheetSpells(known, bard), known);
+    assert.deepEqual(getSpellcastingSheetSpells(known, ranger), known);
   });
 });

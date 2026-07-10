@@ -31,7 +31,9 @@ interface ClassSpellListDialogProps {
   onClose: () => void;
   classListId: string;
   maxSpellLevel: number;
-  preparedSlugs: string[];
+  markedSlugs: string[];
+  badgeLabel?: "Prepared" | "Known";
+  title?: string;
 }
 
 export function ClassSpellListDialog({
@@ -39,14 +41,16 @@ export function ClassSpellListDialog({
   onClose,
   classListId,
   maxSpellLevel,
-  preparedSlugs,
+  markedSlugs,
+  badgeLabel = "Prepared",
+  title = "See spells",
 }: ClassSpellListDialogProps) {
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState("all");
   const [allSpells, setAllSpells] = useState<CatalogSpellRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const preparedSlugSet = useMemo(() => new Set(preparedSlugs), [preparedSlugs]);
+  const markedSlugSet = useMemo(() => new Set(markedSlugs), [markedSlugs]);
 
   useEffect(() => {
     if (!open) {
@@ -94,7 +98,7 @@ export function ClassSpellListDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>See spells</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <p className="text-sm text-muted-foreground">
             {loading
               ? "Loading…"
@@ -142,7 +146,7 @@ export function ClassSpellListDialog({
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {spells.map((spell) => {
-                    const isPrepared = preparedSlugSet.has(spell.slug);
+                    const isMarked = markedSlugSet.has(spell.slug);
                     const tooltip = formatSpellPickerTooltip(spell);
                     return (
                       <Tooltip key={spell.slug} content={tooltip}>
@@ -153,9 +157,9 @@ export function ClassSpellListDialog({
                               {spell.ritual ? " ◆" : ""}
                             </span>
                             <div className="flex shrink-0 items-center gap-1">
-                              {isPrepared ? (
+                              {isMarked ? (
                                 <Badge variant="secondary" className="text-xs">
-                                  Prepared
+                                  {badgeLabel}
                                 </Badge>
                               ) : null}
                               <Badge variant="outline" className="text-xs">

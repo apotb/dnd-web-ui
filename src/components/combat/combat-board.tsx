@@ -31,9 +31,10 @@ import { saveCharacterData } from "@/lib/character/save-character-data";
 import { calculateAcBreakdown, formatAcTooltip } from "@/lib/character/ac-derivation";
 import {
   applyHpDelta,
-  combatTokenHpFingerprint,
+  combatStatePersistAwaitFingerprint,
+  combatTokenLayoutFingerprint,
   getTokenHpDisplay,
-  mergeLiveStatePreservingTokenHp,
+  mergeLiveStatePreservingDraftTokens,
   parsePositiveHpAmount,
   patchTokenHpFromDamage,
 } from "@/lib/combat/hp-adjust";
@@ -43,7 +44,11 @@ import {
   distributeXpPool,
 } from "@/lib/combat/xp-pool";
 import {
-  removeCombatImage,
+  cleanupEncounterOwnedImages,
+  cloneEncounterPayloadImages,
+} from "@/lib/combat/encounter-image-storage";
+import {
+  removeCombatImageIfUnreferenced,
   resolveCombatImageUrl,
   uploadCombatBackground,
   uploadMarkerPortrait,
@@ -149,8 +154,14 @@ import {
 } from "@/lib/combat/multiattack";
 import { parseEnemyActions } from "@/lib/combat/enemy-action-parser";
 import { leaveCombatArea } from "@/lib/combat/battle-over-actions";
+import {
+  markBattleAmmoPrepared,
+  preparePartyBattleAmmo,
+  unloadPartyBattleAmmo,
+} from "@/lib/combat/battle-start-ammo";
 import { getBattleOverTurnDisplay, isBattleOver } from "@/lib/combat/battle-over";
 import {
+  recordCombatAmmoRefill,
   recordCombatActionUsed,
   recordCombatBonusActionUsed,
   recordCombatDash,
@@ -180,6 +191,7 @@ import {
   recordCombatFeatureEffectExit,
 } from "@/lib/combat/feature-effect-actions";
 import {
+  buildTokenStatusContext,
   getTokenStatusEntries,
   getTokenStatusTooltip,
   isTokenRestrictedByEffects,
@@ -202,7 +214,6 @@ import {
   getTargetingHighlights,
   getAttackRollDisadvantage,
   formatAttackDisadvantageLabel,
-  hasRangedAttackAdjacentDisadvantage,
   isTokenOnGrid,
   parseAttackRangeSpec,
 } from "@/lib/combat/targeting";
@@ -272,6 +283,7 @@ import {
   populateCharacterPlaceholders,
 } from "@/lib/combat/character-placeholder";
 import { claimCombatCharacterSlot } from "@/lib/combat/character-slot-actions";
+import { parseSavedEncounterData } from "@/lib/schemas/saved-encounter";
 import {
   combatStateToEncounterPayload,
   isPreBattleSetup,
@@ -544,6 +556,10 @@ export function CombatBoard({
     () => Object.fromEntries(localCharacters.map((character) => [character.id, character])),
     [localCharacters]
   );
+  const tokenStatusContext = useMemo(
+    () => buildTokenStatusContext(localCharacters),
+    [localCharacters]
+  );
   const ownedCharacter = useMemo(
     () => (ownedCharacterId ? charactersById[ownedCharacterId] ?? null : null),
     [charactersById, ownedCharacterId]
@@ -607,6 +623,8 @@ export function CombatBoard({
   const [objectInteractionMode, setObjectInteractionMode] = useState(false);
   const [equipmentChangeOpen, setEquipmentChangeOpen] = useState(false);
   const [submittingEquipmentChange, setSubmittingEquipmentChange] = useState(false);
+  const battleAmmoPrepInFlightRef = useRef(false);
+  const prevBattleActiveRef = useRef(false);
   const [hoveredMovementCell, setHoveredMovementCell] = useState<{
     x: number;
     y: number;
@@ -667,8 +685,11 @@ export function CombatBoard({
   const supabase = useMemo(() => createClient(), []);
 
   const awaitingPersistFingerprintRef = useRef<string | null>(null);
+  const localLayoutDirtyRef = useRef(false);
 
-  const combatState = showDmUi ? draft : liveState;
+  const dmUsesDraftBoard =
+    isDm && (showDmUi || !isBattleActive(draft));
+  const combatState = dmUsesDraftBoard ? draft : liveState;
 
   combatStateRef.current = combatState;
 
@@ -737,7 +758,7 @@ export function CombatBoard({
   const persist = useCallback(
     async (next: CombatState): Promise<string | null> => {
       if (!isDm) return null;
-      awaitingPersistFingerprintRef.current = combatTokenHpFingerprint(next);
+      awaitingPersistFingerprintRef.current = combatStatePersistAwaitFingerprint(next);
       setDraft(next);
       const error = await persistCombatState(campaignId, next);
       if (error) {
@@ -853,19 +874,31 @@ export function CombatBoard({
 
     setDraft((prev) => {
       const awaited = awaitingPersistFingerprintRef.current;
-      const liveHp = combatTokenHpFingerprint(liveState);
-      const prevHp = combatTokenHpFingerprint(prev);
+      const liveFingerprint = combatStatePersistAwaitFingerprint(liveState);
+      const prevFingerprint = combatStatePersistAwaitFingerprint(prev);
+      const liveLayout = combatTokenLayoutFingerprint(liveState);
+      const prevLayout = combatTokenLayoutFingerprint(prev);
 
-      if (awaited && liveHp === awaited) {
+      if (awaited && liveFingerprint === awaited) {
         awaitingPersistFingerprintRef.current = null;
-      }
-
-      if (liveHp === prevHp) {
-        return liveState;
+        if (prevLayout === liveLayout) {
+          localLayoutDirtyRef.current = false;
+        }
       }
 
       if (awaitingPersistFingerprintRef.current != null) {
-        return mergeLiveStatePreservingTokenHp(prev, liveState);
+        return mergeLiveStatePreservingDraftTokens(prev, liveState);
+      }
+
+      if (localLayoutDirtyRef.current && prevLayout !== liveLayout) {
+        return mergeLiveStatePreservingDraftTokens(prev, liveState);
+      }
+
+      if (liveFingerprint === prevFingerprint) {
+        if (prevLayout === liveLayout) {
+          localLayoutDirtyRef.current = false;
+        }
+        return liveState;
       }
 
       return liveState;
@@ -914,6 +947,7 @@ export function CombatBoard({
         if (!position) return null;
 
         lastPosition = position;
+        localLayoutDirtyRef.current = true;
         setDraft((prev) => updateTokenInState(prev, tokenId, position));
         return position;
       }
@@ -936,16 +970,17 @@ export function CombatBoard({
           dragGrid.releasePointerCapture(pointerId);
         }
 
-        draggingTokenIdRef.current = null;
-        setDraggingTokenId(null);
         suppressNextGridDeselectRef.current = true;
 
         applyPointer(event.clientX, event.clientY);
-        setDraft((prev) => {
-          const next = updateTokenInState(prev, tokenId, lastPosition);
-          void persistRef.current(next);
-          return next;
-        });
+        const next = updateTokenInState(combatStateRef.current, tokenId, lastPosition);
+        localLayoutDirtyRef.current = true;
+        awaitingPersistFingerprintRef.current = combatStatePersistAwaitFingerprint(next);
+        setDraft(next);
+        void persistRef.current(next);
+
+        draggingTokenIdRef.current = null;
+        setDraggingTokenId(null);
       }
 
       dragGrid.addEventListener("pointermove", handlePointerMove);
@@ -957,8 +992,11 @@ export function CombatBoard({
 
   const handleTokenPointerDown = useCallback(
     (tokenId: string, event: React.PointerEvent<HTMLDivElement>) => {
-      if (!isDm || !showDmUi || collisionEditMode) return;
-      if (!losMode && dmTokenSelectionBlockedRef.current) return;
+      if (!isDm || collisionEditMode) return;
+      if (isBattleActive(combatStateRef.current)) {
+        if (!showDmUi) return;
+        if (!losMode && dmTokenSelectionBlockedRef.current) return;
+      }
       event.preventDefault();
       event.stopPropagation();
 
@@ -1423,12 +1461,14 @@ export function CombatBoard({
       enemyData,
       catalogItems,
       classCatalog,
+      tokenStatusContext,
     });
   }, [
     catalogItems,
     charactersById,
     classCatalog,
     enemiesBySlug,
+    tokenStatusContext,
     userOaAttackerToken,
   ]);
 
@@ -1760,7 +1800,7 @@ export function CombatBoard({
 
   const mapSelectionActive = Boolean(attackTargeting || movementMode || objectInteractionMode);
   dmTokenSelectionBlockedRef.current = Boolean(
-    (isDm && !showDmUi) ||
+    (isDm && !showDmUi && battleActive) ||
       attackTargeting ||
       movementMode ||
       objectInteractionMode ||
@@ -1801,7 +1841,7 @@ export function CombatBoard({
     return Object.fromEntries(
       targets.map((target) => [
         target.id,
-        getAttackRollDisadvantage(attacker, target, combatState, attack),
+        getAttackRollDisadvantage(attacker, target, combatState, attack, tokenStatusContext),
       ])
     );
   }
@@ -1834,7 +1874,7 @@ export function CombatBoard({
     if (!attack) return "Disadvantage on attack roll";
 
     return (
-      formatAttackDisadvantageLabel(attacker, targetToken, combatState, attack) ??
+      formatAttackDisadvantageLabel(attacker, targetToken, combatState, attack, tokenStatusContext) ??
       "Disadvantage on attack roll"
     );
   }
@@ -1941,6 +1981,49 @@ export function CombatBoard({
                   },
                 }
               : {}),
+          },
+        };
+      })
+    );
+  }
+
+  async function persistPartyAmmoUnload(charactersToUnload: ParsedCharacter[]) {
+    const updates = unloadPartyBattleAmmo(charactersToUnload, catalogItems);
+    if (updates.size === 0) return;
+
+    for (const [characterId, inventoryItems] of updates) {
+      const character = charactersToUnload.find((entry) => entry.id === characterId);
+      if (!character) continue;
+      const { error } = await saveCharacterData(
+        characterId,
+        {
+          ...character.data,
+          inventory: {
+            ...character.data.inventory,
+            items: inventoryItems,
+          },
+        },
+        undefined,
+        { isDm, originalData: character.data }
+      );
+      if (error) {
+        showAlert(error);
+        return;
+      }
+    }
+
+    setLocalCharacters((current) =>
+      current.map((character) => {
+        const inventoryItems = updates.get(character.id);
+        if (!inventoryItems) return character;
+        return {
+          ...character,
+          data: {
+            ...character.data,
+            inventory: {
+              ...character.data.inventory,
+              items: inventoryItems,
+            },
           },
         };
       })
@@ -2187,6 +2270,82 @@ export function CombatBoard({
     resolvingAttackId,
   ]);
 
+  useEffect(() => {
+    if (!isDm || !battleActive || combatState.battleAmmoPrepared) return;
+    if (battleAmmoPrepInFlightRef.current) return;
+
+    battleAmmoPrepInFlightRef.current = true;
+    void (async () => {
+      try {
+        const updates = preparePartyBattleAmmo(localCharacters, combatState, catalogItems);
+
+        for (const [characterId, inventoryItems] of updates) {
+          const character = localCharacters.find((entry) => entry.id === characterId);
+          if (!character) continue;
+          const { error } = await saveCharacterData(
+            characterId,
+            {
+              ...character.data,
+              inventory: {
+                ...character.data.inventory,
+                items: inventoryItems,
+              },
+            },
+            undefined,
+            { isDm: true, originalData: character.data }
+          );
+          if (error) {
+            showAlert(error);
+            return;
+          }
+        }
+
+        const next = markBattleAmmoPrepared(combatState);
+        const persistError = await persistCombatState(campaignId, next);
+        if (persistError) {
+          showAlert(persistError);
+          return;
+        }
+        setDraft(next);
+
+        if (updates.size > 0) {
+          applyCharacterHpUpdates(
+            next,
+            [...updates.entries()].map(([characterId, inventoryItems]) => {
+              const character = localCharacters.find((entry) => entry.id === characterId);
+              return {
+                characterId,
+                currentHp: character?.data.combat.currentHp ?? 0,
+                tempHp: character?.data.combat.tempHp ?? 0,
+                inventoryItems,
+              };
+            })
+          );
+        }
+      } finally {
+        battleAmmoPrepInFlightRef.current = false;
+      }
+    })();
+  }, [
+    battleActive,
+    campaignId,
+    catalogItems,
+    combatState,
+    isDm,
+    localCharacters,
+  ]);
+
+  useEffect(() => {
+    if (!isDm) return;
+
+    const wasActive = prevBattleActiveRef.current;
+    prevBattleActiveRef.current = battleActive;
+
+    if (wasActive && !battleActive) {
+      void persistPartyAmmoUnload(localCharacters);
+    }
+  }, [battleActive, catalogItems, isDm, localCharacters]);
+
   function handleToggleAutoApprove(checked: boolean) {
     if (checked === autoApprove) return;
     void persist({ ...combatState, autoApprove: checked });
@@ -2305,7 +2464,8 @@ export function CombatBoard({
         actingToken,
         destination,
         combatState,
-        disengageUsed
+        disengageUsed,
+        tokenStatusContext
       );
 
       if (opportunityAttackReactors.length > 0) {
@@ -2841,6 +3001,46 @@ export function CombatBoard({
     }
   }
 
+  async function handleConfirmAmmoRefill() {
+    if (!objectInteractionMode || !userControlsCombat || !actingToken || !actingTokenCharacter) {
+      return;
+    }
+
+    setSubmittingEquipmentChange(true);
+    const { next, error, characterId, inventoryItems } = await recordCombatAmmoRefill(
+      campaignId,
+      combatState,
+      {
+        isDm,
+        actorTokenId: actingToken.id,
+        character: actingTokenCharacter,
+        catalogItems,
+      }
+    );
+    setSubmittingEquipmentChange(false);
+
+    if (error) {
+      showAlert(error);
+      return;
+    }
+
+    setEquipmentChangeOpen(false);
+    clearObjectInteractionMode();
+    if (isDm) {
+      setDraft(next);
+    }
+    if (characterId && inventoryItems) {
+      applyCharacterHpUpdates(next, [
+        {
+          characterId,
+          currentHp: actingTokenCharacter.data.combat.currentHp,
+          tempHp: actingTokenCharacter.data.combat.tempHp,
+          inventoryItems,
+        },
+      ]);
+    }
+  }
+
   async function handleConfirmEquipmentChange(nextItems: ParsedCharacter["data"]["inventory"]["items"]) {
     if (!objectInteractionMode || !userControlsCombat || !actingToken || !actingTokenCharacter) {
       return;
@@ -3171,7 +3371,7 @@ export function CombatBoard({
     }
 
     if (previousPath && previousPath !== portraitPath) {
-      await removeCombatImage(supabase, previousPath);
+      await removeCombatImageIfUnreferenced(supabase, previousPath);
     }
 
     setEditMarkerOpen(false);
@@ -3246,9 +3446,10 @@ export function CombatBoard({
       onConfirm: async () => {
         await clearCampaignInitiativeRolls(
           campaignId,
-          characters.map((character) => character.id)
+          localCharacters.map((character) => character.id)
         );
-        const next = resetCombatBoard(combatStateRef.current, characters);
+        await persistPartyAmmoUnload(localCharacters);
+        const next = resetCombatBoard(combatStateRef.current, localCharacters);
         await persist(next);
         setSelectedTokenId(null);
         if (collisionEditMode) {
@@ -3319,18 +3520,28 @@ export function CombatBoard({
   async function persistEncounterOverwrite(name: string, targetId: string) {
     setSavingEncounter(true);
     const payload = combatStateToEncounterPayload(combatState, enemiesBySlug);
+    const previousEncounter = overwriteConfirmEncounter;
+
+    const { payload: clonedPayload, error: cloneError } =
+      await cloneEncounterPayloadImages(supabase, targetId, payload);
+
+    if (cloneError) {
+      setSavingEncounter(false);
+      showAlert(cloneError);
+      return;
+    }
 
     const { error } = await supabase
       .from("encounters")
       .update({
         name,
-        background_path: payload.backgroundPath,
-        grid_width: payload.gridWidth,
-        grid_height: payload.gridHeight,
-        tile_feet: payload.tileFeet,
-        blocked_cells: payload.blockedCells,
-        data: payload.data,
-        total_cr: payload.totalCr,
+        background_path: clonedPayload.backgroundPath,
+        grid_width: clonedPayload.gridWidth,
+        grid_height: clonedPayload.gridHeight,
+        tile_feet: clonedPayload.tileFeet,
+        blocked_cells: clonedPayload.blockedCells,
+        data: clonedPayload.data,
+        total_cr: clonedPayload.totalCr,
       })
       .eq("id", targetId);
 
@@ -3342,6 +3553,16 @@ export function CombatBoard({
       showAlert(error.message);
       return;
     }
+
+    if (previousEncounter) {
+      await cleanupEncounterOwnedImages(
+        supabase,
+        targetId,
+        previousEncounter.background_path,
+        parseSavedEncounterData(previousEncounter.data)
+      );
+    }
+
     await linkBoardToEncounter(name, targetId);
   }
 
@@ -3364,17 +3585,57 @@ export function CombatBoard({
       .select("*")
       .single();
 
+    if (error) {
+      setSavingEncounter(false);
+      setSaveEncounterNameOpen(false);
+      setOverwriteConfirmEncounter(null);
+      setPendingSaveName(null);
+      showAlert(error.message);
+      return;
+    }
+
+    const { payload: clonedPayload, error: cloneError } =
+      await cloneEncounterPayloadImages(supabase, data.id, payload);
+
+    if (cloneError) {
+      setSavingEncounter(false);
+      setSaveEncounterNameOpen(false);
+      setOverwriteConfirmEncounter(null);
+      setPendingSaveName(null);
+      showAlert(cloneError);
+      await linkBoardToEncounter(data.name, data.id);
+      return;
+    }
+
+    if (
+      clonedPayload.backgroundPath !== payload.backgroundPath ||
+      JSON.stringify(clonedPayload.data.markers) !==
+        JSON.stringify(payload.data.markers)
+    ) {
+      const { error: updateError } = await supabase
+        .from("encounters")
+        .update({
+          background_path: clonedPayload.backgroundPath,
+          data: clonedPayload.data,
+        })
+        .eq("id", data.id);
+
+      if (updateError) {
+        setSavingEncounter(false);
+        setSaveEncounterNameOpen(false);
+        setOverwriteConfirmEncounter(null);
+        setPendingSaveName(null);
+        showAlert(updateError.message);
+        await linkBoardToEncounter(data.name, data.id);
+        return;
+      }
+    }
+
     setSavingEncounter(false);
     setSaveEncounterNameOpen(false);
     setOverwriteConfirmEncounter(null);
     setPendingSaveName(null);
-    if (error) {
-      showAlert(error.message);
-      return;
-    }
-    if (data) {
-      await linkBoardToEncounter(data.name, data.id);
-    }
+    await linkBoardToEncounter(data.name, data.id);
   }
 
   function handleSaveEncounterClick() {
@@ -3500,14 +3761,18 @@ export function CombatBoard({
 
   async function handleBackgroundUpload(file: File) {
     const { path, error } = await uploadCombatBackground(supabase, campaignId, file);
-    if (error || !path) return;
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    if (!path) return;
 
     const previousPath = combatState.backgroundPath;
     const next = { ...combatState, backgroundPath: path };
     await persist(next);
 
     if (previousPath && previousPath !== path) {
-      await removeCombatImage(supabase, previousPath);
+      await removeCombatImageIfUnreferenced(supabase, previousPath);
     }
   }
 
@@ -3522,7 +3787,7 @@ export function CombatBoard({
         const previousPath = combatStateRef.current.backgroundPath;
         const next = { ...combatStateRef.current, backgroundPath: null };
         await persist(next);
-        await removeCombatImage(supabase, previousPath);
+        await removeCombatImageIfUnreferenced(supabase, previousPath);
       },
     });
   }
@@ -3621,7 +3886,7 @@ export function CombatBoard({
     return (
       <div
         key={token.id}
-        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${showDmUi ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isHiddenForDm && isHovered ? " combat-token-hidden-enemy-hovered" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isPickupTarget ? " combat-token-pickup-highlight" : ""}${isSelfObjectTarget ? " combat-token-self-object-target" : ""}`}
+        className={`combat-token combat-token-on-grid ${tokenColorClass(token.kind)}${isDm ? " combat-token-dm" : ""}${isHiddenForDm ? " combat-token-hidden-enemy" : ""}${isHiddenForDm && isHovered ? " combat-token-hidden-enemy-hovered" : ""}${isPlaceholder ? " combat-token-placeholder" : ""}${isClaimablePlaceholder ? " combat-token-claimable" : ""}${isSelected ? " combat-token-selected" : ""}${isExpanded ? " combat-token-expanded" : ""}${isDragging ? " combat-token-dragging" : ""}${isActiveTurn ? " combat-token-active-turn" : ""}${isPickupTarget ? " combat-token-pickup-highlight" : ""}${isSelfObjectTarget ? " combat-token-self-object-target" : ""}`}
         style={style}
         onPointerDown={(event) => handleTokenPointerDown(token.id, event)}
         onClick={(event) => handleTokenClick(token.id, event)}
@@ -4522,9 +4787,11 @@ export function CombatBoard({
           combatState={combatState}
           attackDisadvantageByTokenId={attackSubmitDraft.attackDisadvantageByTokenId ?? {}}
           charactersById={charactersById}
+          enemiesBySlug={enemiesBySlug}
           catalogItems={catalogItems}
           classCatalog={classCatalog}
           damageTakenByTokenId={damageTakenByTokenId}
+          showDmUi={showDmUi}
           submitting={submittingAttack}
           onCancel={() => setAttackSubmitDraft(null)}
           onSubmit={(values) => void handleSubmitAttack(values)}
@@ -4579,6 +4846,7 @@ export function CombatBoard({
           }
           submitting={submittingEquipmentChange}
           onConfirm={(nextItems) => void handleConfirmEquipmentChange(nextItems)}
+          onConfirmRefill={() => void handleConfirmAmmoRefill()}
           onCancel={() => setEquipmentChangeOpen(false)}
         />
       ) : null}

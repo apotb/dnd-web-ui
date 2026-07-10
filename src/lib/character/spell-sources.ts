@@ -7,7 +7,6 @@ import {
   type SpellGrantSpec,
 } from "@/lib/character/feature-grant-sync";
 import type { SpellGrantSource } from "@/lib/character/spell-grants";
-import { formatGrantUsageLabel } from "@/lib/character/spell-grant-uses";
 
 export function isManagedGrantSpell(spell: Spell): boolean {
   return !!spell.grantKey?.startsWith(MANAGED_SPELL_GRANT_PREFIX);
@@ -43,15 +42,13 @@ export function buildSpellGrantSourceMap(
   return map;
 }
 
-export function buildSpellGrantUsageMap(
+export function buildSpellGrantNotesMap(
   data: CharacterData,
   catalogs: FeatureCatalogs = {}
 ): Map<string, string> {
   const map = new Map<string, string>();
   for (const spec of resolveAllSpellGrants(data, catalogs)) {
-    if (spec.usage) {
-      map.set(spec.grantKey, formatGrantUsageLabel(spec.usage));
-    } else if (spec.notes) {
+    if (!spec.usage && spec.notes) {
       map.set(spec.grantKey, spec.notes);
     }
   }

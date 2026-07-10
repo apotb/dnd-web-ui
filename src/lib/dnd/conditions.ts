@@ -282,6 +282,23 @@ export function removeConditionSlugs(
   return conditions.filter((slug) => !remove.has(slug));
 }
 
+/** Conditions that leave a creature unable to act (PHB incapacitated or equivalent). */
+export const INCAPACITATING_CONDITION_SLUGS = new Set([
+  "incapacitated",
+  "paralyzed",
+  "petrified",
+  "stunned",
+  "unconscious",
+]);
+
+export function conditionSlugsIncapacitate(slugs: string[]): boolean {
+  for (const slug of slugs) {
+    const normalized = normalizeConditionSlug(slug);
+    if (normalized && INCAPACITATING_CONDITION_SLUGS.has(normalized)) return true;
+  }
+  return false;
+}
+
 /** Structured ability-check effects for active conditions (used by check-roll-mode derivation). */
 export interface ConditionCheckEffect {
   disadvantageAllChecks?: boolean;

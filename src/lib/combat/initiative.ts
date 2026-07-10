@@ -154,6 +154,7 @@ export function finalizeInitiativeIfReady(state: CombatState): CombatState {
       order: buildTurnOrder(state.tokens, state.initiative.results),
     },
     turn: { active: true, index: 0, round: 1, ...TURN_RESET_FIELDS },
+    battleAmmoPrepared: false,
   };
 }
 
@@ -162,6 +163,7 @@ export function clearInitiativeState(state: CombatState): CombatState {
     ...state,
     initiative: { status: "none", results: {}, order: [] },
     turn: { active: false, index: 0, round: 1, ...TURN_RESET_FIELDS },
+    battleAmmoPrepared: false,
   };
 }
 

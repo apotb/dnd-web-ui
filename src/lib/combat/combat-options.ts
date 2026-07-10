@@ -76,12 +76,14 @@ import {
 import {
   EMERGE_FROM_SHELL_ACTION_ID,
   SHELL_DEFENSE_ENTER_ACTION_ID,
+  buildTokenStatusContext,
   canTakeReactions,
   filterOptionGroupsForTokenEffects,
   isRegisteredCombatFeatureAction,
   isRegisteredFeatureEnterAction,
   isTokenInShellDefense,
   isTokenRestrictedByEffects,
+  type TokenStatusContext,
 } from "@/lib/combat/feature-effects";
 
 export { isHpPoolCombatOption, isLayOnHandsOption } from "@/lib/combat/combat-mechanical-actions";
@@ -619,9 +621,10 @@ export function getOpportunityAttackOptionsForToken(
     enemyData: EnemyData | null;
     catalogItems: Record<string, Item>;
     classCatalog: PhbClass[];
+    tokenStatusContext?: TokenStatusContext;
   }
 ): CombatOption[] {
-  if (!canTakeReactions(token)) return [];
+  if (!canTakeReactions(token, context.tokenStatusContext)) return [];
 
   if (context.character) {
     return getOpportunityAttackOptionsForCharacter(
@@ -676,7 +679,9 @@ function buildPartyOptionGroups(
     ) as CombatOptionGroups;
   }
 
-  const attacks = getAllAttacks(character.data, catalogItems, classCatalog);
+  const attacks = getAllAttacks(character.data, catalogItems, classCatalog, {
+    ammoCountMode: "battle-ready",
+  });
   const characterActions = getAllCharacterActions(character.data, featureCatalogs).filter(
     (action) => action.id !== "core:move"
   );
@@ -717,7 +722,10 @@ function buildPartyOptionGroups(
     ...wieldedWeaponAttacks,
     ...spellAttacks,
     ...actionNaturalAttacks,
-  ];
+  ].filter((attack) => {
+    if (!attack.ammunitionItemId) return true;
+    return (attack.ammunitionRemaining ?? 0) > 0;
+  });
 
   const castSpellOption =
     options?.battleOver || turn.actionUsed
@@ -777,7 +785,9 @@ function buildPartyOptionGroups(
   const bonusWeaponAttacks =
     turn.twoWeaponFightingUsedOffHand != null
       ? weaponAttacks.filter(
-          (attack) => attack.isOffHand !== turn.twoWeaponFightingUsedOffHand
+          (attack) =>
+            attack.isOffHand !== turn.twoWeaponFightingUsedOffHand &&
+            (!attack.ammunitionItemId || (attack.ammunitionRemaining ?? 0) > 0)
         )
       : [];
 
@@ -1030,6 +1040,7 @@ export function getCombatOptionGroupsForToken(
   }
 ): CombatOptionGroups {
   const battleOver = context.battleOver ?? isBattleOver(context.combatState);
+  const tokenStatusContext = buildTokenStatusContext(context.partyCharacters ?? []);
 
   if (token.kind === "party" && context.character) {
     const groups = buildPartyOptionGroups(
@@ -1048,7 +1059,7 @@ export function getCombatOptionGroupsForToken(
         dashUsed: context.dashUsed,
         freeObjectInteractionUsed: context.freeObjectInteractionUsed,
       },
-      isTokenEngaged(context.token, context.combatState),
+      isTokenEngaged(context.token, context.combatState, tokenStatusContext),
       canUseHelpAction(context.token, context.combatState),
       context.canUseObject,
       { battleOver }
@@ -1079,7 +1090,7 @@ export function getCombatOptionGroupsForToken(
     return buildNpcOptionGroups(
       context.enemyData,
       multiattackTurn,
-      isTokenEngaged(context.token, context.combatState),
+      isTokenEngaged(context.token, context.combatState, tokenStatusContext),
       canUseHelpAction(context.token, context.combatState),
       false
     );
@@ -1092,7 +1103,7 @@ export function getCombatOptionGroupsForToken(
     return buildNpcOptionGroups(
       context.enemyData,
       multiattackTurn,
-      isTokenEngaged(context.token, context.combatState),
+      isTokenEngaged(context.token, context.combatState, tokenStatusContext),
       canUseHelpAction(context.token, context.combatState),
       false
     );

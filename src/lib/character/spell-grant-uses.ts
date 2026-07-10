@@ -12,6 +12,13 @@ export function formatGrantUsageLabel(usage: SpellGrantUsage): string {
   return usage.restReset === "short" ? `${count}/short rest` : `${count}/long rest`;
 }
 
+export function formatGrantUsesDisplayLine(
+  remaining: { current: number; max: number },
+  usage: SpellGrantUsage
+): string {
+  return `Uses: ${remaining.current}/${remaining.max} (${formatGrantUsageLabel(usage)})`;
+}
+
 function grantSpecByKey(
   data: CharacterData,
   catalogs: FeatureCatalogs,

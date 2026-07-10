@@ -5,7 +5,9 @@ import {
 import {
   getArcheryAttackBonus,
   getDuelingDamageBonus,
+  isShieldWielded,
 } from "@/lib/dnd/fighting-styles";
+import { getWieldedWeaponPair } from "@/lib/dnd/two-weapon-fighting";
 import { getEffectiveWeaponProficiencies } from "@/lib/character/class-derivation";
 import type { CharacterData, Spell } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
@@ -14,10 +16,12 @@ import { getSpell } from "@/lib/dnd/phb/spells";
 import { isSpellCastableInCombat } from "@/lib/dnd/spell-casting-time";
 import {
   countAmmunitionInInventory,
+  countBattleReadyAmmunition,
   formatAmmunitionLine,
   formatThrownWeaponLine,
   getAmmunitionDisplayName,
   getAmmunitionSlugForWeapon,
+  getTotalContainerCapacity,
   weaponConsumesSelfWhenThrown,
   weaponUsesAmmunition,
 } from "@/lib/dnd/ammunition";
@@ -288,6 +292,8 @@ export interface DerivedAttack {
   ammunitionName?: string;
   /** Remaining ammunition in inventory when the attack was derived. */
   ammunitionRemaining?: number;
+  /** Total loaded capacity for battle-ready ammo (quiver/case slots). */
+  ammunitionCapacity?: number;
   /** This attack throws the weapon itself (javelin, handaxe, etc.). */
   throwsWeapon?: boolean;
   /** Display name of the thrown weapon. */
@@ -325,6 +331,16 @@ export function resolveWeaponGripDamageDice(
     return attack.versatileDamageDice;
   }
   return attack.damageDice;
+}
+
+export function canSelectTwoHandedWeaponGrip(
+  character: CharacterData | undefined,
+  catalogItems: Record<string, Item>
+): boolean {
+  if (!character) return true;
+  if (isShieldWielded(character, catalogItems)) return false;
+  const { off } = getWieldedWeaponPair(character, catalogItems);
+  return off == null;
 }
 
 export function formatAttackRollLine(attack: DerivedAttack): string {
@@ -454,12 +470,16 @@ function formatDamageDice(dice: string, abilityMod: number, includeMod: boolean)
   return `${dice}${abilityMod >= 0 ? "+" : ""}${abilityMod}`;
 }
 
+export type AmmoCountMode = "inventory" | "battle-ready";
+
 /** Derive weapon attacks from wielded inventory items (main and off-hand). */
 export function deriveWeaponAttacks(
   character: CharacterData,
   catalogItems: Record<string, Item>,
-  catalogClasses?: PhbClass[]
+  catalogClasses?: PhbClass[],
+  options?: { ammoCountMode?: AmmoCountMode }
 ): DerivedAttack[] {
+  const ammoCountMode = options?.ammoCountMode ?? "inventory";
   const attacks: DerivedAttack[] = [];
   const mods = getAbilityModifiers(character.abilityScores);
   const prof = getProficiencyBonus(character);
@@ -516,7 +536,21 @@ export function deriveWeaponAttacks(
         : undefined;
     const ammunitionRemaining =
       ammunitionItemId != null
-        ? countAmmunitionInInventory(character.inventory.items, ammunitionItemId)
+        ? ammoCountMode === "battle-ready"
+          ? countBattleReadyAmmunition(
+              character.inventory.items,
+              ammunitionItemId,
+              catalogItems
+            )
+          : countAmmunitionInInventory(character.inventory.items, ammunitionItemId)
+        : undefined;
+    const ammunitionCapacity =
+      ammunitionItemId != null && ammoCountMode === "battle-ready"
+        ? getTotalContainerCapacity(
+            character.inventory.items,
+            ammunitionItemId,
+            catalogItems
+          )
         : undefined;
 
     const hasReach = wp.weaponProperties.includes("reach");
@@ -616,6 +650,7 @@ export function deriveWeaponAttacks(
         ammunitionItemId: ammunitionItemId ?? undefined,
         ammunitionName,
         ammunitionRemaining,
+        ammunitionCapacity,
         throwsWeapon: isThrownAttack || undefined,
         thrownItemName: isThrownAttack ? baseName : undefined,
         thrownRemaining: isThrownAttack ? invItem.quantity : undefined,
@@ -849,9 +884,10 @@ export function deriveCantripAttacks(character: CharacterData): DerivedAttack[] 
 export function getAllAttacks(
   character: CharacterData,
   catalogItems: Record<string, Item>,
-  catalogClasses?: PhbClass[]
+  catalogClasses?: PhbClass[],
+  options?: { ammoCountMode?: AmmoCountMode }
 ): DerivedAttack[] {
-  const weapon = deriveWeaponAttacks(character, catalogItems, catalogClasses);
+  const weapon = deriveWeaponAttacks(character, catalogItems, catalogClasses, options);
   const spells = deriveSpellAttacks(character);
   const natural = deriveNaturalAttacks(character, catalogClasses);
   const manual: DerivedAttack[] = character.attacks.map((a) => ({

@@ -6,6 +6,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { CatalogSpellRow } from "@/lib/content/catalog-client";
 import {
   formatSpellMaterialLine,
+  formatSpellDurationForDisplay,
   getSpellComponentTooltip,
   getSpellMaterialNotice,
   getSpellSchoolTooltip,
@@ -68,11 +69,13 @@ export function SpellMaterialLine({
 export function SpellGlossaryMeta({
   spell,
   showCastingTime = true,
+  showDuration = false,
   showMaterialLine = false,
   usageLabel,
 }: {
   spell: CatalogSpellRow;
   showCastingTime?: boolean;
+  showDuration?: boolean;
   /** Show material requirements inline (recommended in combat). */
   showMaterialLine?: boolean;
   /** e.g. innate spell frequency shown after casting time and range. */
@@ -88,6 +91,11 @@ export function SpellGlossaryMeta({
   const actionRangeLine = [
     showCastingTime ? spell.castingTime : "",
     spell.range ?? "",
+    showDuration
+      ? formatSpellDurationForDisplay(spell.duration ?? "", {
+          concentration: spell.concentration,
+        })
+      : "",
     usageLabel ?? "",
   ]
     .filter(Boolean)

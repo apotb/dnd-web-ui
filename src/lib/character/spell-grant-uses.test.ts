@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { syncFeatureGrants } from "@/lib/character/feature-grant-sync";
 import {
+  formatGrantUsesDisplayLine,
   getGrantUsesForRest,
   restoreGrantSpell,
   resetGrantUses,
@@ -107,5 +108,17 @@ describe("getGrantUsesForRest", () => {
     assert.equal(longItems.length, 1);
     assert.match(longItems[0], /Fog Cloud/);
     assert.match(longItems[0], /\(0\/1\)/);
+  });
+});
+
+describe("formatGrantUsesDisplayLine", () => {
+  it("shows remaining uses with per-rest allowance in parentheses", () => {
+    assert.equal(
+      formatGrantUsesDisplayLine(
+        { current: 1, max: 1 },
+        { max: 1, restReset: "long" }
+      ),
+      "Uses: 1/1 (1/long rest)"
+    );
   });
 });

@@ -112,8 +112,10 @@ export const combatStatsSchema = z.object({
   speed: z.number().int().min(0).default(30),
   passivePerceptionOverride: z.number().optional(),
   hitDice: z.string().default("1d8"),
-  /** HP gained at each level after 1st (one entry per level-up). */
+  /** HP die roll/average per level after 1st (excludes CON modifier). */
   levelUpHpGains: z.array(z.number().int().min(1)).default([]),
+  /** True when levelUpHpGains stores die-only values (post-CON migration). */
+  hpGainsDieOnly: z.boolean().default(false),
   /** Hit dice spent since the last long rest (remaining = level − spent). */
   hitDiceSpent: z.number().int().min(0).default(0),
   /** Last in-game calendar date this character finished a long rest. */
@@ -218,6 +220,8 @@ export const inventoryItemSchema = z.object({
   attuned: z.boolean().default(false),
   magicItem: z.boolean().default(false),
   notes: z.string().default(""),
+  /** Ammunition loaded in a quiver/bolt case (battle-ready ammo). */
+  loadedQuantity: z.number().int().min(0).default(0),
 });
 
 /** Player-selected options for class/species features with choices (not starting gear/languages). */

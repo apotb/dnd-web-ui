@@ -22,8 +22,15 @@ import { qualifiesForGreatWeaponFighting } from "@/lib/dnd/fighting-styles";
 import type { WeaponGrip } from "@/lib/dnd/attacks";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import type { Item } from "@/lib/schemas/item";
+import {
+  buildTokenStatusContext,
+} from "@/lib/combat/feature-effects";
 import type { ParsedCharacter } from "@/lib/character/utils";
-import { findAmmunitionStack, findInventoryStack } from "@/lib/dnd/ammunition";
+import {
+  findAmmunitionStack,
+  findBattleAmmunitionContainer,
+  findInventoryStack,
+} from "@/lib/dnd/ammunition";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type {
@@ -92,7 +99,8 @@ function resolveTokenContext(
 function resolvePendingAmmunition(
   attack: DerivedAttack,
   attacker: CombatToken,
-  charactersById: Record<string, ParsedCharacter>
+  charactersById: Record<string, ParsedCharacter>,
+  catalogItems?: Record<string, Item>
 ): Pick<
   PendingAttack,
   "ammunitionInventoryItemId" | "ammunitionItemId" | "ammunitionItemName" | "ammunitionQuantity"
@@ -102,16 +110,20 @@ function resolvePendingAmmunition(
   const character = charactersById[attacker.characterId];
   if (!character) return {};
 
-  const stack = findAmmunitionStack(
-    character.data.inventory.items,
-    attack.ammunitionItemId
-  );
+  const stack =
+    catalogItems != null
+      ? findBattleAmmunitionContainer(
+          character.data.inventory.items,
+          attack.ammunitionItemId,
+          catalogItems
+        )
+      : findAmmunitionStack(character.data.inventory.items, attack.ammunitionItemId);
 
   return {
     ammunitionInventoryItemId: stack?.id,
     ammunitionItemId: attack.ammunitionItemId,
     ammunitionItemName: attack.ammunitionName,
-    ammunitionQuantity: 1,
+    ammunitionQuantity: stack ? 1 : undefined,
   };
 }
 
@@ -221,6 +233,7 @@ export function createPendingAttack(
   const protectionTokenIds = [
     ...new Set(Object.values(protectionByTargetId).filter(Boolean)),
   ];
+  const tokenStatusContext = buildTokenStatusContext(Object.values(charactersById));
 
   const pendingTargets: PendingAttackTarget[] = targets.map((token) => {
     const ctx = resolveTokenContext(token, charactersById, enemiesBySlug);
@@ -231,7 +244,8 @@ export function createPendingAttack(
     });
     const protectionDisadvantage = Boolean(protectionByTargetId[token.id]);
     const attackDisadvantage =
-      getAttackRollDisadvantage(attacker, token, state, attack) || protectionDisadvantage;
+      getAttackRollDisadvantage(attacker, token, state, attack, tokenStatusContext) ||
+      protectionDisadvantage;
 
     const perTarget = submission.perTarget?.find((entry) => entry.tokenId === token.id);
     const attackRoll = perTarget?.attackRoll ?? submission.attackRoll ?? null;
@@ -331,7 +345,7 @@ export function createPendingAttack(
     greatWeaponFighting: greatWeaponFighting || undefined,
     protectionTokenIds,
     isAoe: spec.isAoe,
-    ...resolvePendingAmmunition(attack, attacker, charactersById),
+    ...resolvePendingAmmunition(attack, attacker, charactersById, options?.catalogItems),
     ...resolvePendingThrownWeapon(attack, attacker, charactersById),
     aoeCenter: aoeCenter ?? undefined,
     aoeShape: spec.aoeShape,

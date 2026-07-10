@@ -78,6 +78,22 @@ export const magicItemPropertiesSchema = z.object({
   attunementClasses: z.array(z.string()).default([]),
 });
 
+export const containerPropertiesSchema = z.object({
+  capacity: z.number().int().positive().default(20),
+  acceptsItemSlug: z.string(),
+});
+
+export const QUIVER_ITEM_SLUG = "quiver";
+export const CROSSBOW_BOLT_CASE_ITEM_SLUG = "case-crossbow";
+
+const DEFAULT_AMMO_CONTAINER_PROPERTIES: Record<
+  string,
+  z.infer<typeof containerPropertiesSchema>
+> = {
+  [QUIVER_ITEM_SLUG]: { capacity: 20, acceptsItemSlug: "arrow" },
+  [CROSSBOW_BOLT_CASE_ITEM_SLUG]: { capacity: 20, acceptsItemSlug: "crossbow-bolt" },
+};
+
 // ---------------------------------------------------------------------------
 // Full item schema
 // ---------------------------------------------------------------------------
@@ -114,6 +130,7 @@ export type ItemRarity = (typeof ITEM_RARITIES)[number];
 export type WeaponProperties = z.infer<typeof weaponPropertiesSchema>;
 export type ArmorProperties = z.infer<typeof armorPropertiesSchema>;
 export type ShieldProperties = z.infer<typeof shieldPropertiesSchema>;
+export type ContainerProperties = z.infer<typeof containerPropertiesSchema>;
 
 export function getWeaponProperties(item: Item): WeaponProperties | null {
   if (item.category !== "weapon") return null;
@@ -131,6 +148,12 @@ export function getShieldProperties(item: Item): ShieldProperties | null {
   if (item.category !== "shield") return null;
   const result = shieldPropertiesSchema.safeParse(item.properties);
   return result.success ? result.data : null;
+}
+
+export function getContainerProperties(item: Item): ContainerProperties | null {
+  const result = containerPropertiesSchema.safeParse(item.properties);
+  if (result.success) return result.data;
+  return DEFAULT_AMMO_CONTAINER_PROPERTIES[item.slug] ?? null;
 }
 
 /** Build tooltip text with item stats and description. */
@@ -207,6 +230,10 @@ export function formatItemTooltip(item: Item): string | null {
   }
   if (item.slug === BACKPACK_ITEM_SLUG) {
     lines.push(`Carry capacity: +${BACKPACK_CARRY_CAPACITY_BONUS_LB} lb`);
+  }
+  const container = getContainerProperties(item);
+  if (container) {
+    lines.push(`Capacity: ${container.capacity} ${container.acceptsItemSlug.replace(/-/g, " ")}`);
   }
   if (item.cost_gp != null && item.cost_gp > 0) {
     lines.push(`Value: ${formatItemCostGp(item.cost_gp)}`);

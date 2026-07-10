@@ -1,6 +1,11 @@
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { isHiddenEnemy } from "@/lib/schemas/combat-state";
 import type { GridPosition } from "@/lib/combat/movement";
+import {
+  canTakeReactions,
+  isTokenIncapacitated,
+  type TokenStatusContext,
+} from "@/lib/combat/feature-effects";
 
 function footprintCells(token: CombatToken): GridPosition[] {
   const cells: GridPosition[] = [];
@@ -77,7 +82,8 @@ export function tokenAtPosition(
 
 export function getEngagedHostileTokens(
   token: CombatToken,
-  state: CombatState
+  state: CombatState,
+  context?: TokenStatusContext
 ): CombatToken[] {
   if (!token.placed) return [];
 
@@ -87,12 +93,17 @@ export function getEngagedHostileTokens(
       other.id !== token.id &&
       !isHiddenEnemy(other) &&
       isHostileToken(token, other) &&
-      areTokensEngaged(token, other)
+      areTokensEngaged(token, other) &&
+      !isTokenIncapacitated(other, context)
   );
 }
 
-export function isTokenEngaged(token: CombatToken, state: CombatState): boolean {
-  return getEngagedHostileTokens(token, state).length > 0;
+export function isTokenEngaged(
+  token: CombatToken,
+  state: CombatState,
+  context?: TokenStatusContext
+): boolean {
+  return getEngagedHostileTokens(token, state, context).length > 0;
 }
 
 /** Hostiles that would get an opportunity attack if the token moves to the destination. */
@@ -100,18 +111,21 @@ export function getOpportunityAttackReactors(
   token: CombatToken,
   destination: GridPosition,
   state: CombatState,
-  disengageUsed: boolean
+  disengageUsed: boolean,
+  context?: TokenStatusContext
 ): CombatToken[] {
   if (disengageUsed || !token.placed) return [];
 
-  const engagedBefore = getEngagedHostileTokens(token, state);
+  const engagedBefore = getEngagedHostileTokens(token, state, context);
   if (engagedBefore.length === 0) return [];
 
   const atDestination = tokenAtPosition(token, destination.x, destination.y);
-  const engagedAfter = getEngagedHostileTokens(atDestination, state);
+  const engagedAfter = getEngagedHostileTokens(atDestination, state, context);
   const stillEngagedIds = new Set(engagedAfter.map((reactor) => reactor.id));
 
-  return engagedBefore.filter((reactor) => !stillEngagedIds.has(reactor.id));
+  return engagedBefore.filter(
+    (reactor) => !stillEngagedIds.has(reactor.id) && canTakeReactions(reactor, context)
+  );
 }
 
 /** @deprecated Use getOpportunityAttackReactors */
