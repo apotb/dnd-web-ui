@@ -1,5 +1,6 @@
 import { resolveCharacterClass } from "@/lib/character/class-derivation";
 import {
+  applyCombatHpHeal,
   calculateEffectiveMaxHpBreakdown,
   syncCombatDerivedStats,
 } from "@/lib/character/combat-derivation";
@@ -694,11 +695,11 @@ export function applyHealingToCharacter(
   if (amount <= 0) return targetData;
 
   const maxHp = getEffectiveMaxHp(targetData, catalogs);
-  const nextHp = Math.min(maxHp, targetData.combat.currentHp + amount);
+  const nextCombat = applyCombatHpHeal(targetData.combat, amount, maxHp);
 
   return {
     ...targetData,
-    combat: { ...targetData.combat, currentHp: nextHp },
+    combat: nextCombat,
   };
 }
 

@@ -63,6 +63,15 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
     sourceLabel: "Standard",
   },
   {
+    id: "core:stabilize",
+    name: "Stabilize",
+    cost: "action",
+    description:
+      "Use an action to stabilize a creature with 0 hit points within 5 feet (DC 10 Wisdom (Medicine) check, or spend one use of a healer's kit with no check).",
+    source: "core",
+    sourceLabel: "Standard",
+  },
+  {
     id: "core:help",
     name: "Help",
     cost: "action",

@@ -11,6 +11,7 @@ import {
   getCombatEffectAcBonus,
   getCombatEffectSaveRollMode,
   getCombatEffectSpeedOverride,
+  getTokenStatusEntries,
   getTokenStatusLabels,
   hasCombatEffect,
   isRegisteredFeatureEnterAction,
@@ -191,5 +192,14 @@ describe("feature-effects", () => {
       isTokenIncapacitated(token, { hpByCharacterId: { "fighter-char": 5 } }),
       false
     );
+  });
+
+  it("surfaces character-sheet conditions on token status entries", () => {
+    const token = makeToken({ characterId: "fighter-char" });
+    const entries = getTokenStatusEntries(token, {
+      conditionsByCharacterId: { "fighter-char": ["dying", "prone"] },
+    });
+    assert.ok(entries.some((entry) => entry.slug === "dying"));
+    assert.ok(entries.some((entry) => entry.slug === "prone"));
   });
 });

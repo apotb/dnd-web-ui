@@ -1,3 +1,7 @@
+import {
+  applyStabilize,
+  applyWakeFromZeroHp,
+} from "@/lib/dnd/dying-state";
 import type { CharacterData } from "@/lib/schemas/character";
 
 export type DeathSaveRollOutcome =
@@ -61,17 +65,23 @@ export function applyDeathSaveRoll(
   const interpretation = interpretDeathSaveRoll(roll);
   let successes = combat.deathSaves.successes;
   let failures = combat.deathSaves.failures;
-  let currentHp = combat.currentHp;
   let becameStable = false;
   let becameDead = false;
   let regainedConsciousness = false;
+  let nextCombat = combat;
 
   if (interpretation.outcome === "natural-20") {
-    currentHp = 1;
-    successes = 0;
-    failures = 0;
+    nextCombat = applyWakeFromZeroHp(combat, 1);
     regainedConsciousness = true;
-  } else if (interpretation.outcome === "natural-1") {
+    return {
+      combat: nextCombat,
+      becameStable: false,
+      becameDead: false,
+      regainedConsciousness,
+    };
+  }
+
+  if (interpretation.outcome === "natural-1") {
     failures = Math.min(3, failures + 2);
   } else if (interpretation.outcome === "success") {
     successes = Math.min(3, successes + 1);
@@ -79,25 +89,30 @@ export function applyDeathSaveRoll(
     failures = Math.min(3, failures + 1);
   }
 
-  if (interpretation.outcome !== "natural-20" && successes >= 3) {
+  nextCombat = {
+    ...combat,
+    deathSaves: { successes, failures },
+  };
+
+  if (successes >= 3) {
     becameStable = true;
-    successes = 0;
-    failures = 0;
+    nextCombat = applyStabilize(nextCombat);
   }
 
   if (failures >= 3) {
     becameDead = true;
-    failures = 3;
+    nextCombat = {
+      ...nextCombat,
+      deathSaves: { successes: nextCombat.deathSaves.successes, failures: 3 },
+    };
   }
 
   return {
-    combat: {
-      ...combat,
-      currentHp,
-      deathSaves: { successes, failures },
-    },
+    combat: nextCombat,
     becameStable,
     becameDead,
     regainedConsciousness,
   };
 }
+
+export { hasDyingCondition, needsDeathSavingThrow } from "@/lib/dnd/dying-state";

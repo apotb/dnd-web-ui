@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -27,6 +28,7 @@ import {
   startInitiativeCollection,
   updateInitiativeAfterVisibilityChange,
 } from "@/lib/combat/initiative";
+import { applyCombatHpDelta } from "@/lib/character/combat-derivation";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import { calculateAcBreakdown, formatAcTooltip } from "@/lib/character/ac-derivation";
 import {
@@ -90,10 +92,12 @@ import { EncounterLoadDialog } from "@/components/combat/encounter-load-dialog";
 import { EncounterNameModal } from "@/components/combat/encounter-name-modal";
 import { EncounterOverwriteConfirmModal } from "@/components/combat/encounter-overwrite-confirm-modal";
 import { MarkerDialog, type MarkerDialogValues } from "@/components/combat/marker-dialog";
+import { DeathSaveRollModal } from "@/components/character/death-save-roll-modal";
 import {
   CombatActionPanel,
   CombatBonusActionPanel,
   CombatMultiattackPanel,
+  CombatSavingThrowsPanel,
 } from "@/components/combat/combat-action-panel";
 import { CombatMultiattackBranchModal } from "@/components/combat/combat-multiattack-branch-modal";
 import { CombatEndTurnConfirmModal } from "@/components/combat/combat-end-turn-confirm-modal";
@@ -105,6 +109,8 @@ import { CombatMeasureOverlay } from "@/components/combat/combat-measure-overlay
 import { CombatMovementOverlay } from "@/components/combat/combat-movement-overlay";
 import { CombatCollisionOverlay } from "@/components/combat/combat-collision-overlay";
 import { CombatHelpTargetModal } from "@/components/combat/combat-help-target-modal";
+import { CombatStabilizeTargetModal } from "@/components/combat/combat-stabilize-target-modal";
+import { StabilizeActionModal } from "@/components/combat/stabilize-action-modal";
 import { CombatDashConfirmModal } from "@/components/combat/combat-dash-confirm-modal";
 import { CombatShellDefenseConfirmModal } from "@/components/combat/combat-shell-defense-confirm-modal";
 import { CombatHpPoolModal } from "@/components/combat/combat-hp-pool-modal";
@@ -129,6 +135,7 @@ import { AlertModal } from "@/components/ui/alert-modal";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   findDerivedAttackByOptionId,
+  getAdjacentDyingAllyTokens,
   getCombatOptionGroupsForToken,
   getOpportunityAttackOptionsForToken,
   isAttackTargetingOption,
@@ -141,9 +148,11 @@ import {
   isHpPoolCombatOptionKind,
   isEnemyStatBlockActionOption,
   isImplementedCombatOption,
+  isSavingThrowsOption,
   isShellDefenseEnterOption,
   isSpellCastOption,
   isSpellcastingEntryOption,
+  isStabilizeActionOption,
   isUseObjectActionOption,
   COMBAT_USE_OBJECT_OPTION_ID,
   type CombatOption,
@@ -194,9 +203,11 @@ import {
   buildTokenStatusContext,
   getTokenStatusEntries,
   getTokenStatusTooltip,
+  isTokenIncapacitated,
   isTokenRestrictedByEffects,
   SHELL_DEFENSE_EFFECT_ID,
 } from "@/lib/combat/feature-effects";
+import { applyStabilize } from "@/lib/dnd/dying-state";
 import { getTokenAc, getTokenSaveModifier } from "@/lib/combat/attack-resolution";
 import {
   buildTargetList,
@@ -254,6 +265,7 @@ import {
 import { endCombatTurn } from "@/lib/combat/turn-actions";
 import {
   applyActionGranted,
+  applyDeathSaveRolled,
   canUserActForToken,
   canUserControlTurn,
   canUserEndTurn,
@@ -654,6 +666,15 @@ export function CombatBoard({
   const [helpTargetPickerAllies, setHelpTargetPickerAllies] = useState<
     CombatToken[] | null
   >(null);
+  const [deathSaveRollOpen, setDeathSaveRollOpen] = useState(false);
+  const [stabilizeTargetPicker, setStabilizeTargetPicker] = useState<{
+    allies: CombatToken[];
+    viaSpell: boolean;
+  } | null>(null);
+  const [stabilizeModal, setStabilizeModal] = useState<{
+    targetToken: CombatToken;
+    viaSpell: boolean;
+  } | null>(null);
   const [hpAmount, setHpAmount] = useState("1");
   const [applyingHp, setApplyingHp] = useState(false);
   const [adjustingMovement, setAdjustingMovement] = useState(false);
@@ -1236,13 +1257,22 @@ export function CombatBoard({
     movementUsedFeet,
     dashUsed
   );
+  const actingTokenIncapacitated = actingToken
+    ? isTokenIncapacitated(actingToken, tokenStatusContext)
+    : false;
   const actingTokenRestricted = actingToken
     ? isTokenRestrictedByEffects(actingToken)
     : false;
   const canUseDash =
-    !battleOver && !dashUsed && !actionUsed && !actingTokenRestricted;
+    !battleOver &&
+    !dashUsed &&
+    !actionUsed &&
+    !actingTokenRestricted &&
+    !actingTokenIncapacitated;
   const showMovePanel =
-    (remainingMovementFeet > 0 || canUseDash) && !actingTokenRestricted;
+    (remainingMovementFeet > 0 || canUseDash) &&
+    !actingTokenRestricted &&
+    !actingTokenIncapacitated;
   const dashPreviewFeet = getDashPreviewRemainingFeet(
     currentSpeedFt,
     movementUsedFeet,
@@ -1353,6 +1383,10 @@ export function CombatBoard({
     localCharacters,
     twoWeaponFightingUsedOffHand,
   ]);
+
+  const showSavingThrowsPanel =
+    currentTurnOptionGroups.actions.length > 0 &&
+    currentTurnOptionGroups.actions.every((option) => isSavingThrowsOption(option));
 
   const needsMultiattackBranchPicker =
     !battleOver &&
@@ -1551,6 +1585,102 @@ export function CombatBoard({
     setEquipmentChangeOpen(false);
   }
 
+  function openStabilizeTargetFlow(
+    allies: CombatToken[],
+    viaSpell: boolean
+  ) {
+    if (allies.length === 0) {
+      showAlert("No dying allies within 5 feet.");
+      return;
+    }
+    if (allies.length === 1) {
+      setStabilizeModal({ targetToken: allies[0]!, viaSpell });
+      return;
+    }
+    setStabilizeTargetPicker({ allies, viaSpell });
+  }
+
+  async function handleApplyDeathSave(nextCombat: import("@/lib/schemas/character").CharacterData["combat"]) {
+    if (!actingToken || !actingTokenCharacter) return;
+
+    const saveResult = await saveCharacterData(
+      actingTokenCharacter.id,
+      { ...actingTokenCharacter.data, combat: nextCombat },
+      undefined,
+      { isDm, originalData: actingTokenCharacter.data }
+    );
+    if (saveResult.error) {
+      showAlert(saveResult.error);
+      return;
+    }
+
+    setLocalCharacters((current) =>
+      current.map((entry) =>
+        entry.id === actingTokenCharacter.id
+          ? { ...entry, data: { ...entry.data, combat: nextCombat } }
+          : entry
+      )
+    );
+
+    let nextState = updateTokenInState(combatState, actingToken.id, {
+      currentHp: nextCombat.currentHp,
+    });
+    nextState = applyDeathSaveRolled(nextState);
+    const persistError = await persist(nextState);
+    if (persistError) {
+      showAlert(persistError);
+      return;
+    }
+
+    setDeathSaveRollOpen(false);
+  }
+
+  async function handleConfirmStabilize(targetToken: CombatToken, viaSpell: boolean) {
+    if (!actingToken || !actingTokenCharacter || !targetToken.characterId) return;
+
+    const targetCharacter = charactersById[targetToken.characterId];
+    if (!targetCharacter) return;
+
+    const nextCombat = applyStabilize(targetCharacter.data.combat);
+    const saveResult = await saveCharacterData(
+      targetCharacter.id,
+      { ...targetCharacter.data, combat: nextCombat },
+      undefined,
+      { isDm, originalData: targetCharacter.data }
+    );
+    if (saveResult.error) {
+      showAlert(saveResult.error);
+      return;
+    }
+
+    setLocalCharacters((current) =>
+      current.map((entry) =>
+        entry.id === targetCharacter.id
+          ? { ...entry, data: { ...entry.data, combat: nextCombat } }
+          : entry
+      )
+    );
+
+    const { next, error } = await recordCombatActionUsed(campaignId, combatState, {
+      isDm,
+    });
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+
+    setStabilizeModal(null);
+    setStabilizeTargetPicker(null);
+    showAlert(
+      viaSpell
+        ? `${getCombatTokenDisplayLabel(targetToken)} is stabilized (Spare the Dying).`
+        : `${getCombatTokenDisplayLabel(targetToken)} is stabilized.`
+    );
+  }
+
   async function handleSelectCombatOption(option: CombatOption) {
     if (!isImplementedCombatOption(option)) return;
     if (attackTargeting) {
@@ -1614,6 +1744,21 @@ export function CombatBoard({
       );
       if (allies.length === 0) return;
       setHelpTargetPickerAllies(allies);
+      return;
+    }
+
+    if (isStabilizeActionOption(option)) {
+      if (!actingToken || battleOver || actionUsed) return;
+      openStabilizeTargetFlow(
+        getAdjacentDyingAllyTokens(actingToken, combatState, localCharacters),
+        false
+      );
+      return;
+    }
+
+    if (isSavingThrowsOption(option)) {
+      if (!userControlsCombat || !actingTokenCharacter || battleOver) return;
+      setDeathSaveRollOpen(true);
       return;
     }
 
@@ -1701,6 +1846,17 @@ export function CombatBoard({
       if (battleOver) return;
       if (option.spellCast?.castingCost === "bonus-action" && bonusActionUsed) return;
       if (option.spellCast?.castingCost === "action" && actionUsed) return;
+
+      if (
+        option.spellCast?.spellId === "spare-the-dying" &&
+        actingToken
+      ) {
+        openStabilizeTargetFlow(
+          getAdjacentDyingAllyTokens(actingToken, combatState, localCharacters),
+          true
+        );
+        return;
+      }
 
       const spellCast = option.spellCast;
       if (spellCast && spellCast.level > 0 && actingTokenCharacter) {
@@ -1964,6 +2120,8 @@ export function CombatBoard({
               ...character.data.combat,
               currentHp: token?.currentHp ?? update.currentHp,
               tempHp: update.tempHp,
+              ...(update.conditions != null ? { conditions: update.conditions } : {}),
+              ...(update.deathSaves != null ? { deathSaves: update.deathSaves } : {}),
             },
             ...(update.inventoryItems != null
               ? {
@@ -2789,7 +2947,11 @@ export function CombatBoard({
     const character = token.characterId ? charactersById[token.characterId] ?? null : null;
     const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
     const { currentHp, maxHp } = getTokenHpDisplay(token, character, enemyData);
-    const nextHp = applyHpDelta(currentHp, maxHp, delta);
+    const partyNextCombat =
+      token.kind === "party" && character
+        ? applyCombatHpDelta(character.data.combat, delta, maxHp)
+        : null;
+    const nextHp = partyNextCombat?.currentHp ?? applyHpDelta(currentHp, maxHp, delta);
     const damageDelta = delta < 0 ? -delta : 0;
     const patched = patchTokenHpFromDamage(
       token,
@@ -2819,11 +2981,8 @@ export function CombatBoard({
       return;
     }
 
-    if (token.kind === "party" && character) {
-      const nextCombat = {
-        ...character.data.combat,
-        currentHp: nextHp,
-      };
+    if (token.kind === "party" && character && partyNextCombat) {
+      const nextCombat = partyNextCombat;
       const saveResult = await saveCharacterData(
         character.id,
         { ...character.data, combat: nextCombat },
@@ -3847,7 +4006,7 @@ export function CombatBoard({
           )
         : null;
     const effectiveAc = getTokenAc(token, character, enemy?.data ?? null);
-    const statusEntries = getTokenStatusEntries(token);
+    const statusEntries = getTokenStatusEntries(token, tokenStatusContext);
     const isExpanded =
       isHovered &&
       ((token.kind === "enemy" && (showDmUi ? enemy != null : true)) ||
@@ -4427,14 +4586,25 @@ export function CombatBoard({
                           />
                         ) : null}
                         {currentTurnOptionGroups.actions.length > 0 ? (
-                          <CombatActionPanel
-                            key={actingToken?.id ?? "no-acting-token"}
-                            options={currentTurnOptionGroups.actions}
-                            onSelectOption={handleSelectCombatOption}
-                            selectedOptionId={selectedActionOptionId}
-                            pendingOptionId={pendingOptionId}
-                            selectionLocked={turnActionsLocked}
-                          />
+                          showSavingThrowsPanel ? (
+                            <CombatSavingThrowsPanel
+                              key={actingToken?.id ?? "no-acting-token"}
+                              options={currentTurnOptionGroups.actions}
+                              onSelectOption={handleSelectCombatOption}
+                              selectedOptionId={selectedActionOptionId}
+                              pendingOptionId={pendingOptionId}
+                              selectionLocked={turnActionsLocked}
+                            />
+                          ) : (
+                            <CombatActionPanel
+                              key={actingToken?.id ?? "no-acting-token"}
+                              options={currentTurnOptionGroups.actions}
+                              onSelectOption={handleSelectCombatOption}
+                              selectedOptionId={selectedActionOptionId}
+                              pendingOptionId={pendingOptionId}
+                              selectionLocked={turnActionsLocked}
+                            />
+                          )
                         ) : null}
                         {objectInteractionMode && freeObjectInteractionUsed && !actionUsed ? (
                           <p className="combat-object-interaction-hint">
@@ -4831,6 +5001,47 @@ export function CombatBoard({
           onCancel={() => setHelpTargetPickerAllies(null)}
         />
       ) : null}
+      {stabilizeTargetPicker ? (
+        <CombatStabilizeTargetModal
+          allies={stabilizeTargetPicker.allies}
+          resolvePortraitUrl={(token) => resolveTokenPortraitUrl(supabase, token)}
+          onSelect={(ally) => {
+            setStabilizeTargetPicker(null);
+            setStabilizeModal({
+              targetToken: ally,
+              viaSpell: stabilizeTargetPicker.viaSpell,
+            });
+          }}
+          onCancel={() => setStabilizeTargetPicker(null)}
+        />
+      ) : null}
+      {stabilizeModal && actingTokenCharacter ? (
+        <StabilizeActionModal
+          actorData={actingTokenCharacter.data}
+          targetLabel={getCombatTokenDisplayLabel(stabilizeModal.targetToken)}
+          hasHealersKit={actingTokenCharacter.data.inventory.items.some(
+            (item) => item.itemId === "healers-kit" && item.quantity > 0
+          )}
+          viaSpell={stabilizeModal.viaSpell}
+          onCancel={() => setStabilizeModal(null)}
+          onStabilize={() =>
+            void handleConfirmStabilize(
+              stabilizeModal.targetToken,
+              stabilizeModal.viaSpell
+            )
+          }
+        />
+      ) : null}
+      {deathSaveRollOpen && actingTokenCharacter
+        ? createPortal(
+            <DeathSaveRollModal
+              data={actingTokenCharacter.data}
+              onCancel={() => setDeathSaveRollOpen(false)}
+              onApply={(combat) => void handleApplyDeathSave(combat)}
+            />,
+            document.body
+          )
+        : null}
       {equipmentChangeOpen && actingTokenCharacter ? (
         <CombatEquipmentChangeModal
           initialItems={actingTokenCharacter.data.inventory.items}

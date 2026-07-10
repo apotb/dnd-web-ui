@@ -216,8 +216,8 @@ import {
   formatAcTooltip,
 } from "@/lib/character/ac-derivation";
 import {
-  applyHpDamage,
-  applyHpHeal,
+  applyCombatHpDamage,
+  applyCombatHpHeal,
   calculateEffectiveMaxHpBreakdown,
   calculateMaxHpBreakdown,
   calculateSpeedBreakdown,
@@ -1080,7 +1080,7 @@ export function CharacterSheet({
     if (!trimmed || !/^\d+$/.test(trimmed)) return;
     const amount = parseInt(trimmed, 10);
     if (amount <= 0) return;
-    updateCombat(applyHpDamage(data.combat, amount));
+    updateCombat(applyCombatHpDamage(data.combat, amount));
     setHpDelta("");
   }
 
@@ -1089,7 +1089,7 @@ export function CharacterSheet({
     if (!trimmed || !/^\d+$/.test(trimmed)) return;
     const amount = parseInt(trimmed, 10);
     if (amount <= 0) return;
-    updateCombat(applyHpHeal(data.combat, amount, derivedMaxHp));
+    updateCombat(applyCombatHpHeal(data.combat, amount, derivedMaxHp));
     setHpDelta("");
   }
 

@@ -100,6 +100,7 @@ export const TURN_RESET_FIELDS = {
   bonusActionUsed: false,
   disengageUsed: false,
   freeObjectInteractionUsed: false,
+  deathSaveRolled: false,
   multiattackBranchIndex: null,
   multiattackRemaining: {},
 } as const;
@@ -231,6 +232,19 @@ export function applyDisengageUsed(state: CombatState): CombatState {
       ...state.turn,
       disengageUsed: true,
       actionUsed: true,
+    },
+  };
+}
+
+export function applyDeathSaveRolled(state: CombatState): CombatState {
+  if (!isBattleActive(state)) return state;
+  if (state.turn.deathSaveRolled) return state;
+
+  return {
+    ...state,
+    turn: {
+      ...state.turn,
+      deathSaveRolled: true,
     },
   };
 }

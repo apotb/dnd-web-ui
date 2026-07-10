@@ -1,0 +1,128 @@
+import {
+  applyConditionSlugs,
+  removeConditionSlugs,
+} from "@/lib/dnd/conditions";
+import type { CharacterData } from "@/lib/schemas/character";
+
+export const DYING_CONDITION_SLUG = "dying";
+
+export const AUTO_ZERO_HP_CONDITIONS = [
+  "incapacitated",
+  "unconscious",
+  "prone",
+] as const;
+
+const ALL_AUTO_DOWNED_CONDITIONS = [
+  DYING_CONDITION_SLUG,
+  ...AUTO_ZERO_HP_CONDITIONS,
+] as const;
+
+export function hasDyingCondition(combat: CharacterData["combat"]): boolean {
+  return (combat.conditions ?? []).includes(DYING_CONDITION_SLUG);
+}
+
+export function needsDeathSavingThrow(combat: CharacterData["combat"]): boolean {
+  return combat.currentHp === 0 && hasDyingCondition(combat);
+}
+
+export function applyKnockToZeroHp(
+  combat: CharacterData["combat"]
+): CharacterData["combat"] {
+  const conditions = applyConditionSlugs(combat.conditions ?? [], [
+    DYING_CONDITION_SLUG,
+    ...AUTO_ZERO_HP_CONDITIONS,
+  ]);
+  return {
+    ...combat,
+    currentHp: 0,
+    conditions,
+    deathSaves: { successes: 0, failures: 0 },
+  };
+}
+
+export function applyStabilize(
+  combat: CharacterData["combat"]
+): CharacterData["combat"] {
+  const conditions = removeConditionSlugs(combat.conditions ?? [], [
+    DYING_CONDITION_SLUG,
+  ]);
+  return {
+    ...combat,
+    conditions,
+    deathSaves: { successes: 0, failures: 0 },
+  };
+}
+
+export function applyWakeFromZeroHp(
+  combat: CharacterData["combat"],
+  newHp: number
+): CharacterData["combat"] {
+  const conditions = removeConditionSlugs(combat.conditions ?? [], [
+    ...ALL_AUTO_DOWNED_CONDITIONS,
+  ]);
+  return {
+    ...combat,
+    currentHp: newHp,
+    conditions,
+    deathSaves: { successes: 0, failures: 0 },
+  };
+}
+
+export function applyDamageAtZeroHp(
+  combat: CharacterData["combat"],
+  options: { isCritical?: boolean } = {}
+): CharacterData["combat"] {
+  const failureDelta = options.isCritical ? 2 : 1;
+  const failures = Math.min(3, combat.deathSaves.failures + failureDelta);
+  let conditions = combat.conditions ?? [];
+
+  if (!hasDyingCondition(combat)) {
+    conditions = applyConditionSlugs(conditions, [DYING_CONDITION_SLUG]);
+  }
+
+  return {
+    ...combat,
+    conditions,
+    deathSaves: {
+      successes: combat.deathSaves.successes,
+      failures,
+    },
+  };
+}
+
+export interface SyncCombatAfterHpChangeOptions {
+  previousHp: number;
+  /** Damage dealt to current HP (after temp HP), if any. */
+  damageToHp?: number;
+  isCritical?: boolean;
+}
+
+/**
+ * Apply dying / stable / wake transitions after an HP change.
+ * Call with the combat state *before* applying the raw HP delta, plus the new HP.
+ */
+export function syncCombatAfterHpChange(
+  combat: CharacterData["combat"],
+  newHp: number,
+  options: SyncCombatAfterHpChangeOptions
+): CharacterData["combat"] {
+  const { previousHp, damageToHp = 0, isCritical = false } = options;
+  const next: CharacterData["combat"] = {
+    ...combat,
+    currentHp: newHp,
+  };
+
+  if (previousHp > 0 && newHp === 0) {
+    return applyKnockToZeroHp(next);
+  }
+
+  if (previousHp === 0 && newHp > 0) {
+    return applyWakeFromZeroHp(next, newHp);
+  }
+
+  if (newHp === 0 && damageToHp > 0) {
+    return applyDamageAtZeroHp(next, { isCritical });
+  }
+
+  return next;
+}

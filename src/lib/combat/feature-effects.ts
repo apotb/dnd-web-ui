@@ -210,10 +210,21 @@ export function isTokenIncapacitated(
 }
 
 export function getTokenStatusEntries(
-  token: CombatToken
+  token: CombatToken,
+  context?: TokenStatusContext
 ): { slug: string; label: string }[] {
   const entries: { slug: string; label: string }[] = [];
   const seen = new Set<string>();
+
+  const fromCharacter =
+    token.characterId && context?.conditionsByCharacterId
+      ? context.conditionsByCharacterId[token.characterId] ?? []
+      : [];
+  for (const slug of fromCharacter) {
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    entries.push({ slug, label: getConditionDisplayName(slug) });
+  }
 
   for (const def of getActiveEffectDefs(token)) {
     for (const slug of def.appliedConditionSlugs ?? []) {
@@ -231,8 +242,11 @@ export function getTokenStatusTooltip(slug: string): string | null {
   return description || null;
 }
 
-export function getTokenStatusLabels(token: CombatToken): string[] {
-  return getTokenStatusEntries(token).map((entry) => entry.label);
+export function getTokenStatusLabels(
+  token: CombatToken,
+  context?: TokenStatusContext
+): string[] {
+  return getTokenStatusEntries(token, context).map((entry) => entry.label);
 }
 
 export function buildEmergeFromShellCombatOption() {

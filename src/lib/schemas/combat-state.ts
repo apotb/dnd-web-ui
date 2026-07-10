@@ -42,6 +42,8 @@ export const combatTurnSchema = z.object({
   disengageUsed: z.boolean().default(false),
   /** Free object interaction consumed this turn (first pickup is free). */
   freeObjectInteractionUsed: z.boolean().default(false),
+  /** Death saving throw rolled this turn (party tokens at 0 HP). */
+  deathSaveRolled: z.boolean().default(false),
   /** Selected Multiattack branch index for the active turn, when applicable. */
   multiattackBranchIndex: z.number().int().nullable().default(null),
   /** Remaining Multiattack strikes by normalized weapon name for the active turn. */
@@ -219,6 +221,7 @@ export const combatStateSchema = z.object({
     bonusActionUsed: false,
     disengageUsed: false,
     freeObjectInteractionUsed: false,
+    deathSaveRolled: false,
     multiattackBranchIndex: null,
     multiattackRemaining: {},
   }),
@@ -276,6 +279,7 @@ export const DEFAULT_COMBAT_TURN: CombatTurn = {
   bonusActionUsed: false,
   disengageUsed: false,
   freeObjectInteractionUsed: false,
+  deathSaveRolled: false,
   multiattackBranchIndex: null,
   multiattackRemaining: {},
 };
@@ -301,6 +305,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
         bonusActionUsed: false,
         disengageUsed: false,
         freeObjectInteractionUsed: false,
+        deathSaveRolled: false,
         multiattackBranchIndex: null,
         multiattackRemaining: {},
       },
@@ -322,6 +327,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
       bonusActionUsed: state.turn.bonusActionUsed ?? false,
       disengageUsed: state.turn.disengageUsed ?? false,
       freeObjectInteractionUsed: state.turn.freeObjectInteractionUsed ?? false,
+      deathSaveRolled: state.turn.deathSaveRolled ?? false,
       multiattackBranchIndex: state.turn.multiattackBranchIndex ?? null,
       multiattackRemaining: state.turn.multiattackRemaining ?? {},
     },

@@ -234,4 +234,83 @@ describe("getCombatOptionGroupsForToken spellcasting entries", () => {
     assert.ok(standardIndex >= 0);
     assert.ok(featureIndex < standardIndex);
   });
+
+  it("shows only Saving Throws when incapacitated and dying", () => {
+    const data = createDefaultCharacterData({
+      combat: {
+        currentHp: 0,
+        conditions: ["dying", "unconscious", "incapacitated", "prone"],
+        deathSaves: { successes: 1, failures: 0 },
+      },
+    });
+    const character = {
+      id: "char-dying",
+      campaign_id: "camp-1",
+      name: "Downed",
+      data,
+    } as ParsedCharacter;
+    const token = { ...partyToken(), characterId: "char-dying" };
+    const state = combatState(token);
+
+    const groups = getCombatOptionGroupsForToken(token, {
+      character,
+      enemyData: null,
+      catalogItems: {},
+      classCatalog: PHB_CLASSES,
+      featureCatalogs: { species: ALL_SPECIES },
+      actionUsedForTwoWeapon: false,
+      twoWeaponFightingUsedOffHand: null,
+      actionUsed: false,
+      bonusActionUsed: false,
+      dashUsed: false,
+      freeObjectInteractionUsed: false,
+      combatState: state,
+      token,
+      partyCharacters: [character],
+      canUseObject: true,
+    });
+
+    assert.equal(groups.actions.length, 1);
+    assert.equal(groups.actions[0]?.id, "combat:saving-throws");
+    assert.equal(groups.multiattackActions.length, 0);
+    assert.equal(groups.bonusActions.length, 0);
+  });
+
+  it("shows no actions when stable at 0 HP", () => {
+    const data = createDefaultCharacterData({
+      combat: {
+        currentHp: 0,
+        conditions: ["unconscious", "incapacitated", "prone"],
+        deathSaves: { successes: 0, failures: 0 },
+      },
+    });
+    const character = {
+      id: "char-stable",
+      campaign_id: "camp-1",
+      name: "Stable",
+      data,
+    } as ParsedCharacter;
+    const token = { ...partyToken(), characterId: "char-stable" };
+    const state = combatState(token);
+
+    const groups = getCombatOptionGroupsForToken(token, {
+      character,
+      enemyData: null,
+      catalogItems: {},
+      classCatalog: PHB_CLASSES,
+      featureCatalogs: { species: ALL_SPECIES },
+      actionUsedForTwoWeapon: false,
+      twoWeaponFightingUsedOffHand: null,
+      actionUsed: false,
+      bonusActionUsed: false,
+      dashUsed: false,
+      freeObjectInteractionUsed: false,
+      combatState: state,
+      token,
+      partyCharacters: [character],
+      canUseObject: true,
+    });
+
+    assert.equal(groups.actions.length, 0);
+  });
 });

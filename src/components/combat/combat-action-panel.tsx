@@ -207,6 +207,35 @@ export function CombatActionPanel({
   );
 }
 
+interface CombatSavingThrowsPanelProps {
+  options: CombatOption[];
+  onSelectOption: (option: CombatOption) => void;
+  selectedOptionId?: string | null;
+  pendingOptionId?: string | null;
+  selectionLocked?: boolean;
+}
+
+export function CombatSavingThrowsPanel({
+  options,
+  onSelectOption,
+  selectedOptionId,
+  pendingOptionId,
+  selectionLocked,
+}: CombatSavingThrowsPanelProps) {
+  return (
+    <CombatOptionPanel
+      title="Saving Throws"
+      emptyMessage="No saving throws available."
+      options={options}
+      onSelectOption={onSelectOption}
+      selectedOptionId={selectedOptionId}
+      pendingOptionId={pendingOptionId}
+      selectionLocked={selectionLocked}
+      visibleRows={1}
+    />
+  );
+}
+
 interface CombatBonusActionPanelProps {
   options: CombatOption[];
   onSelectOption: (option: CombatOption) => void;

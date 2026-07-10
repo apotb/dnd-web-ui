@@ -1,5 +1,5 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
-import { applyHpDamage } from "@/lib/character/combat-derivation";
+import { applyCombatHpDamage } from "@/lib/character/combat-derivation";
 import { parseDamageNotation } from "@/lib/dnd/dice";
 import { consumeLoadedAmmunition, isRecoverableAmmunition } from "@/lib/dnd/ammunition";
 import { consumeThrownWeaponInventoryItem } from "@/lib/character/equip-rules";
@@ -196,6 +196,8 @@ export interface CharacterHpUpdate {
   characterId: string;
   currentHp: number;
   tempHp: number;
+  conditions?: string[];
+  deathSaves?: CharacterData["combat"]["deathSaves"];
   inventoryItems?: InventoryItem[];
   spellSlots?: CharacterData["spells"]["slots"];
 }
@@ -251,14 +253,21 @@ export function applyResolvedAttack(
       const currentHp = token.currentHp ?? combat.currentHp;
       const tempHp = combat.tempHp;
       const maxHp = token.maxHp ?? combat.maxHp;
-      const result = applyHpDamage({ ...combat, currentHp, tempHp, maxHp }, damage);
+      const isCritical = target?.critical ?? false;
+      const nextCombat = applyCombatHpDamage(
+        { ...combat, currentHp, tempHp, maxHp },
+        damage,
+        { isCritical }
+      );
       upsertCharacterUpdate(token.characterId, {
-        currentHp: result.currentHp,
-        tempHp: result.tempHp,
+        currentHp: nextCombat.currentHp,
+        tempHp: nextCombat.tempHp,
+        conditions: nextCombat.conditions,
+        deathSaves: nextCombat.deathSaves,
       });
       return {
         ...token,
-        currentHp: result.currentHp,
+        currentHp: nextCombat.currentHp,
         maxHp,
         damageTaken,
       };

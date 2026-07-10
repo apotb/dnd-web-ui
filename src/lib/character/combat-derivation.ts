@@ -7,6 +7,7 @@ import {
   getInventoryWeightLb,
   type EncumbranceInfo,
 } from "@/lib/character/encumbrance";
+import { syncCombatAfterHpChange } from "@/lib/dnd/dying-state";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
@@ -423,6 +424,22 @@ export function applyHpDamage(
   return { currentHp, tempHp };
 }
 
+/** Apply damage and sync dying / stable / wake state on character combat. */
+export function applyCombatHpDamage(
+  combat: CharacterData["combat"],
+  amount: number,
+  options?: { isCritical?: boolean }
+): CharacterData["combat"] {
+  const previousHp = combat.currentHp;
+  const { currentHp, tempHp } = applyHpDamage(combat, amount);
+  const damageToHp = Math.max(0, previousHp - currentHp);
+  return syncCombatAfterHpChange(
+    { ...combat, tempHp },
+    currentHp,
+    { previousHp, damageToHp, isCritical: options?.isCritical }
+  );
+}
+
 /** Heal current HP up to max HP (temp HP unchanged). */
 export function applyHpHeal(
   combat: CharacterData["combat"],
@@ -434,4 +451,30 @@ export function applyHpHeal(
   return {
     currentHp: Math.min(cap, combat.currentHp + amount),
   };
+}
+
+/** Heal and sync dying / stable / wake state on character combat. */
+export function applyCombatHpHeal(
+  combat: CharacterData["combat"],
+  amount: number,
+  maxHp?: number
+): CharacterData["combat"] {
+  const previousHp = combat.currentHp;
+  const { currentHp } = applyHpHeal(combat, amount, maxHp);
+  return syncCombatAfterHpChange(combat, currentHp, { previousHp });
+}
+
+/** Apply a signed HP delta and sync dying state (for DM manual adjust). */
+export function applyCombatHpDelta(
+  combat: CharacterData["combat"],
+  delta: number,
+  maxHp?: number
+): CharacterData["combat"] {
+  if (delta < 0) {
+    return applyCombatHpDamage(combat, -delta);
+  }
+  if (delta > 0) {
+    return applyCombatHpHeal(combat, delta, maxHp);
+  }
+  return combat;
 }

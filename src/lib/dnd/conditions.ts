@@ -167,6 +167,19 @@ export const PHB_CONDITIONS: PhbCondition[] = [
       "• Any attack that hits the creature is a critical hit if the attacker is within 5 feet of the creature.",
   },
   {
+    slug: "dying",
+    name: "Dying",
+    isStandard: false,
+    source: "Homebrew",
+    description:
+      "At 0 hit points while dying, you must make a death saving throw at the start of each of your turns.\n" +
+      "• 3 successes: you become stable (unconscious at 0 HP, no more death saves until you take damage).\n" +
+      "• 3 failures: you die.\n" +
+      "• Natural 20: regain 1 hit point and wake up.\n" +
+      "• Natural 1: counts as 2 failures.\n" +
+      "• Taking damage while at 0 HP: 1 automatic failure (2 on a critical hit).",
+  },
+  {
     slug: "in-shell",
     name: "In Shell",
     isStandard: false,

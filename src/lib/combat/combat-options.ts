@@ -27,7 +27,7 @@ import {
   formatBattleTooltip,
   battleTooltipFallbackCharacter,
 } from "@/lib/combat/battle-tooltip";
-import { canUseHelpAction, isTokenEngaged } from "@/lib/combat/engagement";
+import { canUseHelpAction, getAdjacentAllyTokens, isTokenEngaged } from "@/lib/combat/engagement";
 import { isBattleOver, isTokenOnMapEdge } from "@/lib/combat/battle-over";
 import {
   canShowHpPoolOption,
@@ -44,6 +44,8 @@ import {
 } from "@/lib/dnd/mechanical-features";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import type { CharacterData } from "@/lib/schemas/character";
+import { formatDeathSavesTooltip } from "@/lib/character/combat-derivation";
+import { needsDeathSavingThrow } from "@/lib/dnd/dying-state";
 import type { EnemyData, EnemyNamedBlock } from "@/lib/schemas/enemy";
 import {
   isEnemyMeleeParsedAction,
@@ -81,6 +83,7 @@ import {
   filterOptionGroupsForTokenEffects,
   isRegisteredCombatFeatureAction,
   isRegisteredFeatureEnterAction,
+  isTokenIncapacitated,
   isTokenInShellDefense,
   isTokenRestrictedByEffects,
   type TokenStatusContext,
@@ -385,6 +388,53 @@ export function isHelpActionOption(option: CombatOption): boolean {
   return option.action?.id === COMBAT_HELP_ACTION_ID;
 }
 
+export const COMBAT_STABILIZE_ACTION_ID = "core:stabilize";
+
+export function isStabilizeActionOption(option: CombatOption): boolean {
+  return option.action?.id === COMBAT_STABILIZE_ACTION_ID;
+}
+
+export const COMBAT_SAVING_THROWS_OPTION_ID = "combat:saving-throws";
+
+export function isSavingThrowsOption(option: CombatOption): boolean {
+  return option.id === COMBAT_SAVING_THROWS_OPTION_ID;
+}
+
+export function getAdjacentDyingAllyTokens(
+  token: CombatToken,
+  state: CombatState,
+  partyCharacters: ParsedCharacter[]
+): CombatToken[] {
+  const charactersById = Object.fromEntries(
+    partyCharacters.map((character) => [character.id, character])
+  );
+  return getAdjacentAllyTokens(token, state).filter((ally) => {
+    if (!ally.characterId) return false;
+    const character = charactersById[ally.characterId];
+    if (!character) return false;
+    return needsDeathSavingThrow(character.data.combat);
+  });
+}
+
+export function canStabilizeAdjacentAlly(
+  token: CombatToken,
+  state: CombatState,
+  partyCharacters: ParsedCharacter[]
+): boolean {
+  return getAdjacentDyingAllyTokens(token, state, partyCharacters).length > 0;
+}
+
+function buildSavingThrowsOption(character: ParsedCharacter): CombatOption {
+  const { successes, failures } = character.data.combat.deathSaves;
+  return {
+    id: COMBAT_SAVING_THROWS_OPTION_ID,
+    name: "Saving Throws",
+    subtitle: `${successes}/3 success · ${failures}/3 fail`,
+    tooltip: formatDeathSavesTooltip(character.data),
+    kind: "action",
+  };
+}
+
 export const COMBAT_USE_OBJECT_ACTION_ID = "core:use-object";
 
 export const COMBAT_USE_OBJECT_OPTION_ID = `action:${COMBAT_USE_OBJECT_ACTION_ID}`;
@@ -535,6 +585,7 @@ function buildStandardActionOptions(
   isEngaged: boolean,
   canUseHelp: boolean,
   canUseObject: boolean,
+  canStabilize: boolean,
   battleOver = false
 ): CombatOption[] {
   const options = getStandardCombatActions()
@@ -545,7 +596,8 @@ function buildStandardActionOptions(
         (action.id !== COMBAT_USE_OBJECT_ACTION_ID || canUseObject) &&
         (action.id === COMBAT_USE_OBJECT_ACTION_ID || !turn.actionUsed) &&
         (action.id !== COMBAT_DISENGAGE_ACTION_ID || isEngaged) &&
-        (action.id !== COMBAT_HELP_ACTION_ID || canUseHelp)
+        (action.id !== COMBAT_HELP_ACTION_ID || canUseHelp) &&
+        (action.id !== COMBAT_STABILIZE_ACTION_ID || canStabilize)
     )
     .map((action) => ({
       id: `action:${action.id}`,
@@ -665,10 +717,12 @@ function buildPartyOptionGroups(
     bonusActionUsed: boolean;
     dashUsed: boolean;
     freeObjectInteractionUsed: boolean;
+    deathSaveRolled: boolean;
   },
   isEngaged: boolean,
   canUseHelp: boolean,
   canUseObject: boolean,
+  tokenStatusContext: TokenStatusContext,
   options?: { battleOver?: boolean }
 ): CombatOptionGroups {
   if (isTokenRestrictedByEffects(token)) {
@@ -678,6 +732,23 @@ function buildPartyOptionGroups(
       turn
     ) as CombatOptionGroups;
   }
+
+  if (isTokenIncapacitated(token, tokenStatusContext)) {
+    if (
+      needsDeathSavingThrow(character.data.combat) &&
+      !turn.deathSaveRolled &&
+      !options?.battleOver
+    ) {
+      return {
+        actions: [buildSavingThrowsOption(character)],
+        multiattackActions: [],
+        bonusActions: [],
+      };
+    }
+    return { actions: [], multiattackActions: [], bonusActions: [] };
+  }
+
+  const canStabilize = canStabilizeAdjacentAlly(token, combatState, partyCharacters);
 
   const attacks = getAllAttacks(character.data, catalogItems, classCatalog, {
     ammoCountMode: "battle-ready",
@@ -756,6 +827,7 @@ function buildPartyOptionGroups(
       isEngaged,
       canUseHelp,
       canUseObject,
+      canStabilize,
       options?.battleOver
     ),
   ];
@@ -893,7 +965,13 @@ function buildNpcOptionGroups(
   canUseHelp: boolean,
   canUseObject: boolean
 ): CombatOptionGroups {
-  const standardActions = buildStandardActionOptions(turn, isEngaged, canUseHelp, canUseObject);
+  const standardActions = buildStandardActionOptions(
+    turn,
+    isEngaged,
+    canUseHelp,
+    canUseObject,
+    false
+  );
 
   if (!enemyData || turn.actionUsed) {
     return {
@@ -1009,6 +1087,8 @@ export function isImplementedCombatOption(option: CombatOption): boolean {
     isDashActionOption(option) ||
     isUseObjectActionOption(option) ||
     isOtherActionsOption(option) ||
+    isStabilizeActionOption(option) ||
+    isSavingThrowsOption(option) ||
     isLeaveAreaOption(option) ||
     isShellDefenseEnterOption(option) ||
     isEmergeFromShellOption(option) ||
@@ -1058,10 +1138,12 @@ export function getCombatOptionGroupsForToken(
         bonusActionUsed: context.bonusActionUsed,
         dashUsed: context.dashUsed,
         freeObjectInteractionUsed: context.freeObjectInteractionUsed,
+        deathSaveRolled: context.combatState.turn.deathSaveRolled ?? false,
       },
       isTokenEngaged(context.token, context.combatState, tokenStatusContext),
       canUseHelpAction(context.token, context.combatState),
       context.canUseObject,
+      tokenStatusContext,
       { battleOver }
     );
 

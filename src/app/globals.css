@@ -2733,11 +2733,12 @@ html.campaign-bg-active .retro-back-link {
   font-weight: 600;
 }
 
-.death-save-roll-actions {
+.death-save-roll-modal .death-save-roll-actions {
   justify-content: space-between;
+  width: 100%;
 }
 
-.death-save-roll-actions--single {
+.death-save-roll-modal .death-save-roll-actions--single {
   justify-content: center;
 }
 
