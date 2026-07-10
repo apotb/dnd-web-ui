@@ -185,17 +185,23 @@ export function buildEmergeFromShellCombatOption() {
 
 export function filterOptionGroupsForTokenEffects(
   token: CombatToken,
-  groups: { actions: unknown[]; bonusActions: unknown[] },
+  groups: { actions: unknown[]; multiattackActions?: unknown[]; bonusActions: unknown[] },
   turn: { bonusActionUsed: boolean }
-): { actions: unknown[]; bonusActions: unknown[] } {
-  if (!isTokenRestrictedByEffects(token)) return groups;
+): { actions: unknown[]; multiattackActions: unknown[]; bonusActions: unknown[] } {
+  if (!isTokenRestrictedByEffects(token)) {
+    return {
+      actions: groups.actions,
+      multiattackActions: groups.multiattackActions ?? [],
+      bonusActions: groups.bonusActions,
+    };
+  }
 
   const bonusActions =
     turn.bonusActionUsed || !isTokenInShellDefense(token)
       ? []
       : [buildEmergeFromShellCombatOption()];
 
-  return { actions: [], bonusActions };
+  return { actions: [], multiattackActions: [], bonusActions };
 }
 
 export function applyCombatEffectEnter(

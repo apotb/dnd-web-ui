@@ -12,7 +12,7 @@ import {
   isTokenInTurnOrder,
   normalizeCombatTurn,
 } from "@/lib/schemas/combat-state";
-import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
+import { adjustTurnAfterTokenRemoved, TURN_RESET_FIELDS } from "@/lib/combat/turn";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { abilityModifier as enemyAbilityModifier } from "@/lib/schemas/enemy";
 
@@ -153,7 +153,7 @@ export function finalizeInitiativeIfReady(state: CombatState): CombatState {
       status: "ready",
       order: buildTurnOrder(state.tokens, state.initiative.results),
     },
-    turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: true, index: 0, round: 1, ...TURN_RESET_FIELDS },
   };
 }
 
@@ -161,7 +161,7 @@ export function clearInitiativeState(state: CombatState): CombatState {
   return {
     ...state,
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: false, index: 0, round: 1, ...TURN_RESET_FIELDS },
   };
 }
 
@@ -227,7 +227,7 @@ export function startInitiativeCollection(
       results,
       order: [],
     },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: { active: false, index: 0, round: 1, ...TURN_RESET_FIELDS },
   };
 }
 

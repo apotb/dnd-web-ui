@@ -25,6 +25,7 @@ import {
   formatBattleMoveTooltip,
   formatBattleOtherActionsTooltip,
   formatBattleTooltip,
+  battleTooltipFallbackCharacter,
 } from "@/lib/combat/battle-tooltip";
 import { canUseHelpAction, isTokenEngaged } from "@/lib/combat/engagement";
 import { isBattleOver, isTokenOnMapEdge } from "@/lib/combat/battle-over";
@@ -44,6 +45,21 @@ import {
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { EnemyData, EnemyNamedBlock } from "@/lib/schemas/enemy";
+import {
+  isEnemyMeleeParsedAction,
+  isEnemyWeaponAction,
+  parseEnemyActions,
+  type ParsedEnemyAction,
+} from "@/lib/combat/enemy-action-parser";
+import {
+  buildInitialMultiattackRemaining,
+  getMultiattackRemainingForWeapon,
+  getMultiattackSpec,
+  isWeaponInMultiattackBranch,
+  totalMultiattackRemaining,
+  type MultiattackBranch,
+  type MultiattackSpec,
+} from "@/lib/combat/multiattack";
 import { getWeaponProperties, type Item } from "@/lib/schemas/item";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import {
@@ -105,6 +121,8 @@ export interface CombatOption {
   spellcasting?: {
     castingCost: "action";
   };
+  /** Overrides default action cost (e.g. Multiattack strikes). */
+  actionCostOverride?: "multiattack";
 }
 
 export const COMBAT_CAST_SPELL_ACTION_ID = "core:cast-spell";
@@ -185,8 +203,15 @@ function actionSubtitle(action: CharacterActionEntry): string {
   return ACTION_COST_LABELS[action.cost];
 }
 
-function attackOptionSubtitle(attack: DerivedAttack): string {
+function attackOptionSubtitle(attack: DerivedAttack, remaining?: number): string {
   const range = attack.range?.trim() || null;
+  if (attack.rollType === "save" && attack.saveDc != null) {
+    const ability = attack.saveAbility?.trim();
+    const base = ability
+      ? `Save · DC ${attack.saveDc} ${ability}`
+      : `Save · DC ${attack.saveDc}`;
+    return remaining != null ? `${base} · ${remaining} left` : base;
+  }
   if (attack.source === "cantrip") {
     return formatSpellCombatSubtitle(0, range);
   }
@@ -197,20 +222,8 @@ function attackOptionSubtitle(attack: DerivedAttack): string {
     );
   }
   const category = getAttackCategoryLabel(attack);
-  return range ? `${category} · ${range}` : category;
-}
-
-function inferEnemyActionTypeLabel(description: string): string {
-  const text = description.trim();
-  if (/\b(?:Melee|Ranged) Weapon Attack:/i.test(text)) return "Attack";
-  if (/\b(?:Melee|Ranged) Spell Attack:/i.test(text) || /\bSpell Attack:/i.test(text)) {
-    return "Spell";
-  }
-  return "Action";
-}
-
-function enemyActionSubtitle(description: string): string {
-  return inferEnemyActionTypeLabel(description);
+  const base = range ? `${category} · ${range}` : category;
+  return remaining != null ? `${base} · ${remaining} left` : base;
 }
 
 const CORE_MOVE_ACTION: CharacterActionEntry = {
@@ -599,10 +612,6 @@ export function getOpportunityAttackOptionsForCharacter(
     .map((attack) => attackToCombatOption(attack, character.data, "attack"));
 }
 
-function isEnemyMeleeAction(description: string): boolean {
-  return /\bMelee Weapon Attack:/i.test(description);
-}
-
 export function getOpportunityAttackOptionsForToken(
   token: CombatToken,
   context: {
@@ -623,16 +632,16 @@ export function getOpportunityAttackOptionsForToken(
   }
 
   if (context.enemyData) {
-    return context.enemyData.actions
-      .filter((action) => isEnemyMeleeAction(action.description))
-      .map((action, index) => ({
-        id: `enemy-action:${index}:${action.name}`,
-        name: action.name || "Attack",
-        subtitle: enemyActionSubtitle(action.description),
-        tooltip: formatBattleEnemyActionTooltip(action),
-        kind: "enemy-action" as const,
-        enemyAction: action,
-      }));
+    return parseEnemyActions(context.enemyData.actions)
+      .filter(isEnemyMeleeParsedAction)
+      .flatMap((parsed) => {
+        if (!parsed.attack) return [];
+        const attacks =
+          parsed.kind === "weapon-dual" && parsed.dualAttacks
+            ? [parsed.dualAttacks.melee]
+            : [parsed.attack];
+        return attacks.map((attack) => buildEnemyAttackOption(attack));
+      });
   }
 
   return [];
@@ -658,13 +667,13 @@ function buildPartyOptionGroups(
   canUseHelp: boolean,
   canUseObject: boolean,
   options?: { battleOver?: boolean }
-): { actions: CombatOption[]; bonusActions: CombatOption[] } {
+): CombatOptionGroups {
   if (isTokenRestrictedByEffects(token)) {
     return filterOptionGroupsForTokenEffects(
       token,
-      { actions: [], bonusActions: [] },
+      { actions: [], multiattackActions: [], bonusActions: [] },
       turn
-    ) as { actions: CombatOption[]; bonusActions: CombatOption[] };
+    ) as CombatOptionGroups;
   }
 
   const attacks = getAllAttacks(character.data, catalogItems, classCatalog);
@@ -807,6 +816,7 @@ function buildPartyOptionGroups(
 
   return {
     actions: [...attackOptions, ...actionOptions],
+    multiattackActions: [],
     bonusActions: options?.battleOver
       ? []
       : [
@@ -819,19 +829,45 @@ function buildPartyOptionGroups(
   };
 }
 
-function buildEnemyStatBlockOptions(
-  enemyData: EnemyData,
-  actionUsed: boolean
-): CombatOption[] {
-  if (actionUsed) return [];
-  return enemyData.actions.map((action, index) => ({
-    id: `enemy-action:${index}:${action.name}`,
+function buildEnemyAttackOption(
+  attack: DerivedAttack,
+  options?: { actionCostOverride?: "multiattack"; remaining?: number }
+): CombatOption {
+  return {
+    id: `attack:${attack.id}`,
+    name: attack.name,
+    subtitle: attackOptionSubtitle(attack, options?.remaining),
+    tooltip: formatBattleAttackTooltip(attack, battleTooltipFallbackCharacter),
+    kind: "attack",
+    attack,
+    actionCostOverride: options?.actionCostOverride,
+  };
+}
+
+function buildEnemyOtherActionOption(action: EnemyNamedBlock, index: number): CombatOption {
+  return {
+    id: `action:enemy:${index}:${action.name}`,
     name: action.name || "Action",
-    subtitle: enemyActionSubtitle(action.description),
+    subtitle: ACTION_COST_LABELS.action,
     tooltip: formatBattleEnemyActionTooltip(action),
-    kind: "enemy-action" as const,
-    enemyAction: action,
-  }));
+    kind: "action",
+    action: {
+      id: `enemy:${index}:${action.name}`,
+      name: action.name || "Action",
+      cost: "action",
+      description: action.description,
+      source: "custom",
+      sourceLabel: "Stat block",
+    },
+  };
+}
+
+function isParsedActionInMultiattackBranch(
+  parsed: ParsedEnemyAction,
+  branch: MultiattackBranch
+): boolean {
+  if (!isEnemyWeaponAction(parsed)) return false;
+  return isWeaponInMultiattackBranch(parsed, branch);
 }
 
 function buildNpcOptionGroups(
@@ -840,18 +876,91 @@ function buildNpcOptionGroups(
     actionUsed: boolean;
     dashUsed: boolean;
     freeObjectInteractionUsed: boolean;
+    multiattackBranchIndex: number | null;
+    multiattackRemaining: Record<string, number>;
   },
   isEngaged: boolean,
   canUseHelp: boolean,
   canUseObject: boolean
 ): CombatOptionGroups {
-  const statBlockActions = enemyData
-    ? buildEnemyStatBlockOptions(enemyData, turn.actionUsed)
-    : [];
   const standardActions = buildStandardActionOptions(turn, isEngaged, canUseHelp, canUseObject);
 
+  if (!enemyData || turn.actionUsed) {
+    return {
+      actions: standardActions,
+      multiattackActions: [],
+      bonusActions: [],
+    };
+  }
+
+  const parsedActions = parseEnemyActions(enemyData.actions);
+  const multiattackSpec = getMultiattackSpec(enemyData.actions);
+  const effectiveBranchIndex =
+    turn.multiattackBranchIndex ??
+    (multiattackSpec && multiattackSpec.branches.length === 1 ? 0 : null);
+  const activeBranch =
+    effectiveBranchIndex != null && multiattackSpec
+      ? multiattackSpec.branches[effectiveBranchIndex]
+      : null;
+  const effectiveRemaining =
+    Object.keys(turn.multiattackRemaining).length > 0
+      ? turn.multiattackRemaining
+      : activeBranch
+        ? buildInitialMultiattackRemaining(activeBranch, parsedActions)
+        : {};
+  const multiattackActive =
+    multiattackSpec != null &&
+    !turn.actionUsed &&
+    effectiveBranchIndex != null &&
+    totalMultiattackRemaining(effectiveRemaining) > 0;
+
+  const actionOptions: CombatOption[] = [];
+  const multiattackOptions: CombatOption[] = [];
+
+  for (const parsed of parsedActions) {
+    if (parsed.kind === "multiattack") continue;
+
+    if (parsed.attack) {
+      const attacks: DerivedAttack[] =
+        parsed.kind === "weapon-dual" && parsed.dualAttacks
+          ? activeBranch?.categoryFilter === "ranged"
+            ? [parsed.dualAttacks.ranged]
+            : [parsed.dualAttacks.melee]
+          : [parsed.attack];
+
+      for (const attack of attacks) {
+        const inMultiattackBranch =
+          activeBranch != null && isParsedActionInMultiattackBranch(parsed, activeBranch);
+
+        if (multiattackActive && inMultiattackBranch) {
+          const remaining = getMultiattackRemainingForWeapon(
+            effectiveRemaining,
+            parsed.action.name,
+            parsed
+          );
+          if (remaining > 0) {
+            multiattackOptions.push(
+              buildEnemyAttackOption(attack, {
+                actionCostOverride: "multiattack",
+                remaining,
+              })
+            );
+          }
+        } else if (!inMultiattackBranch || !multiattackSpec) {
+          actionOptions.push(buildEnemyAttackOption(attack));
+        }
+      }
+      continue;
+    }
+
+    actionOptions.push(buildEnemyOtherActionOption(parsed.action, parsed.index));
+  }
+
   return {
-    actions: [...statBlockActions, ...standardActions],
+    actions: [...actionOptions, ...standardActions],
+    multiattackActions: multiattackOptions,
+    multiattackBranches: multiattackSpec?.branches,
+    multiattackPreamble: multiattackSpec?.preamble,
     bonusActions: [],
   };
 }
@@ -859,19 +968,25 @@ function buildNpcOptionGroups(
 
 export interface CombatOptionGroups {
   actions: CombatOption[];
+  multiattackActions: CombatOption[];
+  multiattackBranches?: MultiattackBranch[];
+  multiattackPreamble?: string;
   bonusActions: CombatOption[];
 }
 
 export function isAttackTargetingOption(option: CombatOption): boolean {
   return (
     option.kind === "attack" ||
-    option.kind === "enemy-action" ||
     (option.kind === "bonus-action" && !!option.attack)
   );
 }
 
 export function isHpPoolCombatOptionKind(option: CombatOption): boolean {
   return option.mechanicalKind === "hp-pool";
+}
+
+export function isEnemyStatBlockActionOption(option: CombatOption): boolean {
+  return option.kind === "action" && option.id.startsWith("action:enemy:");
 }
 
 export function isImplementedCombatOption(option: CombatOption): boolean {
@@ -888,6 +1003,7 @@ export function isImplementedCombatOption(option: CombatOption): boolean {
     isShellDefenseEnterOption(option) ||
     isEmergeFromShellOption(option) ||
     isHpPoolCombatOptionKind(option) ||
+    isEnemyStatBlockActionOption(option) ||
     (option.action != null && isRegisteredCombatFeatureAction(option.action.id))
   );
 }
@@ -948,15 +1064,21 @@ export function getCombatOptionGroupsForToken(
     return groups;
   }
 
+  const multiattackTurn = {
+    actionUsed: context.actionUsed,
+    dashUsed: context.dashUsed,
+    freeObjectInteractionUsed: context.freeObjectInteractionUsed,
+    multiattackBranchIndex: context.combatState.turn.multiattackBranchIndex ?? null,
+    multiattackRemaining: context.combatState.turn.multiattackRemaining ?? {},
+  };
+
   if (token.kind === "enemy" && context.enemyData) {
-    if (battleOver) return { actions: [], bonusActions: [] };
+    if (battleOver) {
+      return { actions: [], multiattackActions: [], bonusActions: [] };
+    }
     return buildNpcOptionGroups(
       context.enemyData,
-      {
-        actionUsed: context.actionUsed,
-        dashUsed: context.dashUsed,
-        freeObjectInteractionUsed: context.freeObjectInteractionUsed,
-      },
+      multiattackTurn,
       isTokenEngaged(context.token, context.combatState),
       canUseHelpAction(context.token, context.combatState),
       false
@@ -964,21 +1086,19 @@ export function getCombatOptionGroupsForToken(
   }
 
   if (token.kind === "ally") {
-    if (battleOver) return { actions: [], bonusActions: [] };
+    if (battleOver) {
+      return { actions: [], multiattackActions: [], bonusActions: [] };
+    }
     return buildNpcOptionGroups(
       context.enemyData,
-      {
-        actionUsed: context.actionUsed,
-        dashUsed: context.dashUsed,
-        freeObjectInteractionUsed: context.freeObjectInteractionUsed,
-      },
+      multiattackTurn,
       isTokenEngaged(context.token, context.combatState),
       canUseHelpAction(context.token, context.combatState),
       false
     );
   }
 
-  return { actions: [], bonusActions: [] };
+  return { actions: [], multiattackActions: [], bonusActions: [] };
 }
 
 /** Resolve a derived attack from a stored combat option id (e.g. for pending-attack review UI). */
@@ -987,7 +1107,8 @@ export function findDerivedAttackByOptionId(
   token: CombatToken,
   character: ParsedCharacter | null,
   catalogItems: Record<string, Item>,
-  classCatalog: PhbClass[]
+  classCatalog: PhbClass[],
+  enemyData?: EnemyData | null
 ): DerivedAttack | null {
   if (!optionId.startsWith("attack:")) return null;
   const attackId = optionId.slice("attack:".length);
@@ -998,6 +1119,13 @@ export function findDerivedAttackByOptionId(
       classCatalog
     );
     return attacks.find((attack) => attack.id === attackId) ?? null;
+  }
+  if ((token.kind === "enemy" || token.kind === "ally") && enemyData) {
+    for (const parsed of parseEnemyActions(enemyData.actions)) {
+      if (parsed.attack?.id === attackId) return parsed.attack;
+      if (parsed.dualAttacks?.melee.id === attackId) return parsed.dualAttacks.melee;
+      if (parsed.dualAttacks?.ranged.id === attackId) return parsed.dualAttacks.ranged;
+    }
   }
   return null;
 }

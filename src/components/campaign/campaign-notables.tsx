@@ -12,13 +12,14 @@ import {
   removeNotablePortrait,
   uploadNotablePortrait,
 } from "@/lib/campaign/notable-portrait-storage";
-import { useRealtimeNotablesData } from "@/lib/hooks/use-realtime-notables-data";
+import { LoreCategoryTabs } from "@/components/campaign/lore-category-tabs";
+import { LoreEventEditor, LoreEventView } from "@/components/campaign/lore-event-fields";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
+import { useRealtimeNotablesData } from "@/lib/hooks/use-realtime-notables-data";
 import {
-  formatHarptosDateShort,
-  getFestivalById,
-  HARPTOS_MONTHS,
-} from "@/lib/dnd/harptos-calendar";
+  itemCountsByCategory,
+  newCategory,
+} from "@/lib/schemas/lore-category";
 import {
   DEFAULT_NOTABLE_CATEGORY,
   filterNotablesByCategory,
@@ -26,12 +27,9 @@ import {
   moveNotableEvent,
   newNotable,
   newNotableEvent,
-  NOTABLE_CATEGORIES,
   formatNotableNameLine,
-  notableEventToHarptosDate,
   sortNotableEvents,
   type Notable,
-  type NotableCategory,
   type NotableEvent,
   type NotablesData,
 } from "@/lib/schemas/notables";
@@ -52,11 +50,12 @@ function notableCategoryTabStorageKey(campaignId: string) {
   return `campaign-notable-category-tab-${campaignId}`;
 }
 
-function parseStoredNotableCategory(stored: string | null): NotableCategory | null {
+function parseStoredNotableCategory(
+  stored: string | null,
+  categoryIds: Set<string>
+): string | null {
   if (stored === null || stored === "") return null;
-  return NOTABLE_CATEGORIES.some((category) => category.id === stored)
-    ? (stored as NotableCategory)
-    : null;
+  return categoryIds.has(stored) ? stored : null;
 }
 
 export function CampaignNotables({
@@ -76,9 +75,7 @@ export function CampaignNotables({
   const [draft, setDraft] = useState(liveNotablesData);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<NotableCategory | null>(
-    null
-  );
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [restoredCategoryTab, setRestoredCategoryTab] = useState(false);
   const [editing, setEditing] = useState(false);
   const [notablePendingRemoval, setNotablePendingRemoval] =
@@ -99,12 +96,20 @@ export function CampaignNotables({
 
   useEffect(() => {
     if (restoredCategoryTab) return;
+    const categoryIds = new Set(
+      liveNotablesData.categories.map((category) => category.id)
+    );
     const stored = localStorage.getItem(notableCategoryTabStorageKey(campaignId));
-    setActiveCategory(parseStoredNotableCategory(stored));
+    setActiveCategory(parseStoredNotableCategory(stored, categoryIds));
     setRestoredCategoryTab(true);
-  }, [campaignId, restoredCategoryTab]);
+  }, [campaignId, restoredCategoryTab, liveNotablesData.categories]);
 
-  const notablesData = (editable ? draft : liveNotablesData) ?? { notables: [] };
+  const notablesData = editable ? draft : liveNotablesData;
+  const categories = notablesData.categories;
+  const categoryItemCounts = useMemo(
+    () => itemCountsByCategory(notablesData.notables, categories),
+    [notablesData.notables, categories]
+  );
   const savedCategoriesById = useMemo(
     () =>
       new Map(
@@ -128,10 +133,47 @@ export function CampaignNotables({
     savedCategoriesById,
   ]);
 
-  function selectCategory(category: NotableCategory) {
-    const next = activeCategory === category ? null : category;
-    setActiveCategory(next);
-    localStorage.setItem(notableCategoryTabStorageKey(campaignId), next ?? "");
+  function selectCategory(categoryId: string | null) {
+    setActiveCategory(categoryId);
+    localStorage.setItem(notableCategoryTabStorageKey(campaignId), categoryId ?? "");
+  }
+
+  function addCategory(label: string) {
+    if (!editable) return;
+    const nextCategory = newCategory(
+      label,
+      draft.categories.length > 0
+        ? Math.max(...draft.categories.map((category) => category.sortOrder)) + 1
+        : 0
+    );
+    const nextDraft = {
+      ...draft,
+      categories: [...draft.categories, nextCategory],
+    };
+    setDraft(nextDraft);
+    selectCategory(nextCategory.id);
+  }
+
+  function renameCategory(categoryId: string, label: string) {
+    if (!editable) return;
+    setDraft({
+      ...draft,
+      categories: draft.categories.map((category) =>
+        category.id === categoryId ? { ...category, label } : category
+      ),
+    });
+  }
+
+  function removeCategory(categoryId: string) {
+    if (!editable) return;
+    if ((categoryItemCounts.get(categoryId) ?? 0) > 0) return;
+    setDraft({
+      ...draft,
+      categories: draft.categories.filter((category) => category.id !== categoryId),
+    });
+    if (activeCategory === categoryId) {
+      selectCategory(null);
+    }
   }
 
   async function saveNotablesData(nextDraft: NotablesData) {
@@ -261,28 +303,19 @@ export function CampaignNotables({
         </label>
       ) : null}
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "8px",
-        }}
-      >
-        {NOTABLE_CATEGORIES.map((category) => (
-          <button
-            key={category.id}
-            type="button"
-            className={`candy-btn${activeCategory === category.id ? " candy-btn-active" : ""}`}
-            style={{ flex: "0 1 auto" }}
-            onClick={() => selectCategory(category.id)}
-          >
-            {category.label}
-          </button>
-        ))}
-      </div>
+      <LoreCategoryTabs
+        categories={categories}
+        activeCategoryId={activeCategory}
+        editable={editable}
+        itemCountsByCategory={categoryItemCounts}
+        onSelect={selectCategory}
+        onAdd={addCategory}
+        onRename={renameCategory}
+        onRemove={removeCategory}
+      />
 
       <div className="retro-stack notable-stack">
-        {editable ? (
+        {editable && activeCategory ? (
           <NotablesSaveBar
             saving={saving}
             message={message}
@@ -292,13 +325,14 @@ export function CampaignNotables({
         ) : null}
 
         {activeCategory && visibleNotables.length === 0 ? (
-          <p className="retro-muted">No notables in this category yet.</p>
+          <p className="retro-hint retro-muted">No notables in this category yet.</p>
         ) : (
           visibleNotables.map((notable, index) => (
             <NotableCard
               key={notable.id}
               campaignId={campaignId}
               notable={notable}
+              categories={categories}
               campaignDate={campaignDate}
               isDm={showDmUi}
               editable={editable}
@@ -324,7 +358,7 @@ export function CampaignNotables({
           ))
         )}
 
-        {editable ? (
+        {editable && activeCategory ? (
           <NotablesSaveBar
             saving={saving}
             message={message}
@@ -385,6 +419,7 @@ function NotablesSaveBar({
 function NotableCard({
   campaignId,
   notable,
+  categories,
   campaignDate,
   isDm,
   editable,
@@ -399,6 +434,7 @@ function NotableCard({
 }: {
   campaignId: string;
   notable: Notable;
+  categories: NotablesData["categories"];
   campaignDate: ReturnType<typeof getCampaignCalendarDate>;
   isDm: boolean;
   editable: boolean;
@@ -501,11 +537,11 @@ function NotableCard({
                   onChange={(event) =>
                     onChange({
                       ...notable,
-                      category: event.target.value as NotableCategory,
+                      category: event.target.value,
                     })
                   }
                 >
-                  {NOTABLE_CATEGORIES.map((category) => (
+                  {categories.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.label}
                     </option>
@@ -547,7 +583,7 @@ function NotableCard({
               <div className="calendar-event-list">
                 {events.map((event, index) =>
                   editable ? (
-                    <NotableEventEditor
+                    <LoreEventEditor
                       key={event.id}
                       event={event}
                       canMoveUp={index > 0}
@@ -558,7 +594,7 @@ function NotableCard({
                       onRemove={() => removeEvent(event.id)}
                     />
                   ) : (
-                    <NotableEventView key={event.id} event={event} />
+                    <LoreEventView key={event.id} event={event} />
                   )
                 )}
               </div>
@@ -615,130 +651,6 @@ function NotableCard({
         ) : null}
       </div>
     </section>
-  );
-}
-
-function NotableEventView({ event }: { event: NotableEvent }) {
-  return (
-    <div className="calendar-event-entry">
-      <p className="retro-member-line">{formatNotableEventWhen(event)}</p>
-      {event.text ? <p className="retro-muted">{event.text}</p> : null}
-    </div>
-  );
-}
-
-function NotableEventEditor({
-  event,
-  onChange,
-  onRemove,
-  canMoveUp = false,
-  canMoveDown = false,
-  onMoveUp,
-  onMoveDown,
-}: {
-  event: NotableEvent;
-  onChange: (patch: Partial<NotableEvent>) => void;
-  onRemove: () => void;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
-}) {
-  return (
-    <div className="calendar-event-entry">
-      <div className="calendar-event-header">
-        <label className="candy-label">Date</label>
-        <span className="notable-event-editor-actions">
-          <button
-            type="button"
-            className="retro-inline-link"
-            disabled={!canMoveUp}
-            onClick={onMoveUp}
-          >
-            Move up
-          </button>
-          <button
-            type="button"
-            className="retro-inline-link"
-            disabled={!canMoveDown}
-            onClick={onMoveDown}
-          >
-            Move down
-          </button>
-          <button
-            type="button"
-            className="retro-inline-link"
-            style={{ color: "#b00020" }}
-            onClick={onRemove}
-          >
-            Remove
-          </button>
-        </span>
-      </div>
-      <div className="calendar-event-date-row">
-        {event.festival ? (
-          <div className="calendar-event-festival-label">
-            <label className="candy-label">Festival</label>
-            <p className="retro-member-line">
-              {getFestivalById(event.festival)?.name ?? event.festival}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div>
-              <label className="candy-label">Month</label>
-              <select
-                className="candy-input"
-                value={event.month}
-                onChange={(changeEvent) =>
-                  onChange({ month: Number(changeEvent.target.value) })
-                }
-              >
-                {HARPTOS_MONTHS.map((name, index) => (
-                  <option key={name} value={index + 1}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="candy-label">Day</label>
-              <input
-                className="candy-input"
-                type="number"
-                min={1}
-                max={30}
-                value={event.day}
-                onChange={(changeEvent) =>
-                  onChange({ day: Number(changeEvent.target.value) || 1 })
-                }
-              />
-            </div>
-          </>
-        )}
-        <div>
-          <label className="candy-label">Year</label>
-          <input
-            className="candy-input"
-            type="number"
-            min={0}
-            value={event.year}
-            onChange={(changeEvent) =>
-              onChange({ year: Number(changeEvent.target.value) || 0 })
-            }
-          />
-        </div>
-      </div>
-      <label className="candy-label">Event</label>
-      <textarea
-        className="candy-input notable-event-text"
-        rows={2}
-        value={event.text}
-        onChange={(changeEvent) =>
-          onChange({ text: changeEvent.target.value })
-        }
-      />
-    </div>
   );
 }
 
@@ -922,8 +834,4 @@ function NotablePortraitImage({
       onError={() => setFailed(true)}
     />
   );
-}
-
-function formatNotableEventWhen(event: NotableEvent): string {
-  return formatHarptosDateShort(notableEventToHarptosDate(event));
 }

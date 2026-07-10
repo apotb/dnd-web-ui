@@ -7,6 +7,7 @@ import { CampaignDayAdvance } from "@/components/campaign/campaign-day-advance";
 import { HarptosCalendar } from "@/components/campaign/harptos-calendar";
 import { CampaignMaps } from "@/components/campaign/campaign-maps";
 import { CampaignNotables } from "@/components/campaign/campaign-notables";
+import { CampaignFactions } from "@/components/campaign/campaign-factions";
 import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
 import { getCharacterPortraitUrl } from "@/lib/character/portrait-storage";
@@ -25,6 +26,7 @@ import type { PartyData } from "@/lib/schemas/party";
 import type { WorldData } from "@/lib/schemas/world";
 import type { MapsData } from "@/lib/schemas/maps";
 import type { NotablesData } from "@/lib/schemas/notables";
+import type { FactionsData } from "@/lib/schemas/factions";
 import type { SoulmongerData } from "@/lib/schemas/soulmonger";
 
 const OVERVIEW_TABS = [
@@ -57,6 +59,7 @@ interface CampaignOverviewProps {
   initialWorldData: WorldData;
   initialMapsData: MapsData;
   initialNotablesData: NotablesData;
+  initialFactionsData: FactionsData;
   initialSoulmongerData: SoulmongerData;
   initialCalendarEvents: ParsedCalendarEvent[];
   initialCharacters: ParsedCharacter[];
@@ -64,6 +67,7 @@ interface CampaignOverviewProps {
   userId: string | null;
   canManageCalendarEvents: boolean;
   canEditNotables: boolean;
+  canEditFactions: boolean;
 }
 
 export function CampaignOverview({
@@ -72,6 +76,7 @@ export function CampaignOverview({
   initialWorldData,
   initialMapsData,
   initialNotablesData,
+  initialFactionsData,
   initialSoulmongerData,
   initialCalendarEvents,
   initialCharacters,
@@ -79,6 +84,7 @@ export function CampaignOverview({
   userId,
   canManageCalendarEvents,
   canEditNotables,
+  canEditFactions,
 }: CampaignOverviewProps) {
   const showDmUi = useShowDmUi(isDm);
   const characters = useRealtimeCharacters(campaignId, initialCharacters, isDm, {
@@ -214,12 +220,14 @@ export function CampaignOverview({
       ) : null}
 
       {activeTab === "factions" ? (
-        <section className="retro-box">
-          <p className="retro-box-title">Factions</p>
-          <p className="retro-muted">
-            Organizations, guilds, and power groups will live here.
-          </p>
-        </section>
+        <CampaignFactions
+          campaignId={campaignId}
+          initialFactionsData={initialFactionsData}
+          initialNotablesData={initialNotablesData}
+          initialWorldData={initialWorldData}
+          isDm={isDm}
+          canEditFactions={canEditFactions}
+        />
       ) : null}
 
       {activeTab === "notables" ? (

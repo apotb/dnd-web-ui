@@ -16,6 +16,7 @@ import {
 } from "@/lib/combat/targeting";
 import type { CombatOption } from "@/lib/combat/combat-options";
 import { isWieldedMainHandWeaponAttack } from "@/lib/combat/combat-options";
+import { enemyActionToDerivedAttack } from "@/lib/combat/enemy-action-parser";
 import { canTwoWeaponFightSameTurn } from "@/lib/dnd/two-weapon-fighting";
 import { qualifiesForGreatWeaponFighting } from "@/lib/dnd/fighting-styles";
 import type { WeaponGrip } from "@/lib/dnd/attacks";
@@ -61,8 +62,9 @@ export interface AttackSubmissionInput {
 export function getOptionActionCost(
   option: CombatOption,
   options?: { isOpportunityAttack?: boolean }
-): "action" | "bonus-action" | "reaction" {
+): "action" | "bonus-action" | "reaction" | "multiattack" {
   if (options?.isOpportunityAttack) return "reaction";
+  if (option.actionCostOverride === "multiattack") return "multiattack";
   if (option.kind === "bonus-action") return "bonus-action";
   return "action";
 }
@@ -70,17 +72,9 @@ export function getOptionActionCost(
 export function optionToAttack(option: CombatOption): DerivedAttack | null {
   if (option.attack) return option.attack;
   if (option.enemyAction) {
-    return {
-      id: option.id,
-      name: option.name,
-      attackBonus: 0,
-      damageDice: "",
-      damageType: "",
-      range: "5 ft",
-      notes: option.enemyAction.description,
-      source: "manual",
-      rollType: "attack",
-    };
+    const match = option.id.match(/^enemy-action:(\d+):/);
+    const index = match ? parseInt(match[1], 10) : 0;
+    return enemyActionToDerivedAttack(option.enemyAction, index);
   }
   return null;
 }
@@ -159,6 +153,10 @@ export function buildTargetList(
 ): CombatToken[] {
   const spec = parseAttackRangeSpec(attack);
   const requiresSave = attack.rollType === "save";
+
+  if (spec.isSelfSpace) {
+    return getValidHostileTargetsForAttack(attacker, state, spec, attack);
+  }
 
   if (spec.isAoe && aoeCenter) {
     const includeAllies = requiresSave;

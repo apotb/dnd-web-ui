@@ -13,6 +13,7 @@ import { patchTokenHpFromDamage } from "@/lib/combat/hp-adjust";
 import { applyBattleOverEconomyReset, isBattleOver } from "@/lib/combat/battle-over";
 import { syncInitiativeAfterTokenHidden } from "@/lib/combat/initiative";
 import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
+import { decrementMultiattackRemaining } from "@/lib/combat/multiattack";
 import {
   hasPendingAttackForAttacker,
   removePendingAttack,
@@ -374,6 +375,17 @@ export function applyResolvedAttack(
               twoWeaponFightingUsedOffHand: pending.weaponWieldOffHand,
             }
           : {}),
+      };
+    } else if (pending.actionCost === "multiattack") {
+      if (!turn.actionUsed) {
+        turn = { ...turn, actionUsed: true };
+      }
+      turn = {
+        ...turn,
+        multiattackRemaining: decrementMultiattackRemaining(
+          turn.multiattackRemaining ?? {},
+          pending.optionName
+        ),
       };
     } else if (pending.actionCost === "bonus-action") {
       turn = { ...turn, bonusActionUsed: true };

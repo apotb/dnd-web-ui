@@ -215,6 +215,42 @@ interface CombatBonusActionPanelProps {
   selectionLocked?: boolean;
 }
 
+interface CombatMultiattackPanelProps {
+  options: CombatOption[];
+  preamble?: string;
+  onSelectOption: (option: CombatOption) => void;
+  selectedOptionId?: string | null;
+  pendingOptionId?: string | null;
+  selectionLocked?: boolean;
+}
+
+export function CombatMultiattackPanel({
+  options,
+  preamble,
+  onSelectOption,
+  selectedOptionId,
+  pendingOptionId,
+  selectionLocked,
+}: CombatMultiattackPanelProps) {
+  return (
+    <CombatOptionPanel
+      title="Multiattack"
+      panelClassName="combat-multiattack-panel"
+      emptyMessage={
+        preamble
+          ? `${preamble} — choose a branch to begin.`
+          : "Choose a Multiattack branch to begin."
+      }
+      options={options}
+      onSelectOption={onSelectOption}
+      selectedOptionId={selectedOptionId}
+      pendingOptionId={pendingOptionId}
+      selectionLocked={selectionLocked}
+      visibleRows={1}
+    />
+  );
+}
+
 export function CombatBonusActionPanel({
   options,
   onSelectOption,

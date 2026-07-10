@@ -100,6 +100,8 @@ export const TURN_RESET_FIELDS = {
   bonusActionUsed: false,
   disengageUsed: false,
   freeObjectInteractionUsed: false,
+  multiattackBranchIndex: null,
+  multiattackRemaining: {},
 } as const;
 
 export function advanceTurn(state: CombatState): CombatState {

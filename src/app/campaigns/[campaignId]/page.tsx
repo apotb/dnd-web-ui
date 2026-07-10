@@ -5,6 +5,7 @@ import { parsePartyData } from "@/lib/schemas/party";
 import { parseWorldData } from "@/lib/schemas/world";
 import { parseMapsData } from "@/lib/schemas/maps";
 import { parseNotablesData } from "@/lib/schemas/notables";
+import { parseFactionsData } from "@/lib/schemas/factions";
 import { parseSoulmongerData } from "@/lib/schemas/soulmonger";
 import { parseCalendarEventRow } from "@/lib/schemas/calendar-event";
 import { CampaignOverview } from "@/components/campaign/campaign-overview";
@@ -50,6 +51,7 @@ export default async function CampaignHomePage({
       initialWorldData={parseWorldData(access.campaign.world_data)}
       initialMapsData={parseMapsData(access.campaign.maps_data)}
       initialNotablesData={parseNotablesData(access.campaign.notables_data)}
+      initialFactionsData={parseFactionsData(access.campaign.factions_data)}
       initialSoulmongerData={parseSoulmongerData(
         access.campaign.soulmonger_data
       )}
@@ -59,6 +61,7 @@ export default async function CampaignHomePage({
       userId={access.user?.id ?? null}
       canManageCalendarEvents={canManageCalendarEvents}
       canEditNotables={canManageCalendarEvents}
+      canEditFactions={canManageCalendarEvents}
     />
   );
 }

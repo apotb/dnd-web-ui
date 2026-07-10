@@ -88,7 +88,9 @@ import { MarkerDialog, type MarkerDialogValues } from "@/components/combat/marke
 import {
   CombatActionPanel,
   CombatBonusActionPanel,
+  CombatMultiattackPanel,
 } from "@/components/combat/combat-action-panel";
+import { CombatMultiattackBranchModal } from "@/components/combat/combat-multiattack-branch-modal";
 import { CombatEndTurnConfirmModal } from "@/components/combat/combat-end-turn-confirm-modal";
 import { CombatEndTurnPanel } from "@/components/combat/combat-end-turn-panel";
 import { CombatMovePanel } from "@/components/combat/combat-move-panel";
@@ -132,6 +134,7 @@ import {
   isEmergeFromShellOption,
   isHelpActionOption,
   isHpPoolCombatOptionKind,
+  isEnemyStatBlockActionOption,
   isImplementedCombatOption,
   isShellDefenseEnterOption,
   isSpellCastOption,
@@ -140,6 +143,11 @@ import {
   COMBAT_USE_OBJECT_OPTION_ID,
   type CombatOption,
 } from "@/lib/combat/combat-options";
+import {
+  applyMultiattackBranchSelection,
+  buildInitialMultiattackRemaining,
+} from "@/lib/combat/multiattack";
+import { parseEnemyActions } from "@/lib/combat/enemy-action-parser";
 import { leaveCombatArea } from "@/lib/combat/battle-over-actions";
 import { getBattleOverTurnDisplay, isBattleOver } from "@/lib/combat/battle-over";
 import {
@@ -609,6 +617,7 @@ export function CombatBoard({
   const [pendingShellDefenseConfirm, setPendingShellDefenseConfirm] = useState(false);
   const [pendingHpPoolFeatureId, setPendingHpPoolFeatureId] = useState<string | null>(null);
   const [pendingOtherActionsConfirm, setPendingOtherActionsConfirm] = useState(false);
+  const [multiattackBranchDismissed, setMultiattackBranchDismissed] = useState(false);
   const [pendingSpellCast, setPendingSpellCast] = useState<CombatOption | null>(null);
   const [pendingSpellcasting, setPendingSpellcasting] = useState<{
     castingCost: "action" | "bonus-action";
@@ -1268,7 +1277,7 @@ export function CombatBoard({
 
   const currentTurnOptionGroups = useMemo(() => {
     if (!actingToken) {
-      return { actions: [], bonusActions: [] };
+      return { actions: [], multiattackActions: [], bonusActions: [] };
     }
     return getCombatOptionGroupsForToken(actingToken, {
       character: actingTokenCharacter,
@@ -1306,6 +1315,23 @@ export function CombatBoard({
     localCharacters,
     twoWeaponFightingUsedOffHand,
   ]);
+
+  const needsMultiattackBranchPicker =
+    !battleOver &&
+    !actionUsed &&
+    userControlsCombat &&
+    (actingToken?.kind === "enemy" || actingToken?.kind === "ally") &&
+    (currentTurnOptionGroups.multiattackBranches?.length ?? 0) > 1 &&
+    combatState.turn.multiattackBranchIndex == null;
+
+  const showMultiattackSection =
+    !battleOver &&
+    !actionUsed &&
+    (currentTurnOptionGroups.multiattackBranches?.length ?? 0) > 0;
+
+  useEffect(() => {
+    setMultiattackBranchDismissed(false);
+  }, [actingToken?.id, combatState.turn.index, combatState.turn.round]);
 
   const userCanEndTurn =
     !battleOver &&
@@ -1571,6 +1597,21 @@ export function CombatBoard({
       return;
     }
 
+    if (isEnemyStatBlockActionOption(option)) {
+      if (!userControlsCombat || battleOver || actionUsed) return;
+      const { next, error } = await recordCombatActionUsed(campaignId, combatState, {
+        isDm,
+      });
+      if (error) {
+        showAlert(error);
+        return;
+      }
+      if (isDm) {
+        setDraft(next);
+      }
+      return;
+    }
+
     if (isShellDefenseEnterOption(option)) {
       if (!actingToken || battleOver || actionUsed) return;
       setPendingShellDefenseConfirm(true);
@@ -1651,6 +1692,36 @@ export function CombatBoard({
       clearLosMode();
       clearObjectInteractionMode();
       clearAttackFlow();
+
+      if (attack.range.trim().toLowerCase() === "self-space") {
+        const targets = buildTargetList(
+          actingToken,
+          combatState,
+          attack,
+          null,
+          null,
+          charactersById,
+          enemiesBySlug
+        );
+        if (targets.length === 0) {
+          showAlert("No valid targets in this space.");
+          return;
+        }
+        setAttackSubmitDraft({
+          option,
+          attack,
+          targets,
+          aoeCenter: null,
+          attackerToken: actingToken,
+          attackDisadvantageByTokenId: buildAttackDisadvantageMap(
+            actingToken,
+            attack,
+            targets
+          ),
+        });
+        return;
+      }
+
       setAttackTargeting({ option, attack });
       return;
     }
@@ -1749,12 +1820,16 @@ export function CombatBoard({
     const character = attacker.characterId
       ? charactersById[attacker.characterId] ?? null
       : null;
+    const attackerEnemyData = attacker.enemySlug
+      ? enemiesBySlug[attacker.enemySlug]?.data ?? null
+      : null;
     const attack = findDerivedAttackByOptionId(
       pending.optionId,
       attacker,
       character,
       catalogItems,
-      classCatalog
+      classCatalog,
+      attackerEnemyData
     );
     if (!attack) return "Disadvantage on attack roll";
 
@@ -2329,6 +2404,30 @@ export function CombatBoard({
     setMovementMode(true);
     clearAttackFlow();
     clearObjectInteractionMode();
+  }
+
+  async function handleSelectMultiattackBranch(branchIndex: number) {
+    const branches = currentTurnOptionGroups.multiattackBranches;
+    if (!branches || !actingTokenEnemy?.data) return;
+    const parsedActions = parseEnemyActions(actingTokenEnemy.data.actions);
+    const initialRemaining = buildInitialMultiattackRemaining(
+      branches[branchIndex],
+      parsedActions
+    );
+    const next = applyMultiattackBranchSelection(
+      combatState,
+      branchIndex,
+      initialRemaining
+    );
+    if (isDm) {
+      const error = await persistCombatState(campaignId, next);
+      if (error) {
+        showAlert(error);
+        return;
+      }
+      setDraft(next);
+    }
+    setMultiattackBranchDismissed(false);
   }
 
   async function handleConfirmShellDefense() {
@@ -3945,8 +4044,33 @@ export function CombatBoard({
                   </p>
                 </div>
                 <div className="combat-board-view-actions">
+                  <div className="combat-board-view-actions-row">
+                    <button
+                      type="button"
+                      className="candy-btn combat-expand-btn"
+                      onClick={() => setBoardExpanded(true)}
+                    >
+                      Expand
+                    </button>
+                    <button
+                      type="button"
+                      className={`candy-btn combat-los-btn${losMode ? " candy-btn-active" : ""}`}
+                      disabled={!losMode && !canUseLos}
+                      onClick={handleToggleLosMode}
+                    >
+                      LOS
+                    </button>
+                    <button
+                      type="button"
+                      className={`candy-btn combat-measure-btn${measureMode ? " candy-btn-active" : ""}`}
+                      disabled={!measureMode && !canUseMeasure}
+                      onClick={handleToggleMeasureMode}
+                    >
+                      Measure
+                    </button>
+                  </div>
                   {showDmUi ? (
-                    <>
+                    <div className="combat-board-view-actions-row">
                       <label
                         className={`candy-btn combat-auto-approve-toggle${autoApprove ? " candy-btn-active" : ""}`}
                       >
@@ -3969,31 +4093,8 @@ export function CombatBoard({
                         />
                         <span>Auto-approve DM</span>
                       </label>
-                    </>
+                    </div>
                   ) : null}
-                  <button
-                    type="button"
-                    className="candy-btn combat-expand-btn"
-                    onClick={() => setBoardExpanded(true)}
-                  >
-                    Expand
-                  </button>
-                  <button
-                    type="button"
-                    className={`candy-btn combat-los-btn${losMode ? " candy-btn-active" : ""}`}
-                    disabled={!losMode && !canUseLos}
-                    onClick={handleToggleLosMode}
-                  >
-                    LOS
-                  </button>
-                  <button
-                    type="button"
-                    className={`candy-btn combat-measure-btn${measureMode ? " candy-btn-active" : ""}`}
-                    disabled={!measureMode && !canUseMeasure}
-                    onClick={handleToggleMeasureMode}
-                  >
-                    Measure
-                  </button>
                 </div>
               </div>
               {battleActive && !playerAbsentFromCombatBoard ? (
@@ -4074,6 +4175,16 @@ export function CombatBoard({
                           <p className="combat-object-interaction-hint">
                             This pickup will use your action.
                           </p>
+                        ) : null}
+                        {showMultiattackSection ? (
+                          <CombatMultiattackPanel
+                            options={currentTurnOptionGroups.multiattackActions}
+                            preamble={currentTurnOptionGroups.multiattackPreamble}
+                            onSelectOption={handleSelectCombatOption}
+                            selectedOptionId={selectedActionOptionId}
+                            pendingOptionId={pendingOptionId}
+                            selectionLocked={turnActionsLocked}
+                          />
                         ) : null}
                         {currentTurnOptionGroups.bonusActions.length > 0 ? (
                           <CombatBonusActionPanel
@@ -4484,6 +4595,14 @@ export function CombatBoard({
           movementGainedFeet={currentSpeedFt}
           onConfirm={() => void handleConfirmDashAction()}
           onCancel={() => setPendingDashActionConfirm(false)}
+        />
+      ) : null}
+      {needsMultiattackBranchPicker && !multiattackBranchDismissed ? (
+        <CombatMultiattackBranchModal
+          branches={currentTurnOptionGroups.multiattackBranches ?? []}
+          preamble={currentTurnOptionGroups.multiattackPreamble}
+          onSelectBranch={(branchIndex) => void handleSelectMultiattackBranch(branchIndex)}
+          onCancel={() => setMultiattackBranchDismissed(true)}
         />
       ) : null}
       {pendingShellDefenseConfirm ? (

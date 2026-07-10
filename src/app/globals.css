@@ -188,6 +188,34 @@ html.campaign-bg-active .retro-muted {
     0 1px 2px rgba(255, 255, 255, 0.85);
 }
 
+/* Standalone copy on the campaign background (outside retro-box) */
+html.campaign-bg-active .party-overview-stack > p.retro-muted,
+html.campaign-bg-active .party-overview-stack .notable-stack > p.retro-muted,
+html.campaign-bg-active .party-overview-stack .retro-hint,
+html.campaign-bg-active .party-overview-stack .retro-note,
+html.campaign-bg-active .lore-category-tabs > .retro-hint,
+html.campaign-bg-active .lore-category-tabs > .retro-note {
+  background: #fff;
+  border: 1px solid #000;
+  color: #333;
+  text-shadow: none;
+}
+
+html.campaign-bg-active .party-overview-stack .party-inventory-save .retro-muted {
+  display: inline-block;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #000;
+  color: #333;
+  text-shadow: none;
+}
+
+html.campaign-bg-active .lore-category-tab-actions {
+  padding: 4px 8px;
+  background: #fff;
+  border: 1px solid #000;
+}
+
 
 .campaign-bg-toggle {
   position: fixed;
@@ -446,16 +474,25 @@ html.campaign-bg-active .retro-muted {
 }
 
 /* Readable block for intro / empty-state copy on the background image */
-.retro-note {
+.retro-note,
+.retro-hint {
   margin: 0 0 16px;
   padding: 10px 12px;
   background: #fff;
   border: 1px solid #000;
   color: #333;
+  width: fit-content;
+  max-width: 100%;
 }
 
-.retro-note.retro-muted {
+.retro-note.retro-muted,
+.retro-hint.retro-muted {
   color: #333;
+}
+
+.retro-hint:last-child,
+.retro-note:last-child {
+  margin-bottom: 0;
 }
 
 /* Bordered content box */
@@ -875,12 +912,24 @@ html.campaign-bg-active .retro-muted {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: auto;
+  width: fit-content;
+  max-width: 100%;
   text-align: left;
 }
 
 .party-overview-stack {
   gap: 12px;
+}
+
+.party-overview-stack > .notable-editing-toggle,
+.party-overview-stack > .lore-category-tabs,
+.party-overview-stack > p.retro-hint,
+.party-overview-stack > p.retro-note {
+  align-self: flex-start;
+}
+
+.notable-stack > p.retro-hint {
+  align-self: flex-start;
 }
 
 .notable-card-header {
@@ -984,6 +1033,69 @@ html.campaign-bg-active .retro-muted {
 .notable-event-text {
   min-height: 4.5rem;
   resize: vertical;
+}
+
+.lore-category-tab-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.lore-category-tab-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.lore-category-tab-actions .retro-inline-link:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.lore-category-add-row,
+.lore-category-rename-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.faction-members-section {
+  margin-top: 8px;
+}
+
+.faction-member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.faction-member-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.faction-member-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.faction-member-add-row .candy-input {
+  flex: 1 1 180px;
+  min-width: 140px;
+  margin-bottom: 0;
 }
 
 @media (max-width: 640px) {
@@ -3637,6 +3749,13 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-board-view-actions {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.combat-board-view-actions-row {
   display: flex;
   gap: 6px;
 }

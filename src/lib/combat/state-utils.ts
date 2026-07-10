@@ -9,11 +9,13 @@ import type { EnemyData } from "@/lib/schemas/enemy";
 import { DEFAULT_GRID_SIZE, DEFAULT_TILE_FEET, MAX_GRID_SIZE, MAX_TILE_FEET, MIN_GRID_SIZE, MIN_TILE_FEET } from "@/lib/schemas/combat-grid";
 import {
   DEFAULT_BOARD_TITLE,
+  DEFAULT_COMBAT_TURN,
   type CombatState,
   type CombatToken,
   combatTokenSchema,
   isCombatantToken,
 } from "@/lib/schemas/combat-state";
+import { TURN_RESET_FIELDS } from "@/lib/combat/turn";
 
 export interface EnemyRecord {
   slug: string;
@@ -91,7 +93,7 @@ export function createDefaultCombatState(
     tokens: [],
     excludedPartyCharacterIds: [],
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: DEFAULT_COMBAT_TURN,
     pendingAttacks: [],
     pendingOpportunityAttacks: null,
     boardTitle: DEFAULT_BOARD_TITLE,
@@ -845,7 +847,7 @@ function clearTokenFromInitiative(
   if (initiative.status === "none") {
     return {
       initiative,
-      turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+      turn: DEFAULT_COMBAT_TURN,
     };
   }
 
@@ -855,7 +857,7 @@ function clearTokenFromInitiative(
   if (order.length === 0) {
     return {
       initiative: { status: "none", results: {}, order: [] },
-      turn: { active: false, index: 0, round: turn.round, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+      turn: { active: false, index: 0, round: turn.round, ...TURN_RESET_FIELDS },
     };
   }
 
@@ -881,7 +883,7 @@ function clearTokenFromInitiative(
         results,
         order: buildTurnOrder(tokens, results),
       },
-      turn: { active: true, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+      turn: { active: true, index: 0, round: 1, ...TURN_RESET_FIELDS },
     };
   }
 
@@ -891,7 +893,7 @@ function clearTokenFromInitiative(
       results,
       order: [],
     },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: DEFAULT_COMBAT_TURN,
   };
 }
 
@@ -964,7 +966,7 @@ export function resetCombatBoard(
     tokens: [],
     excludedPartyCharacterIds: characters.map((character) => character.id),
     initiative: { status: "none", results: {}, order: [] },
-    turn: { active: false, index: 0, round: 1, movementUsedFeet: 0, dashUsed: false, actionUsedForTwoWeapon: false, twoWeaponFightingUsedOffHand: null, actionUsed: false, bonusActionUsed: false, disengageUsed: false, freeObjectInteractionUsed: false },
+    turn: DEFAULT_COMBAT_TURN,
     pendingAttacks: [],
     pendingOpportunityAttacks: null,
     boardTitle: DEFAULT_BOARD_TITLE,

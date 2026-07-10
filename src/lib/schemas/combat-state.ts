@@ -42,6 +42,10 @@ export const combatTurnSchema = z.object({
   disengageUsed: z.boolean().default(false),
   /** Free object interaction consumed this turn (first pickup is free). */
   freeObjectInteractionUsed: z.boolean().default(false),
+  /** Selected Multiattack branch index for the active turn, when applicable. */
+  multiattackBranchIndex: z.number().int().nullable().default(null),
+  /** Remaining Multiattack strikes by normalized weapon name for the active turn. */
+  multiattackRemaining: z.record(z.string(), z.number()).default({}),
 });
 
 export const pendingAttackTargetSchema = z.object({
@@ -97,7 +101,7 @@ export const pendingAttackSchema = z.object({
   attackerTokenId: z.string(),
   optionId: z.string(),
   optionName: z.string(),
-  actionCost: z.enum(["action", "bonus-action", "reaction"]),
+  actionCost: z.enum(["action", "bonus-action", "reaction", "multiattack"]),
   isOpportunityAttack: z.boolean().default(false),
   skipDmReview: z.boolean().default(false),
   rollType: z.enum(["attack", "save", "auto"]),
@@ -215,6 +219,8 @@ export const combatStateSchema = z.object({
     bonusActionUsed: false,
     disengageUsed: false,
     freeObjectInteractionUsed: false,
+    multiattackBranchIndex: null,
+    multiattackRemaining: {},
   }),
   pendingAttacks: z.array(pendingAttackSchema).default([]),
   pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
@@ -256,7 +262,7 @@ export function isTokenInTurnOrder(token: CombatToken): boolean {
   return isCombatantToken(token) && !isHiddenEnemy(token);
 }
 
-const DEFAULT_TURN: CombatTurn = {
+export const DEFAULT_COMBAT_TURN: CombatTurn = {
   active: false,
   index: 0,
   round: 1,
@@ -268,12 +274,14 @@ const DEFAULT_TURN: CombatTurn = {
   bonusActionUsed: false,
   disengageUsed: false,
   freeObjectInteractionUsed: false,
+  multiattackBranchIndex: null,
+  multiattackRemaining: {},
 };
 
 export function normalizeCombatTurn(state: CombatState): CombatState {
   const order = state.initiative.order;
   if (state.initiative.status !== "ready" || order.length === 0) {
-    return { ...state, turn: DEFAULT_TURN };
+    return { ...state, turn: DEFAULT_COMBAT_TURN };
   }
 
   if (!state.turn.active) {
@@ -291,6 +299,8 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
         bonusActionUsed: false,
         disengageUsed: false,
         freeObjectInteractionUsed: false,
+        multiattackBranchIndex: null,
+        multiattackRemaining: {},
       },
     };
   }
@@ -310,6 +320,8 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
       bonusActionUsed: state.turn.bonusActionUsed ?? false,
       disengageUsed: state.turn.disengageUsed ?? false,
       freeObjectInteractionUsed: state.turn.freeObjectInteractionUsed ?? false,
+      multiattackBranchIndex: state.turn.multiattackBranchIndex ?? null,
+      multiattackRemaining: state.turn.multiattackRemaining ?? {},
     },
     pendingAttacks: state.pendingAttacks ?? [],
     pendingOpportunityAttacks: state.pendingOpportunityAttacks ?? null,

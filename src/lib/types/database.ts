@@ -16,6 +16,7 @@ export interface Campaign {
   world_data: Json;
   maps_data: Json;
   notables_data: Json;
+  factions_data: Json;
   soulmonger_data: Json;
   combat_state: Json;
   is_main: boolean;
@@ -129,6 +130,7 @@ export type Database = {
           world_data?: Json;
           maps_data?: Json;
           notables_data?: Json;
+          factions_data?: Json;
           soulmonger_data?: Json;
           combat_state?: Json;
           is_main?: boolean;

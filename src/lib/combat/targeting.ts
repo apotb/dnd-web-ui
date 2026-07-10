@@ -20,6 +20,8 @@ export interface AttackRangeSpec {
   aoeSizeFt?: number;
   /** Some spells must target a creature; others can target any point in range. */
   requiresPrimaryTarget: boolean;
+  /** Targets creatures sharing the attacker's occupied cells (Whirlwind, etc.). */
+  isSelfSpace?: boolean;
 }
 
 export interface TargetingContext {
@@ -147,6 +149,16 @@ export function parseAttackRangeSpec(attack: DerivedAttack): AttackRangeSpec {
       isAoe: true,
       aoeShape: "cube",
       aoeSizeFt: size,
+      requiresPrimaryTarget: false,
+    };
+  }
+
+  if (range === "self-space") {
+    return {
+      maxFt: 0,
+      normalRangeFt: 0,
+      isAoe: true,
+      isSelfSpace: true,
       requiresPrimaryTarget: false,
     };
   }
@@ -304,12 +316,37 @@ export function getValidHostileTargets(
   );
 }
 
+export function getTokensSharingSpace(
+  attacker: CombatToken,
+  state: CombatState,
+  filter?: (token: CombatToken) => boolean
+): CombatToken[] {
+  if (!isTokenOnGrid(attacker, state)) return [];
+
+  const attackerCells: GridPosition[] = [];
+  for (let dy = 0; dy < attacker.height; dy++) {
+    for (let dx = 0; dx < attacker.width; dx++) {
+      attackerCells.push({ x: attacker.x + dx, y: attacker.y + dy });
+    }
+  }
+
+  return getTokensInCells(attackerCells, state, (token) => {
+    if (token.id === attacker.id) return false;
+    if (filter && !filter(token)) return false;
+    return true;
+  });
+}
+
 export function getValidHostileTargetsForAttack(
   attacker: CombatToken,
   state: CombatState,
   spec: AttackRangeSpec,
   attack?: DerivedAttack
 ): CombatToken[] {
+  if (spec.isSelfSpace) {
+    return getTokensSharingSpace(attacker, state, (token) => !isHiddenEnemy(token));
+  }
+
   const targets = getValidHostileTargets(attacker, state, spec.maxFt);
   if (!attack || !attackRequiresLineOfSight(attack)) return targets;
   return targets.filter((token) => hasLineOfSightToToken(attacker, token, state));
@@ -510,6 +547,10 @@ export function getTargetingHighlights(
   const spec = parseAttackRangeSpec(attack);
 
   if (spec.isAoe) {
+    if (spec.isSelfSpace) {
+      const validTargets = getValidHostileTargetsForAttack(attacker, state, spec, attack);
+      return { spec, validTargets, validCells: [] };
+    }
     return {
       spec,
       validTargets: [],

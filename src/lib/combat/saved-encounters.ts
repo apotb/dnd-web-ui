@@ -1,7 +1,7 @@
 import { createCharacterPlaceholderToken } from "@/lib/combat/character-placeholder";
 import { relabelEnemyTokens, type EnemyRecord } from "@/lib/combat/state-utils";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
-import { combatTokenSchema } from "@/lib/schemas/combat-state";
+import { combatTokenSchema, DEFAULT_COMBAT_TURN } from "@/lib/schemas/combat-state";
 import {
   parseSavedEncounterBlockedCells,
   parseSavedEncounterData,
@@ -146,19 +146,7 @@ function createMarkerTokenFromSave(saved: SavedEncounterMarker): CombatToken {
   });
 }
 
-const EMPTY_TURN: CombatState["turn"] = {
-  active: false,
-  index: 0,
-  round: 1,
-  movementUsedFeet: 0,
-  dashUsed: false,
-  actionUsedForTwoWeapon: false,
-  twoWeaponFightingUsedOffHand: null,
-  actionUsed: false,
-  bonusActionUsed: false,
-  disengageUsed: false,
-  freeObjectInteractionUsed: false,
-};
+const EMPTY_TURN: CombatState["turn"] = DEFAULT_COMBAT_TURN;
 
 export function savedEncounterToCombatState(
   encounter: Encounter,

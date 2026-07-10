@@ -259,7 +259,7 @@ export interface DerivedAttack {
   damageType: string;
   range: string;
   notes: string;
-  source: "weapon" | "cantrip" | "spell" | "manual" | "natural";
+  source: "weapon" | "cantrip" | "spell" | "manual" | "natural" | "enemy";
   spellLevel?: number;
   /** Slot level used to cast a leveled spell (may be higher than spellLevel when upcast). */
   castSlotLevel?: number;
@@ -371,12 +371,13 @@ export function formatAttackRangeTooltip(attack: DerivedAttack): string | null {
   return formatWeaponRangeBandTooltip(attack.range);
 }
 
-/** Weapon attack roll that is not thrown (includes reach melee). */
+/** Weapon or enemy stat-block attack roll that is not thrown (includes reach melee). */
 export function isMeleeWeaponAttack(attack: DerivedAttack): boolean {
-  if (attack.source !== "weapon") return false;
+  if (attack.source !== "weapon" && attack.source !== "enemy") return false;
   if (attack.throwsWeapon || attack.id.endsWith("-thrown")) return false;
   if ((attack.rollType ?? "attack") !== "attack") return false;
   if (parseWeaponRangeBands(attack.range)) return false;
+  if (attack.range === "self-space") return false;
   return parseNormalRangeFt(attack.range) <= MELEE_REACH_FT;
 }
 
@@ -391,6 +392,7 @@ export function getAttackCategoryLabel(attack: DerivedAttack): string {
   if (attack.throwsWeapon || attack.id.endsWith("-thrown")) return "Thrown";
 
   const rollType = attack.rollType ?? "attack";
+  if (rollType === "save") return "Save";
   if (rollType === "attack") {
     if (isMeleeWeaponAttack(attack)) return "Melee";
     if (parseNormalRangeFt(attack.range) > 5) return "Ranged";
@@ -398,6 +400,7 @@ export function getAttackCategoryLabel(attack: DerivedAttack): string {
   }
 
   if (attack.source === "manual" || attack.source === "natural") return "Melee";
+  if (attack.source === "enemy") return "Special";
   return "Special";
 }
 
