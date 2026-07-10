@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { GlossaryTerm } from "@/components/ui/glossary-term";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { CatalogSpellRow } from "@/lib/content/catalog-client";
 import {
@@ -14,40 +15,6 @@ import {
 } from "@/lib/dnd/spell-glossary";
 import { useSpellRowTooltipOverride } from "@/components/spells/spell-row-tooltip-context";
 import { cn } from "@/lib/utils";
-
-function GlossaryTerm({
-  label,
-  tooltip,
-  className = "",
-}: {
-  label: string;
-  tooltip: string;
-  className?: string;
-}) {
-  const setRowTooltip = useSpellRowTooltipOverride();
-  const termClassName = [
-    "cursor-default underline decoration-dotted underline-offset-2",
-    className,
-  ].join(" ");
-
-  if (setRowTooltip) {
-    return (
-      <span
-        className={termClassName}
-        onMouseEnter={() => setRowTooltip(tooltip)}
-        onMouseLeave={() => setRowTooltip(null)}
-      >
-        {label}
-      </span>
-    );
-  }
-
-  return (
-    <Tooltip content={tooltip}>
-      <span className={termClassName}>{label}</span>
-    </Tooltip>
-  );
-}
 
 function ComponentLetter({
   letter,

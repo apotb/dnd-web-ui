@@ -31,11 +31,16 @@ import {
 import type { CharacterData, AbilityKey, SkillKey, ActionCost, InventoryItem } from "@/lib/schemas/character";
 import { choicePlaceholder, selectedChoiceDescription } from "@/lib/character/feature-choices";
 import { SelectedChoiceDescription } from "@/components/character/selected-choice-description";
+import { CheckRollModeIndicator } from "@/components/character/check-roll-mode-indicator";
+import {
+  formatCheckRollModeTooltip,
+  getAbilityCheckRollMode,
+  getSkillCheckRollMode,
+} from "@/lib/character/check-roll-mode";
 import {
   appendExhaustionSheetNote,
   applyExhaustionToSpeed,
   formatExhaustionTooltipLines,
-  getExhaustionAbilityCheckSheetNote,
   getExhaustionAttackSaveSheetNote,
   getExhaustionCount,
 } from "@/lib/dnd/exhaustion";
@@ -1399,14 +1404,38 @@ export function CharacterSheet({
   const effectiveSpeedFt = speedBreakdown.effectiveSpeedFt;
 
   const initiativeTotal = getInitiativeTotal(data);
-  const initiativeTooltip = appendExhaustionSheetNote(
-    formatInitiativeTooltip(data),
-    getExhaustionAbilityCheckSheetNote(data)
+  const initiativeTooltip = formatInitiativeTooltip(data);
+
+  const passivePerceptionTooltip = `Perception ${formatModifier(getPassivePerception(data))}`;
+
+  const checkRollModeOptions = useMemo(
+    () => ({
+      catalogItems,
+      speciesList: catalogSpecies,
+      classCatalog,
+    }),
+    [catalogItems, catalogSpecies, classCatalog]
   );
 
-  const passivePerceptionTooltip = appendExhaustionSheetNote(
-    `Perception ${formatModifier(getPassivePerception(data))}`,
-    getExhaustionAbilityCheckSheetNote(data)
+  const skillCheckRollModes = useMemo(() => {
+    const modes = {} as Record<
+      SkillKey,
+      ReturnType<typeof getSkillCheckRollMode>
+    >;
+    for (const skill of Object.keys(SKILL_LABELS) as SkillKey[]) {
+      modes[skill] = getSkillCheckRollMode(data, skill, checkRollModeOptions);
+    }
+    return modes;
+  }, [data, checkRollModeOptions]);
+
+  const initiativeCheckRollMode = useMemo(
+    () => getAbilityCheckRollMode(data, "dex", checkRollModeOptions),
+    [data, checkRollModeOptions]
+  );
+
+  const perceptionCheckRollMode = useMemo(
+    () => getSkillCheckRollMode(data, "perception", checkRollModeOptions),
+    [data, checkRollModeOptions]
   );
 
   const applyInventoryItems = (items: CharacterData["inventory"]["items"]) => {
@@ -1671,10 +1700,18 @@ export function CharacterSheet({
               </Tooltip>
               <Tooltip content={passivePerceptionTooltip}>
                 <div className="cursor-default">
-                  <Stat
-                    label="Passive Perception"
-                    value={getPassivePerception(data)}
-                  />
+                  <p className="text-xs text-muted-foreground">Passive Perception</p>
+                  <div className="flex items-center gap-1">
+                    {perceptionCheckRollMode.mode ? (
+                      <CheckRollModeIndicator
+                        mode={perceptionCheckRollMode.mode}
+                        tooltip={
+                          formatCheckRollModeTooltip(perceptionCheckRollMode) ?? ""
+                        }
+                      />
+                    ) : null}
+                    <p className="text-lg font-semibold">{getPassivePerception(data)}</p>
+                  </div>
                 </div>
               </Tooltip>
             </CardContent>
@@ -1837,8 +1874,7 @@ export function CharacterSheet({
                 const granted = isGrantedSkill(skill, skillSourcesMap);
                 const proficient = isSkillProficient(data, skill, skillSourcesMap);
                 const ability = SKILL_ABILITY_MAP[skill];
-                const skillTooltip = appendExhaustionSheetNote(
-                  (() => {
+                const skillTooltip = (() => {
                     if (skillData.override !== undefined) {
                       return `Override: ${formatModifier(skillData.override)}`;
                     }
@@ -1848,9 +1884,9 @@ export function CharacterSheet({
                     if (proficient) parts.push(`Proficiency: ${formatModifier(profBonus)}`);
                     if (skillData.expertise) parts.push(`Expertise: ${formatModifier(profBonus)}`);
                     return parts.join("\n");
-                  })(),
-                  getExhaustionAbilityCheckSheetNote(data)
-                );
+                  })();
+                const checkRollMode = skillCheckRollModes[skill];
+                const checkRollModeTooltip = formatCheckRollModeTooltip(checkRollMode);
                 const proficiencyTooltip = formatSkillProficiencyTooltip(
                   skill,
                   data,
@@ -1911,18 +1947,28 @@ export function CharacterSheet({
                         />
                       </>
                     )}
-                    <Tooltip content={skillTooltip}>
-                      <div className="flex flex-1 min-w-0 cursor-default items-center justify-between gap-2">
-                        <span className="text-sm truncate">
+                    <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+                      <Tooltip content={skillTooltip}>
+                        <span className="cursor-default truncate text-sm">
                           {SKILL_LABELS[skill]} ({ABILITY_LABELS[ability]})
                         </span>
-                        <span className="font-mono text-sm shrink-0">
-                          {formatModifier(
-                            getSkillTotal(data, skill, { grantedSkills: grantedSkillSet })
-                          )}
-                        </span>
+                      </Tooltip>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {checkRollMode.mode && checkRollModeTooltip ? (
+                          <CheckRollModeIndicator
+                            mode={checkRollMode.mode}
+                            tooltip={checkRollModeTooltip}
+                          />
+                        ) : null}
+                        <Tooltip content={skillTooltip}>
+                          <span className="cursor-default font-mono text-sm">
+                            {formatModifier(
+                              getSkillTotal(data, skill, { grantedSkills: grantedSkillSet })
+                            )}
+                          </span>
+                        </Tooltip>
                       </div>
-                    </Tooltip>
+                    </div>
                   </div>
                 );
               })}
@@ -2013,9 +2059,19 @@ export function CharacterSheet({
             <Tooltip content={initiativeTooltip}>
               <div className="space-y-1 cursor-default">
                 <Label className="text-xs text-muted-foreground">Initiative</Label>
-                <p className="text-sm font-medium">
-                  {formatModifier(initiativeTotal)}
-                </p>
+                <div className="flex items-center gap-1">
+                  {initiativeCheckRollMode.mode ? (
+                    <CheckRollModeIndicator
+                      mode={initiativeCheckRollMode.mode}
+                      tooltip={
+                        formatCheckRollModeTooltip(initiativeCheckRollMode) ?? ""
+                      }
+                    />
+                  ) : null}
+                  <p className="text-sm font-medium">
+                    {formatModifier(initiativeTotal)}
+                  </p>
+                </div>
               </div>
             </Tooltip>
             <Tooltip content={speedTooltip}>

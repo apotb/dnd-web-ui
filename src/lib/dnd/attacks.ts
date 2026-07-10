@@ -375,7 +375,9 @@ export function formatAttackRangeTooltip(attack: DerivedAttack): string | null {
 export function isMeleeWeaponAttack(attack: DerivedAttack): boolean {
   if (attack.source !== "weapon") return false;
   if (attack.throwsWeapon || attack.id.endsWith("-thrown")) return false;
-  return (attack.rollType ?? "attack") === "attack";
+  if ((attack.rollType ?? "attack") !== "attack") return false;
+  if (parseWeaponRangeBands(attack.range)) return false;
+  return parseNormalRangeFt(attack.range) <= MELEE_REACH_FT;
 }
 
 /** Combat tooltip category: Melee, Ranged, Thrown, Spell, Cantrip, etc. */

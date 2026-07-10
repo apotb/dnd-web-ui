@@ -753,7 +753,7 @@ export function LevelUpModal({
 
         {message ? <p className="level-up-error">{message}</p> : null}
 
-        <div className="supply-picker-actions">
+        <div className="supply-picker-actions combat-roll-actions">
           {stepIndex > 0 ? (
             <button type="button" className="candy-btn" onClick={goBack} disabled={saving}>
               Back
@@ -763,14 +763,16 @@ export function LevelUpModal({
               Cancel
             </button>
           )}
-          <button
-            type="button"
-            className="candy-btn"
-            onClick={goNext}
-            disabled={saving || !catalogReady}
-          >
-            {saving ? "Saving…" : !catalogReady ? "Loading…" : isLastStep ? "Complete level up" : "Next"}
-          </button>
+          <div className="combat-roll-right-actions">
+            <button
+              type="button"
+              className="candy-btn"
+              onClick={goNext}
+              disabled={saving || !catalogReady}
+            >
+              {saving ? "Saving…" : !catalogReady ? "Loading…" : isLastStep ? "Complete level up" : "Next"}
+            </button>
+          </div>
         </div>
       </div>
       </div>

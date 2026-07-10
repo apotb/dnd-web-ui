@@ -281,3 +281,19 @@ export function removeConditionSlugs(
   const remove = new Set(slugsToRemove);
   return conditions.filter((slug) => !remove.has(slug));
 }
+
+/** Structured ability-check effects for active conditions (used by check-roll-mode derivation). */
+export interface ConditionCheckEffect {
+  disadvantageAllChecks?: boolean;
+  advantageAllChecks?: boolean;
+  /** Appended to the source detail when the effect is situational. */
+  situational?: string;
+}
+
+export const CONDITION_CHECK_EFFECTS: Partial<Record<string, ConditionCheckEffect>> = {
+  poisoned: { disadvantageAllChecks: true },
+  frightened: {
+    disadvantageAllChecks: true,
+    situational: "while the source of its fear is within line of sight",
+  },
+};

@@ -2269,10 +2269,10 @@ html.campaign-bg-active .retro-back-link {
 
 .level-up-modal .supply-picker-actions {
   flex-shrink: 0;
+  width: 100%;
   justify-content: space-between;
   padding-top: 0.75rem;
   margin-top: 0.25rem;
-  border-top: 2px solid #000;
   background: #fff;
 }
 

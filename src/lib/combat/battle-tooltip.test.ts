@@ -88,6 +88,26 @@ describe("formatBattleAttackTooltip", () => {
     );
   });
 
+  it("labels ranged weapon attacks as Ranged", () => {
+    const tooltip = formatBattleAttackTooltip(
+      meleeAttack({
+        id: "weapon-longbow",
+        name: "Longbow",
+        damageDice: "1d8",
+        damageType: "piercing",
+        range: "150/600 ft",
+        notes: "",
+      }),
+      baseCharacter,
+      { omitBonusActionNote: true }
+    );
+
+    assert.match(tooltip, /^Ranged\n/);
+    assert.match(tooltip, /To hit: \+7/);
+    assert.match(tooltip, /Damage: 1d8 piercing/);
+    assert.match(tooltip, /Range: 150\/600 ft/);
+  });
+
   it("includes cantrip spell descriptions for offensive spell attacks", () => {
     const tooltip = formatBattleAttackTooltip(
       meleeAttack({

@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { submitInitiativeRoll } from "@/lib/combat/initiative-actions";
+import { CheckRollModeIndicator } from "@/components/character/check-roll-mode-indicator";
 import { formatInitiativeTooltip } from "@/lib/character/combat-derivation";
-import { formatModifier } from "@/lib/dnd/calculations";
 import {
-  appendExhaustionSheetNote,
-  getExhaustionAbilityCheckSheetNote,
-} from "@/lib/dnd/exhaustion";
+  formatCheckRollModeTooltip,
+  getAbilityCheckRollMode,
+} from "@/lib/character/check-roll-mode";
+import { formatModifier } from "@/lib/dnd/calculations";
 import type { CharacterData } from "@/lib/schemas/character";
 import { parseD20Roll, sanitizeDieRollInput } from "@/lib/dnd/dice";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -33,9 +34,10 @@ export function InitiativeRollModal({
   if (!pending) return null;
 
   const modifier = pending.modifier;
-  const initiativeTooltip = appendExhaustionSheetNote(
-    formatInitiativeTooltip(data),
-    getExhaustionAbilityCheckSheetNote(data)
+  const initiativeTooltip = formatInitiativeTooltip(data);
+  const initiativeCheckRollMode = getAbilityCheckRollMode(data, "dex");
+  const initiativeCheckRollModeTooltip = formatCheckRollModeTooltip(
+    initiativeCheckRollMode
   );
   const rollValue = parseD20Roll(roll);
   const hasValidRoll = rollValue != null;
@@ -80,6 +82,12 @@ export function InitiativeRollModal({
             aria-label="d20 roll"
             aria-invalid={roll.trim().length > 0 && !hasValidRoll}
           />
+          {initiativeCheckRollMode.mode && initiativeCheckRollModeTooltip ? (
+            <CheckRollModeIndicator
+              mode={initiativeCheckRollMode.mode}
+              tooltip={initiativeCheckRollModeTooltip}
+            />
+          ) : null}
           <Tooltip content={initiativeTooltip}>
             <span className="initiative-roll-mod">{formatModifier(modifier)}</span>
           </Tooltip>
