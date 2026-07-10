@@ -22,6 +22,20 @@ const SKIP_SLUGS = new Set([
   "tej",
   "quiver",
   "case-crossbow",
+  // Focus duplicates removed in 082_dedup_focus_items.sql
+  "sprig-of-mistletoe",
+  "totem",
+  "wooden-staff",
+  "yew-wand",
+  "crystal",
+  "orb",
+  "rod",
+  "staff",
+  "wand",
+  "amulet",
+  "emblem",
+  "reliquary",
+  "holy-water-flask",
 ]);
 
 const MIGRATION_PATH = resolve(

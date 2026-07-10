@@ -1,7 +1,13 @@
 "use server";
 
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { itemSchema, type Item } from "@/lib/schemas/item";
+import type { Item } from "@/lib/schemas/item";
+import { itemSchema } from "@/lib/schemas/item";
+import {
+  expandSlugsForCatalogFetch,
+  mapItemsBySlugWithAliases,
+  resolveCanonicalItemSlug,
+} from "@/lib/items/slug-aliases";
 
 // ---------------------------------------------------------------------------
 // Server-side helpers (used in Server Components and Server Actions)
@@ -9,11 +15,12 @@ import { itemSchema, type Item } from "@/lib/schemas/item";
 
 /** Fetch a single item by its slug. */
 export async function getItem(slug: string): Promise<Item | null> {
+  const canonical = resolveCanonicalItemSlug(slug);
   const supabase = await createServerClient();
   const { data } = await supabase
     .from("items")
     .select("*")
-    .eq("slug", slug)
+    .eq("slug", canonical)
     .maybeSingle();
   if (!data) return null;
   const result = itemSchema.safeParse(data);
@@ -25,17 +32,18 @@ export async function getItemsBySlugs(
   slugs: string[]
 ): Promise<Record<string, Item>> {
   if (!slugs.length) return {};
+  const fetchSlugs = expandSlugsForCatalogFetch(slugs);
   const supabase = await createServerClient();
   const { data } = await supabase
     .from("items")
     .select("*")
-    .in("slug", slugs);
+    .in("slug", fetchSlugs);
   const map: Record<string, Item> = {};
   for (const row of data ?? []) {
     const result = itemSchema.safeParse(row);
     if (result.success) map[result.data.slug] = result.data;
   }
-  return map;
+  return mapItemsBySlugWithAliases(slugs, map);
 }
 
 /** Fetch all items for a category (or all items if no category given). */

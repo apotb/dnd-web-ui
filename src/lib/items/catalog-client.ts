@@ -1,6 +1,10 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  expandSlugsForCatalogFetch,
+  mapItemsBySlugWithAliases,
+} from "@/lib/items/slug-aliases";
 import { itemSchema, type Item } from "@/lib/schemas/item";
 
 /** Subcategories included when picking "any tool" (e.g. Githyanki, Monk). */
@@ -44,17 +48,18 @@ export async function getItemsBySlugsClient(
   slugs: string[]
 ): Promise<Record<string, Item>> {
   if (!slugs.length) return {};
+  const fetchSlugs = expandSlugsForCatalogFetch(slugs);
   const supabase = createClient();
   const { data } = await supabase
     .from("items")
     .select("*")
-    .in("slug", slugs);
+    .in("slug", fetchSlugs);
   const map: Record<string, Item> = {};
   for (const row of data ?? []) {
     const result = itemSchema.safeParse(row);
     if (result.success) map[result.data.slug] = result.data;
   }
-  return map;
+  return mapItemsBySlugWithAliases(slugs, map);
 }
 
 /** Fetch items by subcategory (e.g. musical_instrument, artisans_tools). */

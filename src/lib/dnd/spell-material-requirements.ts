@@ -1,3 +1,5 @@
+import { resolveCanonicalItemSlug } from "@/lib/items/slug-aliases";
+
 export interface SpellMaterialAlternative {
   itemSlug: string;
   quantity?: number;
@@ -16,9 +18,8 @@ export interface SpellMaterialSpec {
   focusWaivable: boolean;
 }
 
-/** Catalog item slugs that satisfy the same material (e.g. SRD vs local naming). */
+/** Catalog item slugs that satisfy the same material (non-removed duplicates). */
 export const SPELL_MATERIAL_ITEM_ALIASES: Record<string, string[]> = {
-  "holy-water": ["holy-water-flask"],
   "block-of-incense": ["incense-5-sticks", "burning-incense"],
 };
 
@@ -343,6 +344,7 @@ export function spellRequiresMaterialEnforcement(spellSlug: string): boolean {
 }
 
 export function expandMaterialItemSlugs(itemSlug: string): string[] {
-  const aliases = SPELL_MATERIAL_ITEM_ALIASES[itemSlug] ?? [];
-  return [itemSlug, ...aliases];
+  const canonical = resolveCanonicalItemSlug(itemSlug);
+  const aliases = SPELL_MATERIAL_ITEM_ALIASES[canonical] ?? [];
+  return [...new Set([canonical, itemSlug, ...aliases])];
 }

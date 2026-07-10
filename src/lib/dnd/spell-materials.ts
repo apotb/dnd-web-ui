@@ -8,15 +8,13 @@ import {
   type SpellMaterialChoiceGroup,
   type SpellMaterialSpec,
 } from "@/lib/dnd/spell-material-requirements";
+import { resolveCanonicalItemSlug } from "@/lib/items/slug-aliases";
 
 const FOCUS_ITEM_SLUGS = new Set([
   "component-pouch",
   "arcane-focus",
   "druidic-focus",
   "holy-symbol",
-  "amulet",
-  "emblem",
-  "reliquary",
 ]);
 
 export interface MaterialStackOption {
@@ -76,8 +74,12 @@ function inventoryMatchesSlug(
   slug: string,
   catalogItems: Record<string, Item>
 ): boolean {
-  const candidates = expandMaterialItemSlugs(slug);
-  if (invItem.itemId && candidates.includes(invItem.itemId)) return true;
+  const canonical = resolveCanonicalItemSlug(slug);
+  const candidates = expandMaterialItemSlugs(canonical);
+  if (invItem.itemId) {
+    const resolved = resolveCanonicalItemSlug(invItem.itemId);
+    if (candidates.includes(resolved) || candidates.includes(invItem.itemId)) return true;
+  }
   const name = invItem.name.trim().toLowerCase();
   if (!name) return false;
   return candidates.some((candidate) => {
@@ -113,8 +115,13 @@ export function characterHasSpellcastingFocus(
 ): boolean {
   return inventory.some((invItem) => {
     if (invItem.quantity <= 0) return false;
-    if (invItem.itemId && FOCUS_ITEM_SLUGS.has(invItem.itemId)) return true;
-    const catalog = invItem.itemId ? catalogItems[invItem.itemId] : null;
+    if (invItem.itemId) {
+      const resolved = resolveCanonicalItemSlug(invItem.itemId);
+      if (FOCUS_ITEM_SLUGS.has(resolved)) return true;
+    }
+    const catalog = invItem.itemId
+      ? catalogItems[resolveCanonicalItemSlug(invItem.itemId)]
+      : null;
     return catalog?.category === "focus";
   });
 }
