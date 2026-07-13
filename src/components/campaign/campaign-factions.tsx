@@ -2,28 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useShowDmUi } from "@/components/layout/dm-view-provider";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { LoreCategoryEditingHeader } from "@/components/campaign/lore-category-editing-header";
-import { LoreCategoryTabs } from "@/components/campaign/lore-category-tabs";
 import { LoreEventEditor, LoreEventView } from "@/components/campaign/lore-event-fields";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeFactionsData } from "@/lib/hooks/use-realtime-factions-data";
 import { useRealtimeNotablesData } from "@/lib/hooks/use-realtime-notables-data";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
 import {
-  itemCountsByCategory,
-  moveCategory,
-  newCategory,
-} from "@/lib/schemas/lore-category";
-import {
   filterFactionMembersForViewer,
-  filterFactionsByCategory,
   filterFactionsForViewer,
   formatFactionMemberLine,
   moveFactionEvent,
   newFaction,
   newFactionEvent,
   sortFactionEvents,
+  sortFactions,
   type Faction,
   type FactionEvent,
   type FactionsData,
@@ -44,18 +38,6 @@ interface CampaignFactionsProps {
   initialWorldData: WorldData;
   isDm: boolean;
   canEditFactions: boolean;
-}
-
-function factionCategoryTabStorageKey(campaignId: string) {
-  return `campaign-faction-category-tab-${campaignId}`;
-}
-
-function parseStoredFactionCategory(
-  stored: string | null,
-  categoryIds: Set<string>
-): string | null {
-  if (stored === null || stored === "") return null;
-  return categoryIds.has(stored) ? stored : null;
 }
 
 export function CampaignFactions({
@@ -80,10 +62,7 @@ export function CampaignFactions({
   const [draft, setDraft] = useState(liveFactionsData);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [restoredCategoryTab, setRestoredCategoryTab] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [renamingCategoryId, setRenamingCategoryId] = useState<string | null>(null);
   const [factionPendingRemoval, setFactionPendingRemoval] =
     useState<Faction | null>(null);
 
@@ -95,21 +74,6 @@ export function CampaignFactions({
   }, [liveFactionsData, canEditFactions]);
 
   useEffect(() => {
-    setRestoredCategoryTab(false);
-    setActiveCategory(null);
-  }, [campaignId]);
-
-  useEffect(() => {
-    if (restoredCategoryTab) return;
-    const categoryIds = new Set(
-      liveFactionsData.categories.map((category) => category.id)
-    );
-    const stored = localStorage.getItem(factionCategoryTabStorageKey(campaignId));
-    setActiveCategory(parseStoredFactionCategory(stored, categoryIds));
-    setRestoredCategoryTab(true);
-  }, [campaignId, restoredCategoryTab, liveFactionsData.categories]);
-
-  useEffect(() => {
     if (message !== "Saved") return;
     const timer = setTimeout(() => setMessage(null), 2000);
     return () => clearTimeout(timer);
@@ -119,99 +83,21 @@ export function CampaignFactions({
     setEditing(nextEditing);
     if (!nextEditing) {
       setMessage(null);
-      setRenamingCategoryId(null);
     }
   }
 
   const factionsData = editable ? draft : liveFactionsData;
-  const categories = factionsData.categories;
-  const categoryItemCounts = useMemo(
-    () => itemCountsByCategory(factionsData.factions, categories),
-    [factionsData.factions, categories]
-  );
-  const savedCategoriesById = useMemo(
-    () =>
-      new Map(
-        liveFactionsData.factions.map((faction) => [faction.id, faction.category])
-      ),
-    [liveFactionsData.factions]
-  );
   const visibleFactions = useMemo(() => {
-    if (!activeCategory) return [];
-    const inCategory = filterFactionsByCategory(
-      factionsData.factions,
-      activeCategory,
-      editable ? savedCategoriesById : undefined
+    return filterFactionsForViewer(
+      sortFactions(factionsData.factions),
+      showDmUi || editable
     );
-    return filterFactionsForViewer(inCategory, showDmUi || editable);
-  }, [
-    activeCategory,
-    editable,
-    showDmUi,
-    factionsData.factions,
-    savedCategoriesById,
-  ]);
+  }, [editable, showDmUi, factionsData.factions]);
 
   const pickerNotables = useMemo(
     () => filterNotablesForViewer(liveNotablesData.notables, showDmUi || editable),
     [liveNotablesData.notables, showDmUi, editable]
   );
-
-  function selectCategory(categoryId: string | null) {
-    setActiveCategory(categoryId);
-    localStorage.setItem(factionCategoryTabStorageKey(campaignId), categoryId ?? "");
-  }
-
-  function addCategory(label: string) {
-    if (!editable) return;
-    const nextCategory = newCategory(
-      label,
-      draft.categories.length > 0
-        ? Math.max(...draft.categories.map((category) => category.sortOrder)) + 1
-        : 0
-    );
-    const nextDraft = {
-      ...draft,
-      categories: [...draft.categories, nextCategory],
-    };
-    setDraft(nextDraft);
-    selectCategory(nextCategory.id);
-  }
-
-  function renameCategory(categoryId: string, label: string) {
-    if (!editable) return;
-    setDraft({
-      ...draft,
-      categories: draft.categories.map((category) =>
-        category.id === categoryId ? { ...category, label } : category
-      ),
-    });
-  }
-
-  function removeCategory(categoryId: string) {
-    if (!editable) return;
-    if ((categoryItemCounts.get(categoryId) ?? 0) > 0) return;
-    setDraft({
-      ...draft,
-      categories: draft.categories.filter((category) => category.id !== categoryId),
-    });
-    if (activeCategory === categoryId) {
-      selectCategory(null);
-    }
-    setRenamingCategoryId(null);
-  }
-
-  function moveCategoryInDraft(direction: -1 | 1) {
-    if (!editable || !activeCategory) return;
-    const nextCategories = moveCategory(draft.categories, activeCategory, direction);
-    if (!nextCategories) return;
-    setDraft({ ...draft, categories: nextCategories });
-  }
-
-  function startRenameCategory() {
-    if (!editable || !activeCategory) return;
-    setRenamingCategoryId(activeCategory);
-  }
 
   async function saveFactionsData(nextDraft: FactionsData) {
     const supabase = createClient();
@@ -236,31 +122,18 @@ export function CampaignFactions({
   }
 
   function addFaction(placement: "top" | "bottom") {
-    if (!activeCategory) return;
-    const categoryFactions = filterFactionsByCategory(
-      draft.factions,
-      activeCategory,
-      editable ? savedCategoriesById : undefined
-    );
+    const ordered = sortFactions(draft.factions);
     const nextOrder =
-      categoryFactions.length > 0
+      ordered.length > 0
         ? placement === "top"
-          ? Math.min(...categoryFactions.map((faction) => faction.sortOrder)) - 1
-          : Math.max(...categoryFactions.map((faction) => faction.sortOrder)) + 1
+          ? Math.min(...ordered.map((faction) => faction.sortOrder)) - 1
+          : Math.max(...ordered.map((faction) => faction.sortOrder)) + 1
         : 0;
-    updateFactions([
-      ...draft.factions,
-      newFaction({ category: activeCategory }, nextOrder),
-    ]);
+    updateFactions([...draft.factions, newFaction({}, nextOrder)]);
   }
 
   function moveFaction(factionId: string, direction: -1 | 1) {
-    if (!activeCategory) return;
-    const ordered = filterFactionsByCategory(
-      draft.factions,
-      activeCategory,
-      editable ? savedCategoriesById : undefined
-    );
+    const ordered = sortFactions(draft.factions);
     const index = ordered.findIndex((faction) => faction.id === factionId);
     const swapIndex = index + direction;
     if (index < 0 || swapIndex < 0 || swapIndex >= ordered.length) return;
@@ -300,34 +173,22 @@ export function CampaignFactions({
 
   return (
     <div className="retro-stack party-overview-stack">
-      <LoreCategoryEditingHeader
-        canEdit={canEditFactions}
-        editing={editing}
-        onEditingChange={handleEditingChange}
-        editable={editable}
-        activeCategoryId={activeCategory}
-        categories={categories}
-        itemCountsByCategory={categoryItemCounts}
-        renamingCategoryId={renamingCategoryId}
-        onMoveLeft={() => moveCategoryInDraft(-1)}
-        onMoveRight={() => moveCategoryInDraft(1)}
-        onRename={startRenameCategory}
-        onRemove={() => activeCategory && removeCategory(activeCategory)}
-      />
-
-      <LoreCategoryTabs
-        categories={categories}
-        activeCategoryId={activeCategory}
-        editable={editable}
-        renamingCategoryId={renamingCategoryId}
-        onRenamingCategoryIdChange={setRenamingCategoryId}
-        onSelect={selectCategory}
-        onAdd={addCategory}
-        onRename={renameCategory}
-      />
+      {canEditFactions ? (
+        <div className="lore-category-editing-header">
+          <label
+            className={`notable-editing-toggle candy-btn cursor-pointer select-none w-fit${editing ? " candy-btn-active" : ""}`}
+          >
+            <Checkbox
+              checked={editing}
+              onCheckedChange={(checked) => handleEditingChange(checked === true)}
+            />
+            <span>Editing</span>
+          </label>
+        </div>
+      ) : null}
 
       <div className="retro-stack notable-stack">
-        {editable && activeCategory ? (
+        {editable ? (
           <FactionsSaveBar
             saving={saving}
             message={message}
@@ -336,18 +197,13 @@ export function CampaignFactions({
           />
         ) : null}
 
-        {editable && categories.length === 0 ? (
-          <p className="retro-hint retro-muted">Add a category to start tracking factions.</p>
-        ) : null}
-
-        {activeCategory && visibleFactions.length === 0 ? (
-          <p className="retro-hint retro-muted">No factions in this category yet.</p>
+        {visibleFactions.length === 0 ? (
+          <p className="retro-hint retro-muted">No factions yet.</p>
         ) : (
           visibleFactions.map((faction, index) => (
             <FactionCard
               key={faction.id}
               faction={faction}
-              categories={categories}
               campaignDate={campaignDate}
               pickerNotables={pickerNotables}
               allNotables={liveNotablesData.notables}
@@ -374,7 +230,7 @@ export function CampaignFactions({
           ))
         )}
 
-        {editable && activeCategory ? (
+        {editable ? (
           <FactionsSaveBar
             saving={saving}
             message={message}
@@ -430,7 +286,6 @@ function FactionsSaveBar({
 
 function FactionCard({
   faction,
-  categories,
   campaignDate,
   pickerNotables,
   allNotables,
@@ -445,7 +300,6 @@ function FactionCard({
   onMoveDown,
 }: {
   faction: Faction;
-  categories: FactionsData["categories"];
   campaignDate: ReturnType<typeof getCampaignCalendarDate>;
   pickerNotables: ReturnType<typeof filterNotablesForViewer>;
   allNotables: ReturnType<typeof filterNotablesForViewer>;
@@ -563,22 +417,6 @@ function FactionCard({
                   onChange({ ...faction, goals: event.target.value })
                 }
               />
-            </div>
-            <div>
-              <label className="candy-label">Category</label>
-              <select
-                className="candy-input"
-                value={faction.category}
-                onChange={(event) =>
-                  onChange({ ...faction, category: event.target.value })
-                }
-              >
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
         </>

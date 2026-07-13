@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   filterFactionMembersForViewer,
+  normalizeFactionsData,
   parseFactionsData,
 } from "./factions";
 import type { Notable } from "./notables";
@@ -38,6 +39,45 @@ describe("factions", () => {
     const data = parseFactionsData({});
     assert.deepEqual(data.categories, []);
     assert.deepEqual(data.factions, []);
+  });
+
+  it("flattens legacy categorized factions into one ordered list", () => {
+    const data = normalizeFactionsData({
+      categories: [
+        { id: "guilds", label: "Guilds", sortOrder: 0 },
+        { id: "cults", label: "Cults", sortOrder: 1 },
+      ],
+      factions: [
+        {
+          id: "cult-a",
+          name: "Cult A",
+          type: "",
+          goals: "",
+          category: "cults",
+          visibleToPlayers: true,
+          sortOrder: 0,
+          events: [],
+          memberNotableIds: [],
+        },
+        {
+          id: "guild-b",
+          name: "Guild B",
+          type: "",
+          goals: "",
+          category: "guilds",
+          visibleToPlayers: true,
+          sortOrder: 1,
+          events: [],
+          memberNotableIds: [],
+        },
+      ],
+    });
+    assert.deepEqual(data.categories, []);
+    assert.deepEqual(
+      data.factions.map((faction) => faction.id),
+      ["guild-b", "cult-a"]
+    );
+    assert.equal(data.factions[0].category, "");
   });
 
   it("filters hidden notable members for players", () => {

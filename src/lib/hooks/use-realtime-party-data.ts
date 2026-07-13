@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCampaignRealtimeColumn } from "@/lib/hooks/campaign-realtime-payload";
 import {
   mergePartyData,
   parsePartyData,
@@ -101,8 +102,10 @@ function subscribeToCampaignParty(
         filter: `id=eq.${campaignId}`,
       },
       (payload) => {
-        const row = payload.new as Campaign;
-        publishPartyData(campaignId, parsePartyData(row.party_data));
+        const row = payload.new as Partial<Campaign>;
+        const partyData = getCampaignRealtimeColumn(row, "party_data");
+        if (partyData === undefined) return;
+        publishPartyData(campaignId, parsePartyData(partyData));
       }
     )
     .subscribe();

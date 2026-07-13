@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCampaignRealtimeColumn } from "@/lib/hooks/campaign-realtime-payload";
 import { parseNotablesData, type NotablesData } from "@/lib/schemas/notables";
 import type { Campaign } from "@/lib/types/database";
 
@@ -29,8 +30,10 @@ export function useRealtimeNotablesData(
           filter: `id=eq.${campaignId}`,
         },
         (payload) => {
-          const row = payload.new as Campaign;
-          setNotablesData(parseNotablesData(row.notables_data ?? {}));
+          const row = payload.new as Partial<Campaign>;
+          const notablesData = getCampaignRealtimeColumn(row, "notables_data");
+          if (notablesData === undefined) return;
+          setNotablesData(parseNotablesData(notablesData));
         }
       )
       .subscribe();

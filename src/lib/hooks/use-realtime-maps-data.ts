@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCampaignRealtimeColumn } from "@/lib/hooks/campaign-realtime-payload";
 import { parseMapsData, type MapsData } from "@/lib/schemas/maps";
 import type { Campaign } from "@/lib/types/database";
 
@@ -29,8 +30,10 @@ export function useRealtimeMapsData(
           filter: `id=eq.${campaignId}`,
         },
         (payload) => {
-          const row = payload.new as Campaign;
-          setMapsData(parseMapsData(row.maps_data));
+          const row = payload.new as Partial<Campaign>;
+          const mapsData = getCampaignRealtimeColumn(row, "maps_data");
+          if (mapsData === undefined) return;
+          setMapsData(parseMapsData(mapsData));
         }
       )
       .subscribe();

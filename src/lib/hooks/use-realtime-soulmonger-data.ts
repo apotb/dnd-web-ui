@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCampaignRealtimeColumn } from "@/lib/hooks/campaign-realtime-payload";
 import {
   parseSoulmongerData,
   type SoulmongerData,
@@ -32,8 +33,10 @@ export function useRealtimeSoulmongerData(
           filter: `id=eq.${campaignId}`,
         },
         (payload) => {
-          const row = payload.new as Campaign;
-          setSoulmongerData(parseSoulmongerData(row.soulmonger_data));
+          const row = payload.new as Partial<Campaign>;
+          const soulmongerData = getCampaignRealtimeColumn(row, "soulmonger_data");
+          if (soulmongerData === undefined) return;
+          setSoulmongerData(parseSoulmongerData(soulmongerData));
         }
       )
       .subscribe();

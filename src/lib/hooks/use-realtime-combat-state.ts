@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCampaignRealtimeColumn } from "@/lib/hooks/campaign-realtime-payload";
 import { normalizeCombatState } from "@/lib/combat/state-utils";
 import { parseCombatState, type CombatState } from "@/lib/schemas/combat-state";
 import type { Campaign, Json } from "@/lib/types/database";
@@ -34,9 +35,11 @@ export function useRealtimeCombatState(
           filter: `id=eq.${campaignId}`,
         },
         (payload) => {
-          const row = payload.new as Campaign;
+          const row = payload.new as Partial<Campaign>;
+          const combatState = getCampaignRealtimeColumn(row, "combat_state");
+          if (combatState === undefined) return;
           setCombatState(
-            normalizeCombatState(parseCombatState(row.combat_state ?? {}))
+            normalizeCombatState(parseCombatState(combatState))
           );
         }
       )

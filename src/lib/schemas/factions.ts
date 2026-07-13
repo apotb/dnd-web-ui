@@ -3,7 +3,6 @@ import {
   ensureCategories,
   loreCategorySchema,
   sortCategories,
-  type LoreCategory,
 } from "@/lib/schemas/lore-category";
 import {
   ensureLoreEventSortOrders,
@@ -49,31 +48,38 @@ export function parseFactionsData(input: unknown): FactionsData {
     ...(typeof input === "object" && input !== null ? input : {}),
     categories,
   });
-  return {
-    categories: sortCategories(parsed.categories),
+  return normalizeFactionsData({
+    categories: parsed.categories,
     factions: parsed.factions.map((faction) => ({
       ...faction,
       events: ensureLoreEventSortOrders(faction.events),
     })),
-  };
+  });
+}
+
+/** Flatten legacy categorized factions into one ordered list. */
+export function normalizeFactionsData(data: FactionsData): FactionsData {
+  const categoryOrder = new Map(
+    sortCategories(data.categories).map((category, index) => [category.id, index])
+  );
+  const factions = sortFactions(data.factions)
+    .sort((a, b) => {
+      const categoryA = categoryOrder.get(a.category) ?? 0;
+      const categoryB = categoryOrder.get(b.category) ?? 0;
+      if (categoryA !== categoryB) return categoryA - categoryB;
+      return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+    })
+    .map((faction, index) => ({
+      ...faction,
+      category: "",
+      sortOrder: index,
+    }));
+  return { categories: [], factions };
 }
 
 export function sortFactions(factions: Faction[]): Faction[] {
   return [...factions].sort(
     (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
-  );
-}
-
-export function filterFactionsByCategory(
-  factions: Faction[],
-  category: string,
-  savedCategoriesById?: Map<string, string>
-): Faction[] {
-  return sortFactions(
-    factions.filter((faction) => {
-      const tabCategory = savedCategoriesById?.get(faction.id) ?? faction.category;
-      return tabCategory === category;
-    })
   );
 }
 
@@ -116,11 +122,4 @@ export function filterFactionMembersForViewer(
 
 export function formatFactionMemberLine(notable: Notable): string {
   return formatNotableNameLine(notable) || "Unnamed notable";
-}
-
-export function getFactionCategoryLabel(
-  categories: LoreCategory[],
-  categoryId: string
-): string {
-  return categories.find((entry) => entry.id === categoryId)?.label ?? categoryId;
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCampaignRealtimeColumn } from "@/lib/hooks/campaign-realtime-payload";
 import { parseWorldData, type WorldData } from "@/lib/schemas/world";
 import type { Campaign } from "@/lib/types/database";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -40,8 +41,10 @@ function subscribeToCampaignWorld(
         filter: `id=eq.${campaignId}`,
       },
       (payload) => {
-        const row = payload.new as Campaign;
-        entry.worldData = parseWorldData(row.world_data);
+        const row = payload.new as Partial<Campaign>;
+        const worldData = getCampaignRealtimeColumn(row, "world_data");
+        if (worldData === undefined) return;
+        entry.worldData = parseWorldData(worldData);
         for (const listener of entry.listeners) {
           listener(entry.worldData);
         }

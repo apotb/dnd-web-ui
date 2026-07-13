@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCampaignRealtimeColumn } from "@/lib/hooks/campaign-realtime-payload";
 import { parseFactionsData, type FactionsData } from "@/lib/schemas/factions";
 import type { Campaign } from "@/lib/types/database";
 
@@ -29,8 +30,10 @@ export function useRealtimeFactionsData(
           filter: `id=eq.${campaignId}`,
         },
         (payload) => {
-          const row = payload.new as Campaign;
-          setFactionsData(parseFactionsData(row.factions_data ?? {}));
+          const row = payload.new as Partial<Campaign>;
+          const factionsData = getCampaignRealtimeColumn(row, "factions_data");
+          if (factionsData === undefined) return;
+          setFactionsData(parseFactionsData(factionsData));
         }
       )
       .subscribe();
