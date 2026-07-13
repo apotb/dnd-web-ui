@@ -1025,7 +1025,9 @@ export function CombatBoard({
 
       draggingTokenIdRef.current = tokenId;
       setDraggingTokenId(tokenId);
-      setSelectedTokenId(tokenId);
+      if (losMode || !dmTokenSelectionBlockedRef.current) {
+        setSelectedTokenId(tokenId);
+      }
       dragGrid.setPointerCapture(pointerId);
 
       function applyPointer(clientX: number, clientY: number) {
@@ -1084,18 +1086,17 @@ export function CombatBoard({
       dragGrid.addEventListener("pointerup", finishDrag);
       dragGrid.addEventListener("pointercancel", finishDrag);
     },
-    [clearTokenHover, collisionEditMode]
+    [clearTokenHover, collisionEditMode, losMode]
   );
 
   const handleTokenPointerDown = useCallback(
     (tokenId: string, event: React.PointerEvent<HTMLDivElement>) => {
       if (!isDm || collisionEditMode) return;
-      if (isBattleActive(combatStateRef.current)) {
-        if (!showDmUi) return;
-        if (!losMode && dmTokenSelectionBlockedRef.current) return;
-      }
-      event.preventDefault();
+      if (isBattleActive(combatStateRef.current) && !showDmUi) return;
+      if (!losMode && dmTokenSelectionBlockedRef.current) return;
+
       event.stopPropagation();
+      setSelectedTokenId(tokenId);
 
       const pointerId = event.pointerId;
       const startX = event.clientX;
@@ -1117,13 +1118,14 @@ export function CombatBoard({
 
         dragStarted = true;
         cleanup();
+        moveEvent.preventDefault();
         beginTokenDrag(tokenId, pointerId, moveEvent.clientX, moveEvent.clientY);
       }
 
       function handlePointerUp(upEvent: PointerEvent) {
         if (upEvent.pointerId !== pointerId) return;
         cleanup();
-        if (!dragStarted && (losMode || !dmTokenSelectionBlockedRef.current)) {
+        if (!dragStarted) {
           setSelectedTokenId(tokenId);
         }
       }
@@ -3772,6 +3774,10 @@ export function CombatBoard({
         setSelectedTokenId(tokenId);
       }
       return;
+    }
+
+    if (isDm && showDmUi && preBattleSetup) {
+      setSelectedTokenId(tokenId);
     }
   }
 
