@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { parsePartyData } from "@/lib/schemas/party";
+import { parseEnemyData } from "@/lib/schemas/enemy";
 import { parseWorldData } from "@/lib/schemas/world";
 import { parseMapsData } from "@/lib/schemas/maps";
 import { parseNotablesData } from "@/lib/schemas/notables";
@@ -21,7 +22,7 @@ export default async function CampaignHomePage({
   if (!access) return null;
 
   const supabase = await createClient();
-  const [{ data: rows }, { data: eventRows }] = await Promise.all([
+  const [{ data: rows }, { data: eventRows }, { data: enemyRows }] = await Promise.all([
     supabase
       .from("characters")
       .select("*")
@@ -33,6 +34,7 @@ export default async function CampaignHomePage({
       .eq("campaign_id", campaignId)
       .order("month")
       .order("day"),
+    supabase.from("enemies").select("slug,name,data").order("name"),
   ]);
 
   const characters = (rows ?? []).map((row) =>
@@ -43,11 +45,17 @@ export default async function CampaignHomePage({
   );
   const canManageCalendarEvents =
     !!access.user && (access.isDm || access.ownedCharacter !== null);
+  const enemies = (enemyRows ?? []).map((row) => ({
+    slug: row.slug as string,
+    name: row.name as string,
+    data: parseEnemyData(row.data),
+  }));
 
   return (
     <CampaignOverview
       campaignId={campaignId}
       initialPartyData={parsePartyData(access.campaign.party_data)}
+      enemies={enemies}
       initialWorldData={parseWorldData(access.campaign.world_data)}
       initialMapsData={parseMapsData(access.campaign.maps_data)}
       initialNotablesData={parseNotablesData(access.campaign.notables_data)}

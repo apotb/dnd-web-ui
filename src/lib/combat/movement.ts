@@ -75,7 +75,7 @@ export function getTokenSpeedFt(
   let speed = 30;
   if (token.kind === "party" && character) {
     speed = getCharacterEffectiveSpeedFt(character.data, catalogItems, speciesList);
-  } else if (token.kind === "enemy" && enemyData) {
+  } else if ((token.kind === "enemy" || token.kind === "ally") && enemyData) {
     speed = parseEnemySpeedFt(enemyData.speed);
   }
   return getCombatEffectSpeedOverride(token, speed);

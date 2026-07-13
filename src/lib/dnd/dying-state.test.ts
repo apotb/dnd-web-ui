@@ -6,9 +6,11 @@ import {
   applyStabilize,
   applyWakeFromZeroHp,
   DYING_CONDITION_SLUG,
+  ensureZeroHpDownedConditions,
   hasDyingCondition,
   needsDeathSavingThrow,
   syncCombatAfterHpChange,
+  syncDownedConditionsAfterHpChange,
 } from "./dying-state.ts";
 import type { CharacterData } from "@/lib/schemas/character";
 
@@ -119,5 +121,32 @@ describe("dying-state", () => {
       isCritical: false,
     });
     assert.equal(result.deathSaves.failures, 1);
+  });
+
+  it("ensureZeroHpDownedConditions adds downed slugs without dying", () => {
+    const result = ensureZeroHpDownedConditions(["poisoned"]);
+    assert.ok(result.includes("unconscious"));
+    assert.ok(result.includes("incapacitated"));
+    assert.ok(result.includes("prone"));
+    assert.ok(result.includes("poisoned"));
+    assert.equal(result.includes(DYING_CONDITION_SLUG), false);
+  });
+
+  it("syncDownedConditionsAfterHpChange knocks down and wakes", () => {
+    const knocked = syncDownedConditionsAfterHpChange(10, 0, []);
+    assert.ok(knocked.includes("unconscious"));
+    assert.ok(knocked.includes("incapacitated"));
+    assert.ok(knocked.includes("prone"));
+
+    const woke = syncDownedConditionsAfterHpChange(0, 5, knocked);
+    assert.deepEqual(woke, []);
+  });
+
+  it("syncCombatAfterHpChange enforces downed conditions when already at 0 HP", () => {
+    const combat = baseCombat({ currentHp: 0, conditions: [] });
+    const result = syncCombatAfterHpChange(combat, 0, { previousHp: 0 });
+    assert.ok(result.conditions?.includes("unconscious"));
+    assert.ok(result.conditions?.includes("incapacitated"));
+    assert.ok(result.conditions?.includes("prone"));
   });
 });

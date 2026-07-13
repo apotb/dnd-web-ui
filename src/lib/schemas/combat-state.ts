@@ -160,6 +160,8 @@ export const combatTokenSchema = z.object({
   displayName: z.string().optional(),
   tooltip: z.string().default(""),
   enemySlug: z.string().optional(),
+  /** Links ally tokens to a campaign roster entry in party_data.allies. */
+  allyId: z.string().optional(),
   characterId: z.string().optional(),
   portraitPath: z.string().nullable().default(null),
   droppedByCharacterId: z.string().optional(),
@@ -220,6 +222,8 @@ export const combatStateSchema = z.object({
   blockedCells: z.array(blockedCellSchema).default([]),
   tokens: z.array(combatTokenSchema).default([]),
   excludedPartyCharacterIds: z.array(z.string()).default([]),
+  /** Ally roster IDs removed from the board; won't auto-sync back onto it. */
+  excludedAllyIds: z.array(z.string()).default([]),
   initiative: combatInitiativeSchema.default({ status: "none", results: {}, order: [] }),
   turn: combatTurnSchema.default({
     active: false,

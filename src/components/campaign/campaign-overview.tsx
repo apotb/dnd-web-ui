@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { PartyInventory } from "@/components/campaign/party-inventory";
+import { PartyAllies } from "@/components/campaign/party-allies";
 import { CampaignDayAdvance } from "@/components/campaign/campaign-day-advance";
 import { HarptosCalendar } from "@/components/campaign/harptos-calendar";
 import { CampaignMaps } from "@/components/campaign/campaign-maps";
@@ -16,6 +17,7 @@ import type { ParsedCharacter } from "@/lib/character/utils";
 import {
   formatModifier,
   getAbilityModifiers,
+  getPassivePerception,
 } from "@/lib/dnd/calculations";
 import { getConditionDisplayName } from "@/lib/dnd/conditions";
 import type { PhbCondition } from "@/lib/dnd/conditions";
@@ -23,6 +25,7 @@ import { fetchCatalogConditionsClient } from "@/lib/content/catalog-client";
 import { getTopSkills, skillShortLabel } from "@/lib/dnd/party-summary";
 import type { ParsedCalendarEvent } from "@/lib/schemas/calendar-event";
 import type { PartyData } from "@/lib/schemas/party";
+import type { EnemyData } from "@/lib/schemas/enemy";
 import type { WorldData } from "@/lib/schemas/world";
 import type { MapsData } from "@/lib/schemas/maps";
 import type { NotablesData } from "@/lib/schemas/notables";
@@ -56,6 +59,7 @@ function parseStoredOverviewTab(stored: string | null): OverviewTab | null {
 interface CampaignOverviewProps {
   campaignId: string;
   initialPartyData: PartyData;
+  enemies: { slug: string; name: string; data: EnemyData }[];
   initialWorldData: WorldData;
   initialMapsData: MapsData;
   initialNotablesData: NotablesData;
@@ -73,6 +77,7 @@ interface CampaignOverviewProps {
 export function CampaignOverview({
   campaignId,
   initialPartyData,
+  enemies,
   initialWorldData,
   initialMapsData,
   initialNotablesData,
@@ -179,6 +184,13 @@ export function CampaignOverview({
               </div>
             )}
           </section>
+
+          <PartyAllies
+            campaignId={campaignId}
+            initialPartyData={initialPartyData}
+            enemies={enemies}
+            isDm={isDm}
+          />
 
           <PartyInventory
             campaignId={campaignId}
@@ -309,6 +321,7 @@ function PartyMemberSummary({
         {" · "}
         {combat.speed}ft
         {" · "}Init {formatModifier(combat.initiativeBonus + mods.dex)}
+        {" · "}PP {getPassivePerception(data)}
         </p>
         <div className="retro-member-abilities">
         {abilityKeys.map((key) => (

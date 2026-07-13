@@ -164,6 +164,7 @@ export function savedEncounterToCombatState(
     blockedCells,
     tokens: [],
     excludedPartyCharacterIds: [...allCharacterIds],
+    excludedAllyIds: [],
     initiative: { status: "none", results: {}, order: [] },
     turn: EMPTY_TURN,
     pendingAttacks: [],

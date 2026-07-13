@@ -7,7 +7,7 @@ import {
   getInventoryWeightLb,
   type EncumbranceInfo,
 } from "@/lib/character/encumbrance";
-import { syncCombatAfterHpChange } from "@/lib/dnd/dying-state";
+import { syncCombatAfterHpChange, ensureZeroHpDownedConditions } from "@/lib/dnd/dying-state";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
@@ -389,6 +389,10 @@ export function syncCombatDerivedStats(
   const hitDiceSpent = Math.min(data.combat.hitDiceSpent ?? 0, hitDiceTotal);
   const currentHp = Math.min(data.combat.currentHp, maxHp);
   const exhaustion = data.exhaustionLevels.length;
+  const conditions =
+    currentHp === 0
+      ? ensureZeroHpDownedConditions(data.combat.conditions ?? [])
+      : data.combat.conditions;
   return {
     ...data,
     combat: {
@@ -399,6 +403,7 @@ export function syncCombatDerivedStats(
       speed,
       currentHp,
       exhaustion,
+      conditions,
     },
   };
 }

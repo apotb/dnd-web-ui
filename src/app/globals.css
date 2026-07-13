@@ -711,6 +711,21 @@ html.campaign-bg-active .lore-category-rename-row {
   line-height: 1.35;
 }
 
+.retro-member-box-button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  appearance: none;
+}
+
+.retro-member-box-button:hover {
+  background: #f0f0f0;
+  border-color: #666;
+}
+
 .retro-member-header {
   display: flex;
   justify-content: space-between;
@@ -3581,6 +3596,24 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-attack-review-card-actions {
   margin-top: auto;
+}
+
+.combat-dm-approval-banner {
+  flex-shrink: 0;
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  user-select: none;
+  pointer-events: none;
+}
+
+.combat-dm-approval-banner--active {
+  color: #d946ef;
+  text-transform: uppercase;
 }
 
 .combat-stage .combat-dm-approval-tray {

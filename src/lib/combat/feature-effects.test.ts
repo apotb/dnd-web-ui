@@ -202,4 +202,22 @@ describe("feature-effects", () => {
     assert.ok(entries.some((entry) => entry.slug === "dying"));
     assert.ok(entries.some((entry) => entry.slug === "prone"));
   });
+
+  it("surfaces ally roster conditions on ally token status entries", () => {
+    const token = makeToken({
+      id: "ally-token",
+      kind: "ally",
+      allyId: "ally-1",
+      name: "Sildar",
+      label: "S",
+    });
+    const entries = getTokenStatusEntries(token, {
+      conditionsByAllyId: {
+        "ally-1": ["unconscious", "incapacitated", "prone"],
+      },
+    });
+    assert.ok(entries.some((entry) => entry.slug === "unconscious"));
+    assert.ok(entries.some((entry) => entry.slug === "incapacitated"));
+    assert.ok(entries.some((entry) => entry.slug === "prone"));
+  });
 });

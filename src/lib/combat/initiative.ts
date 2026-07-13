@@ -13,8 +13,8 @@ import {
   normalizeCombatTurn,
 } from "@/lib/schemas/combat-state";
 import { adjustTurnAfterTokenRemoved, TURN_RESET_FIELDS } from "@/lib/combat/turn";
-import type { EnemyData } from "@/lib/schemas/enemy";
-import { abilityModifier as enemyAbilityModifier } from "@/lib/schemas/enemy";
+import type { PartyAlly } from "@/lib/schemas/party";
+import { abilityModifier as enemyAbilityModifier, type EnemyData } from "@/lib/schemas/enemy";
 
 export function rollD20(): number {
   return Math.floor(Math.random() * 20) + 1;
@@ -199,7 +199,8 @@ export function startInitiativeCollection(
   state: CombatState,
   characters: ParsedCharacter[],
   enemiesBySlug: Record<string, { data: EnemyData }>,
-  dmUserId: string | null
+  dmUserId: string | null,
+  alliesById: Record<string, PartyAlly> = {}
 ): CombatState {
   const charactersById = new Map(characters.map((character) => [character.id, character]));
   const results: Record<string, InitiativeTokenResult> = {};
@@ -209,6 +210,14 @@ export function startInitiativeCollection(
       const enemy = enemiesBySlug[token.enemySlug];
       if (!enemy) continue;
       const { modifier, dexMod } = getEnemyInitiativeBreakdown(enemy.data);
+      results[token.id] = autoRollInitiative(modifier, dexMod);
+      continue;
+    }
+
+    if (token.kind === "ally" && token.allyId) {
+      const ally = alliesById[token.allyId];
+      if (!ally) continue;
+      const { modifier, dexMod } = getEnemyInitiativeBreakdown(ally.data);
       results[token.id] = autoRollInitiative(modifier, dexMod);
       continue;
     }
@@ -324,7 +333,8 @@ export function integrateNewCombatantsInitiative(
   addedTokens: CombatToken[],
   characters: ParsedCharacter[],
   enemiesBySlug: Record<string, { data: EnemyData }>,
-  dmUserId: string | null
+  dmUserId: string | null,
+  alliesById: Record<string, PartyAlly> = {}
 ): {
   state: CombatState;
   charactersNeedingPlayerRolls: ParsedCharacter[];
@@ -344,6 +354,14 @@ export function integrateNewCombatantsInitiative(
       const enemy = enemiesBySlug[token.enemySlug];
       if (!enemy) continue;
       const { modifier, dexMod } = getEnemyInitiativeBreakdown(enemy.data);
+      results[token.id] = autoRollInitiative(modifier, dexMod);
+      continue;
+    }
+
+    if (token.kind === "ally" && token.allyId) {
+      const ally = alliesById[token.allyId];
+      if (!ally) continue;
+      const { modifier, dexMod } = getEnemyInitiativeBreakdown(ally.data);
       results[token.id] = autoRollInitiative(modifier, dexMod);
       continue;
     }

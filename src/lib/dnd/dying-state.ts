@@ -25,6 +25,29 @@ export function needsDeathSavingThrow(combat: CharacterData["combat"]): boolean 
   return combat.currentHp === 0 && hasDyingCondition(combat);
 }
 
+/** Apply prone, unconscious, and incapacitated without dying or death-save resets. */
+export function ensureZeroHpDownedConditions(conditions: string[]): string[] {
+  return applyConditionSlugs(conditions, [...AUTO_ZERO_HP_CONDITIONS]);
+}
+
+/** Sync auto-downed conditions after an HP change (allies and enforcement paths). */
+export function syncDownedConditionsAfterHpChange(
+  previousHp: number,
+  newHp: number,
+  conditions: string[]
+): string[] {
+  if (previousHp > 0 && newHp === 0) {
+    return ensureZeroHpDownedConditions(conditions);
+  }
+  if (previousHp === 0 && newHp > 0) {
+    return removeConditionSlugs(conditions, [...AUTO_ZERO_HP_CONDITIONS]);
+  }
+  if (newHp === 0) {
+    return ensureZeroHpDownedConditions(conditions);
+  }
+  return conditions;
+}
+
 export function applyKnockToZeroHp(
   combat: CharacterData["combat"]
 ): CharacterData["combat"] {
@@ -112,17 +135,24 @@ export function syncCombatAfterHpChange(
     currentHp: newHp,
   };
 
+  let result: CharacterData["combat"];
+
   if (previousHp > 0 && newHp === 0) {
-    return applyKnockToZeroHp(next);
+    result = applyKnockToZeroHp(next);
+  } else if (previousHp === 0 && newHp > 0) {
+    result = applyWakeFromZeroHp(next, newHp);
+  } else if (newHp === 0 && damageToHp > 0) {
+    result = applyDamageAtZeroHp(next, { isCritical });
+  } else {
+    result = next;
   }
 
-  if (previousHp === 0 && newHp > 0) {
-    return applyWakeFromZeroHp(next, newHp);
+  if (newHp === 0) {
+    result = {
+      ...result,
+      conditions: ensureZeroHpDownedConditions(result.conditions ?? []),
+    };
   }
 
-  if (newHp === 0 && damageToHp > 0) {
-    return applyDamageAtZeroHp(next, { isCritical });
-  }
-
-  return next;
+  return result;
 }

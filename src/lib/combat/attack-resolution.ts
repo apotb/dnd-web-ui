@@ -60,7 +60,7 @@ export function getTokenCurrentHp(
   enemyData: EnemyData | null
 ): number {
   if (token.currentHp != null) return token.currentHp;
-  if ((token.kind === "party" || token.kind === "ally") && character) {
+  if (token.kind === "party" && character) {
     return character.data.combat.currentHp;
   }
   if ((token.kind === "enemy" || token.kind === "ally") && enemyData) {
@@ -75,7 +75,7 @@ export function getTokenMaxHp(
   enemyData: EnemyData | null
 ): number {
   if (token.maxHp != null) return token.maxHp;
-  if ((token.kind === "party" || token.kind === "ally") && character) {
+  if (token.kind === "party" && character) {
     return character.data.combat.maxHp;
   }
   if ((token.kind === "enemy" || token.kind === "ally") && enemyData) {

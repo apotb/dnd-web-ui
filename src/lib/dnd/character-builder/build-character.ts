@@ -27,6 +27,7 @@ import {
 import { getSpell } from "@/lib/dnd/phb/spells";
 import { classHasSpellcastingAtLevel } from "@/lib/dnd/spellcasting";
 import type { CreatorCatalog } from "@/lib/content/catalog";
+import { resolveSpeciesDisplayName } from "@/lib/dnd/species-display";
 import {
   buildLanguageLookup,
   collectLanguageNames,
@@ -55,16 +56,6 @@ function resolveFeat(id: string, catalog?: CreatorCatalog) {
 
 function resolveSpell(id: string, catalog?: CreatorCatalog) {
   return (catalog?.spells ?? []).find((s) => s.id === id) ?? getSpell(id);
-}
-
-function resolveSpeciesDisplayName(speciesId: string, subspeciesId: string | undefined, catalog?: CreatorCatalog): string {
-  const species = resolveSpecies(speciesId, catalog);
-  if (!species) return speciesId;
-  if (subspeciesId) {
-    const sub = species.subspecies?.find((s) => s.id === subspeciesId);
-    if (sub) return `${species.name} (${sub.name})`;
-  }
-  return species.name;
 }
 
 const ARMOR_AC: Record<string, { base: number; maxDex?: number; stealthDisadvantage?: boolean }> = {

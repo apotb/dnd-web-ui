@@ -5,11 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
+  addAlliesToState,
   addEnemyToState,
   addMarkerToState,
   addPartyMembersToState,
   removeTokenFromState,
   resetCombatBoard,
+  resolveTokenEnemyData,
   syncPartyTokens,
   updateGridInState,
   updateTokenInState,
@@ -72,6 +74,9 @@ import {
   useRealtimeCombatState,
 } from "@/lib/hooks/use-realtime-combat-state";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
+import { useRealtimePartyData, refreshCampaignPartyData } from "@/lib/hooks/use-realtime-party-data";
+import { getAllyRaceClassLine, listPartyAllies, syncAllyCombatToPartyData } from "@/lib/dnd/party-allies";
+import type { PartyAlly, PartyData } from "@/lib/schemas/party";
 import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import type { CombatState, CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 import { DEFAULT_BOARD_TITLE, isCombatantToken, isHiddenEnemy, isTokenInTurnOrder } from "@/lib/schemas/combat-state";
@@ -83,6 +88,8 @@ import {
 } from "@/lib/schemas/combat-grid";
 import { AddEnemyDialog } from "@/components/combat/add-enemy-dialog";
 import { AddPartyMemberDialog } from "@/components/combat/add-party-member-dialog";
+import { AddAllyDialog } from "@/components/combat/add-ally-dialog";
+import { AllyTokenDialog, type AllyTokenDialogValues } from "@/components/combat/ally-token-dialog";
 import {
   CharacterSlotAssignModal,
   CharacterSlotClaimModal,
@@ -314,6 +321,7 @@ type ConfirmRequest = {
 interface CombatBoardProps {
   campaignId: string;
   initialCombatState: CombatState;
+  initialPartyData: PartyData;
   characters: ParsedCharacter[];
   enemies: EnemyRecord[];
   isDm: boolean;
@@ -328,9 +336,9 @@ function tokenColorClass(kind: CombatToken["kind"]): string {
   return "combat-token-enemy";
 }
 
-/** Lower renders first (underneath); party on top, then enemies, then markers/allies. */
+/** Lower renders first (underneath); party and allies on top, then enemies, then markers. */
 function tokenStackOrder(kind: CombatToken["kind"]): number {
-  if (kind === "party") return 2;
+  if (kind === "party" || kind === "ally") return 2;
   if (kind === "enemy") return 1;
   return 0;
 }
@@ -547,6 +555,7 @@ const DRAG_THRESHOLD_PX = 4;
 export function CombatBoard({
   campaignId,
   initialCombatState,
+  initialPartyData,
   characters,
   enemies,
   isDm,
@@ -568,9 +577,10 @@ export function CombatBoard({
     () => Object.fromEntries(localCharacters.map((character) => [character.id, character])),
     [localCharacters]
   );
+  const partyData = useRealtimePartyData(campaignId, initialPartyData);
   const tokenStatusContext = useMemo(
-    () => buildTokenStatusContext(localCharacters),
-    [localCharacters]
+    () => buildTokenStatusContext(localCharacters, partyData.allies),
+    [localCharacters, partyData.allies]
   );
   const ownedCharacter = useMemo(
     () => (ownedCharacterId ? charactersById[ownedCharacterId] ?? null : null),
@@ -582,12 +592,27 @@ export function CombatBoard({
   }, [liveCharacters]);
 
   const liveState = useRealtimeCombatState(campaignId, initialCombatState);
+  const partyDataRef = useRef(partyData);
+  partyDataRef.current = partyData;
+  const allies = useMemo(() => listPartyAllies(partyData), [partyData]);
+  const alliesById = useMemo(
+    () => Object.fromEntries(partyData.allies.map((ally) => [ally.id, ally])),
+    [partyData.allies]
+  );
+  const resolveEnemyDataForToken = useCallback(
+    (token: CombatToken | null | undefined) =>
+      token ? resolveTokenEnemyData(token, enemiesBySlug, alliesById) : null,
+    [alliesById, enemiesBySlug]
+  );
   const [draft, setDraft] = useState(liveState);
   const [addOpen, setAddOpen] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
+  const [addAllyOpen, setAddAllyOpen] = useState(false);
+  const [allyPickerRoster, setAllyPickerRoster] = useState<PartyAlly[] | null>(null);
   const [addMarkerOpen, setAddMarkerOpen] = useState(false);
   const [editMarkerOpen, setEditMarkerOpen] = useState(false);
   const [editEnemyOpen, setEditEnemyOpen] = useState(false);
+  const [editAllyOpen, setEditAllyOpen] = useState(false);
   const [encounterLoadOpen, setEncounterLoadOpen] = useState(false);
   const [savingEncounter, setSavingEncounter] = useState(false);
   const [saveEncounterNameOpen, setSaveEncounterNameOpen] = useState(false);
@@ -781,11 +806,29 @@ export function CombatBoard({
       if (!isDm) return null;
       awaitingPersistFingerprintRef.current = combatStatePersistAwaitFingerprint(next);
       setDraft(next);
+
+      const syncedPartyData = syncAllyCombatToPartyData(partyDataRef.current, next);
+      const partyDataChanged = syncedPartyData !== partyDataRef.current;
+
       const error = await persistCombatState(campaignId, next);
       if (error) {
         awaitingPersistFingerprintRef.current = null;
+        return error;
       }
-      return error;
+
+      if (partyDataChanged) {
+        const supabase = createClient();
+        const { error: partyError } = await supabase
+          .from("campaigns")
+          .update({ party_data: syncedPartyData })
+          .eq("id", campaignId);
+        if (partyError) {
+          awaitingPersistFingerprintRef.current = null;
+          return partyError.message;
+        }
+      }
+
+      return null;
     },
     [campaignId, isDm]
   );
@@ -1068,6 +1111,19 @@ export function CombatBoard({
       ),
     [combatState.tokens]
   );
+  const presentAllyIds = useMemo(
+    () =>
+      new Set(
+        combatState.tokens
+          .filter((token) => token.kind === "ally" && token.allyId)
+          .map((token) => token.allyId!)
+      ),
+    [combatState.tokens]
+  );
+  const onBoardAllyCount = useMemo(
+    () => combatState.tokens.filter((token) => token.kind === "ally").length,
+    [combatState.tokens]
+  );
   const playerAbsentFromCombatBoard =
     !isDm &&
     (!ownedCharacterId || !presentCharacterIds.has(ownedCharacterId));
@@ -1133,7 +1189,9 @@ export function CombatBoard({
   }, [combatState, losMode, losObserverToken]);
   const selectedMarker = selectedToken?.kind === "marker" ? selectedToken : null;
   const selectedEnemy = selectedToken?.kind === "enemy" ? selectedToken : null;
-  const canEditSelectedToken = selectedMarker != null || selectedEnemy != null;
+  const selectedAlly = selectedToken?.kind === "ally" ? selectedToken : null;
+  const canEditSelectedToken =
+    selectedMarker != null || selectedEnemy != null || selectedAlly != null;
   const combatantCount = useMemo(
     () => combatState.tokens.filter(isCombatantToken).length,
     [combatState.tokens]
@@ -1166,8 +1224,6 @@ export function CombatBoard({
   const currentTurnCharacter = currentTurnToken?.characterId
     ? charactersById[currentTurnToken.characterId] ?? null
     : null;
-  const currentTurnEnemy =
-    currentTurnToken?.enemySlug ? enemiesBySlug[currentTurnToken.enemySlug] ?? null : null;
 
   const selectedActingCharacter = selectedToken?.characterId
     ? charactersById[selectedToken.characterId] ?? null
@@ -1198,8 +1254,9 @@ export function CombatBoard({
   const actingTokenCharacter = actingToken?.characterId
     ? charactersById[actingToken.characterId] ?? null
     : null;
-  const actingTokenEnemy =
-    actingToken?.enemySlug ? enemiesBySlug[actingToken.enemySlug] ?? null : null;
+  const actingTokenEnemyData = actingToken
+    ? resolveTokenEnemyData(actingToken, enemiesBySlug, alliesById)
+    : null;
 
   const { catalogItems, classCatalog, featureCatalogs } = useCombatCatalog(characters);
   const tokenSpeedOptions = useMemo(
@@ -1214,7 +1271,7 @@ export function CombatBoard({
     ? getTokenSpeedFt(
         actingToken,
         actingTokenCharacter,
-        actingTokenEnemy?.data ?? null,
+        actingTokenEnemyData,
         tokenSpeedOptions
       )
     : 0;
@@ -1349,7 +1406,7 @@ export function CombatBoard({
     }
     return getCombatOptionGroupsForToken(actingToken, {
       character: actingTokenCharacter,
-      enemyData: actingTokenEnemy?.data ?? null,
+      enemyData: actingTokenEnemyData,
       catalogItems,
       classCatalog,
       featureCatalogs,
@@ -1370,7 +1427,7 @@ export function CombatBoard({
     actionUsedForTwoWeapon,
     actingToken,
     actingTokenCharacter,
-    actingTokenEnemy,
+    actingTokenEnemyData,
     battleOver,
     bonusActionUsed,
     canUseObjectAction,
@@ -1487,9 +1544,7 @@ export function CombatBoard({
     const character = userOaAttackerToken.characterId
       ? charactersById[userOaAttackerToken.characterId] ?? null
       : null;
-    const enemyData = userOaAttackerToken.enemySlug
-      ? enemiesBySlug[userOaAttackerToken.enemySlug]?.data ?? null
-      : null;
+    const enemyData = resolveEnemyDataForToken(userOaAttackerToken);
     return getOpportunityAttackOptionsForToken(userOaAttackerToken, {
       character,
       enemyData,
@@ -2016,9 +2071,7 @@ export function CombatBoard({
     const character = attacker.characterId
       ? charactersById[attacker.characterId] ?? null
       : null;
-    const attackerEnemyData = attacker.enemySlug
-      ? enemiesBySlug[attacker.enemySlug]?.data ?? null
-      : null;
+    const attackerEnemyData = resolveEnemyDataForToken(attacker);
     const attack = findDerivedAttackByOptionId(
       pending.optionId,
       attacker,
@@ -2726,8 +2779,8 @@ export function CombatBoard({
 
   async function handleSelectMultiattackBranch(branchIndex: number) {
     const branches = currentTurnOptionGroups.multiattackBranches;
-    if (!branches || !actingTokenEnemy?.data) return;
-    const parsedActions = parseEnemyActions(actingTokenEnemy.data.actions);
+    if (!branches || !actingTokenEnemyData) return;
+    const parsedActions = parseEnemyActions(actingTokenEnemyData.actions);
     const initialRemaining = buildInitialMultiattackRemaining(
       branches[branchIndex],
       parsedActions
@@ -2954,7 +3007,7 @@ export function CombatBoard({
     const delta = sign * amount;
     const token = selectedToken;
     const character = token.characterId ? charactersById[token.characterId] ?? null : null;
-    const enemyData = token.enemySlug ? enemiesBySlug[token.enemySlug]?.data ?? null : null;
+    const enemyData = resolveEnemyDataForToken(token);
     const { currentHp, maxHp } = getTokenHpDisplay(token, character, enemyData);
     const partyNextCombat =
       token.kind === "party" && character
@@ -3462,7 +3515,30 @@ export function CombatBoard({
       added,
       characters,
       enemiesBySlug,
-      userId
+      userId,
+      alliesById
+    );
+    await persist(state);
+    await promptPlayerInitiativeRolls(charactersNeedingPlayerRolls);
+  }
+
+  async function handleOpenAddAllyDialog() {
+    const fresh = await refreshCampaignPartyData(campaignId);
+    setAllyPickerRoster(listPartyAllies(fresh));
+    setAddAllyOpen(true);
+  }
+
+  async function handleAddAllies(selected: typeof allies) {
+    const previous = combatState;
+    const withTokens = addAlliesToState(previous, selected);
+    const added = getAddedCombatantTokens(previous, withTokens);
+    const { state, charactersNeedingPlayerRolls } = integrateNewCombatantsInitiative(
+      withTokens,
+      added,
+      characters,
+      enemiesBySlug,
+      userId,
+      alliesById
     );
     await persist(state);
     await promptPlayerInitiativeRolls(charactersNeedingPlayerRolls);
@@ -3573,6 +3649,21 @@ export function CombatBoard({
     setEditEnemyOpen(false);
   }
 
+  async function handleEditAlly(values: AllyTokenDialogValues) {
+    if (!selectedAlly) return;
+
+    const next = updateTokenInState(combatState, selectedAlly.id, {
+      displayName: values.displayName || undefined,
+    });
+
+    const persistError = await persist(next);
+    if (persistError) {
+      showAlert(persistError);
+      return;
+    }
+    setEditAllyOpen(false);
+  }
+
   async function handleAddPartyMembers(selected: ParsedCharacter[]) {
     const previous = combatState;
     const withTokens = addPartyMembersToState(previous, selected);
@@ -3582,7 +3673,8 @@ export function CombatBoard({
       added,
       characters,
       enemiesBySlug,
-      userId
+      userId,
+      alliesById
     );
     await persist(state);
     await promptPlayerInitiativeRolls(charactersNeedingPlayerRolls);
@@ -3906,7 +3998,7 @@ export function CombatBoard({
 
     setStartingInitiative(true);
 
-    let next = startInitiativeCollection(combatState, characters, enemiesBySlug, userId);
+    let next = startInitiativeCollection(combatState, characters, enemiesBySlug, userId, alliesById);
     next = finalizeInitiativeIfReady(next);
     const persistError = await persistCombatState(campaignId, next);
     if (persistError) {
@@ -3993,7 +4085,7 @@ export function CombatBoard({
     const portraitUrl = resolveTokenPortraitUrl(supabase, token);
     const displayLabel = getCombatTokenDisplayLabel(token);
     const isSelected = selectedTokenId === token.id && (!isDm || showDmUi);
-    const enemy = token.enemySlug ? enemiesBySlug[token.enemySlug] : null;
+    const tokenEnemyData = resolveEnemyDataForToken(token);
     const character = token.characterId ? charactersById[token.characterId] : null;
     const isHiddenForDm = isHiddenEnemy(token) && showDmUi;
     const isHovered = hoveredTokenId === token.id && !draggingTokenId;
@@ -4014,11 +4106,16 @@ export function CombatBoard({
             calculateAcBreakdown(character.data, catalogItems, classCatalog)
           )
         : null;
-    const effectiveAc = getTokenAc(token, character, enemy?.data ?? null);
+    const effectiveAc = getTokenAc(token, character, tokenEnemyData);
     const statusEntries = getTokenStatusEntries(token, tokenStatusContext);
+    const allyHpDisplay =
+      token.kind === "ally" ? getTokenHpDisplay(token, null, tokenEnemyData) : null;
+    const rosterAlly = token.allyId ? alliesById[token.allyId] : null;
+    const allyRaceClassLine = rosterAlly ? getAllyRaceClassLine(rosterAlly) : "";
     const isExpanded =
       isHovered &&
-      ((token.kind === "enemy" && (showDmUi ? enemy != null : true)) ||
+      ((token.kind === "enemy" && (showDmUi ? tokenEnemyData != null : true)) ||
+        token.kind === "ally" ||
         (token.kind === "party" && character != null) ||
         token.kind === "marker");
 
@@ -4129,20 +4226,57 @@ export function CombatBoard({
                 </span>
               </>
             ) : null}
+            {isExpanded && token.kind === "ally" ? (
+              <>
+                {allyRaceClassLine ? (
+                  <span className="combat-token-label-detail">{allyRaceClassLine}</span>
+                ) : null}
+                {tokenEnemyData ? (
+                  <span className="combat-token-label-detail">
+                    AC {effectiveAc}
+                    {tokenEnemyData.armorClass.note
+                      ? ` (${tokenEnemyData.armorClass.note})`
+                      : ""}
+                  </span>
+                ) : null}
+                {statusEntries.map((entry) => {
+                  const statusTooltip = getTokenStatusTooltip(entry.slug);
+                  const chip = (
+                    <span className="combat-token-status-chip">{entry.label}</span>
+                  );
+                  return statusTooltip ? (
+                    <Tooltip key={entry.slug} content={statusTooltip}>
+                      {chip}
+                    </Tooltip>
+                  ) : (
+                    <span key={entry.slug}>{chip}</span>
+                  );
+                })}
+                <span className="combat-token-label-detail">
+                  HP {allyHpDisplay?.currentHp ?? 0}/{allyHpDisplay?.maxHp ?? 0}
+                </span>
+                {tokenEnemyData ? (
+                  <span className="combat-token-label-detail">
+                    Speed{" "}
+                    {getTokenSpeedFt(token, null, tokenEnemyData, tokenSpeedOptions)} ft
+                  </span>
+                ) : null}
+              </>
+            ) : null}
             {isExpanded && !showDmUi && token.kind === "enemy" && enemyDamageTaken > 0 ? (
               <span className="combat-token-label-detail">
                 Damage taken: {enemyDamageTaken}
               </span>
             ) : null}
-            {isExpanded && showDmUi && enemy ? (
+            {isExpanded && showDmUi && token.kind === "enemy" && tokenEnemyData ? (
               <>
                 <span className="combat-token-label-detail">
-                  AC {enemy.data.armorClass.value}
-                  {enemy.data.armorClass.note ? ` (${enemy.data.armorClass.note})` : ""}
+                  AC {tokenEnemyData.armorClass.value}
+                  {tokenEnemyData.armorClass.note ? ` (${tokenEnemyData.armorClass.note})` : ""}
                 </span>
                 <span className="combat-token-label-detail">
-                  HP {token.currentHp ?? enemy.data.hitPoints.average}/
-                  {token.maxHp ?? enemy.data.hitPoints.average}
+                  HP {token.currentHp ?? tokenEnemyData.hitPoints.average}/
+                  {token.maxHp ?? tokenEnemyData.hitPoints.average}
                 </span>
               </>
             ) : null}
@@ -4741,6 +4875,13 @@ export function CombatBoard({
                   >
                     Add party member
                   </button>
+                  <button
+                    type="button"
+                    className="candy-btn"
+                    onClick={() => void handleOpenAddAllyDialog()}
+                  >
+                    Add ally
+                  </button>
                   <button type="button" className="candy-btn" onClick={() => setAddOpen(true)}>
                     Add enemy
                   </button>
@@ -4764,6 +4905,7 @@ export function CombatBoard({
                     onClick={() => {
                       if (selectedMarker) setEditMarkerOpen(true);
                       else if (selectedEnemy) setEditEnemyOpen(true);
+                      else if (selectedAlly) setEditAllyOpen(true);
                     }}
                     disabled={!canEditSelectedToken}
                   >
@@ -4880,6 +5022,33 @@ export function CombatBoard({
               </div>
             ) : null}
 
+            {showDmUi && battleActive ? (
+              <div
+                className={`combat-dm-approval-banner${
+                  dmApprovalTrayAttacks.length > 0
+                    ? " combat-dm-approval-banner--active"
+                    : currentTurnToken
+                      ? ` ${tokenColorClass(currentTurnToken.kind)}`
+                      : ""
+                }`}
+                role={dmApprovalTrayAttacks.length > 0 ? "status" : undefined}
+                aria-live={dmApprovalTrayAttacks.length > 0 ? "polite" : undefined}
+                aria-label={
+                  dmApprovalTrayAttacks.length > 0
+                    ? undefined
+                    : currentTurnToken
+                      ? `Current turn: ${getCombatTokenDisplayLabel(currentTurnToken)}`
+                      : undefined
+                }
+              >
+                {dmApprovalTrayAttacks.length > 0
+                  ? "AWAITING DM APPROVAL"
+                  : currentTurnToken
+                    ? getCombatTokenDisplayLabel(currentTurnToken)
+                    : null}
+              </div>
+            ) : null}
+
             <div className="combat-grid-shell">
               {!boardExpanded ? renderCombatGrid(false) : null}
             </div>
@@ -4917,6 +5086,16 @@ export function CombatBoard({
         presentCharacterIds={presentCharacterIds}
         onConfirm={handleAddPartyMembers}
       />
+      <AddAllyDialog
+        open={addAllyOpen}
+        onOpenChange={(open) => {
+          setAddAllyOpen(open);
+          if (!open) setAllyPickerRoster(null);
+        }}
+        allies={allyPickerRoster ?? allies}
+        presentAllyIds={presentAllyIds}
+        onConfirm={handleAddAllies}
+      />
       <MarkerDialog
         open={addMarkerOpen}
         onOpenChange={setAddMarkerOpen}
@@ -4951,6 +5130,18 @@ export function CombatBoard({
         initialDisplayName={selectedEnemy?.displayName ?? ""}
         initialHidden={selectedEnemy?.hidden ?? false}
         onSubmit={(values) => void handleEditEnemy(values)}
+      />
+      <AllyTokenDialog
+        open={editAllyOpen}
+        onOpenChange={setEditAllyOpen}
+        defaultLabel={selectedAlly?.label ?? ""}
+        rosterName={
+          selectedAlly?.allyId
+            ? alliesById[selectedAlly.allyId]?.name ?? selectedAlly.name
+            : selectedAlly?.name ?? ""
+        }
+        initialDisplayName={selectedAlly?.displayName ?? ""}
+        onSubmit={(values) => void handleEditAlly(values)}
       />
       {attackSubmitDraft ? (
         <CombatAttackSubmitModal
@@ -5225,6 +5416,7 @@ export function CombatBoard({
           xpPool={combatState.xpPool ?? 0}
           characters={localCharacters}
           participantCharacterIds={xpModalParticipantIds}
+          defaultAllyCount={onBoardAllyCount}
           distributing={distributingXp}
           onClose={() => setXpModalOpen(false)}
           onDistribute={(selectedCharacterIds, allyCount) =>

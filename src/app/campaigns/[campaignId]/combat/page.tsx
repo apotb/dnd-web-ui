@@ -8,6 +8,7 @@ import {
 import { CombatBoard } from "@/components/combat/combat-board";
 import { parseCombatState } from "@/lib/schemas/combat-state";
 import { parseEnemyData } from "@/lib/schemas/enemy";
+import { parsePartyData } from "@/lib/schemas/party";
 import { createClient } from "@/lib/supabase/server";
 import type { Character } from "@/lib/types/database";
 
@@ -22,7 +23,7 @@ export default async function CombatPage({
 
   const [{ data: campaign }, { data: characterRows }, { data: enemyRows }] =
     await Promise.all([
-      supabase.from("campaigns").select("combat_state").eq("id", campaignId).single(),
+      supabase.from("campaigns").select("combat_state,party_data").eq("id", campaignId).single(),
       supabase.from("characters").select("*").eq("campaign_id", campaignId).order("name"),
       supabase.from("enemies").select("slug,name,data").order("name"),
     ]);
@@ -46,6 +47,7 @@ export default async function CombatPage({
     <CombatBoard
       campaignId={campaignId}
       initialCombatState={combatState}
+      initialPartyData={parsePartyData(campaign?.party_data)}
       characters={characters}
       enemies={enemies}
       isDm={access.isDm}

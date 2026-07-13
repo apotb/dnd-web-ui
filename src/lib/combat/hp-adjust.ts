@@ -47,10 +47,11 @@ export function getTokenHpDisplay(
     };
   }
 
-  if (token.kind === "ally" && character) {
+  if (token.kind === "ally") {
+    const maxHp = token.maxHp ?? enemyData?.hitPoints.average ?? 1;
     return {
-      currentHp: token.currentHp ?? character.data.combat.currentHp,
-      maxHp: token.maxHp ?? character.data.combat.maxHp,
+      currentHp: token.currentHp ?? maxHp,
+      maxHp,
     };
   }
 

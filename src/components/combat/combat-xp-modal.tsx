@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { previewXpDistribution } from "@/lib/combat/xp-pool";
 import { getCharacterLevel } from "@/lib/dnd/xp";
@@ -11,6 +11,7 @@ export interface CombatXpModalProps {
   characters: ParsedCharacter[];
   participantCharacterIds: string[];
   distributing: boolean;
+  defaultAllyCount?: number;
   onClose: () => void;
   onDistribute: (selectedCharacterIds: string[], allyCount: number) => void;
 }
@@ -50,13 +51,19 @@ export function CombatXpModal({
   characters,
   participantCharacterIds,
   distributing,
+  defaultAllyCount = 0,
   onClose,
   onDistribute,
 }: CombatXpModalProps) {
   const [selectedIds, setSelectedIds] = useState(
     () => new Set(participantCharacterIds)
   );
-  const [allyCount, setAllyCount] = useState("0");
+  const [allyCount, setAllyCount] = useState(String(defaultAllyCount));
+
+  useEffect(() => {
+    if (!open) return;
+    setAllyCount(String(defaultAllyCount));
+  }, [open, defaultAllyCount]);
 
   const participantIdSet = useMemo(
     () => new Set(participantCharacterIds),

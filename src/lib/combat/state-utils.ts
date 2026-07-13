@@ -5,6 +5,8 @@ import { isFootprintOnBlocked } from "@/lib/combat/collision";
 import { buildTurnOrder, syncInitiativeOrder } from "@/lib/combat/initiative";
 import { adjustTurnAfterTokenRemoved } from "@/lib/combat/turn";
 import { getPartyTokenLabel } from "@/lib/combat/party-token-label";
+import { getAllyMaxHp } from "@/lib/dnd/party-allies";
+import type { PartyAlly } from "@/lib/schemas/party";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import { DEFAULT_GRID_SIZE, DEFAULT_TILE_FEET, MAX_GRID_SIZE, MAX_TILE_FEET, MIN_GRID_SIZE, MIN_TILE_FEET } from "@/lib/schemas/combat-grid";
 import {
@@ -92,6 +94,7 @@ export function createDefaultCombatState(
     blockedCells: [],
     tokens: [],
     excludedPartyCharacterIds: [],
+    excludedAllyIds: [],
     initiative: { status: "none", results: {}, order: [] },
     turn: DEFAULT_COMBAT_TURN,
     pendingAttacks: [],
@@ -780,6 +783,76 @@ export function normalizeCombatState(state: CombatState): CombatState {
   return syncInitiativeOrder(normalizeCombatTokens(state));
 }
 
+export function resolveTokenEnemyData(
+  token: CombatToken,
+  enemiesBySlug: Record<string, { data: EnemyData }>,
+  alliesById: Record<string, PartyAlly>
+): EnemyData | null {
+  if (token.kind === "enemy" && token.enemySlug) {
+    return enemiesBySlug[token.enemySlug]?.data ?? null;
+  }
+  if (token.kind === "ally" && token.allyId) {
+    return alliesById[token.allyId]?.data ?? null;
+  }
+  return null;
+}
+
+export function createAllyToken(ally: PartyAlly, state: CombatState): CombatToken {
+  const width = 1;
+  const height = 1;
+  const { x, y } = findPartySpawnSlot(state, width, height);
+  const maxHp = getAllyMaxHp(ally);
+
+  return combatTokenSchema.parse({
+    id: crypto.randomUUID(),
+    kind: "ally",
+    name: ally.name,
+    label: getPartyTokenLabel(ally.name),
+    allyId: ally.id,
+    portraitPath: ally.data.portraitPath || null,
+    x,
+    y,
+    width,
+    height,
+    placed: true,
+    currentHp: ally.currentHp,
+    maxHp,
+  });
+}
+
+export function addAlliesToState(state: CombatState, allies: PartyAlly[]): CombatState {
+  if (allies.length === 0) return state;
+
+  const excluded = new Set(state.excludedAllyIds);
+  for (const ally of allies) {
+    excluded.delete(ally.id);
+  }
+
+  let workingState: CombatState = {
+    ...state,
+    excludedAllyIds: [...excluded],
+    tokens: [...state.tokens],
+  };
+
+  for (const ally of allies) {
+    const alreadyOnBoard = workingState.tokens.some(
+      (token) => token.kind === "ally" && token.allyId === ally.id
+    );
+    if (alreadyOnBoard) continue;
+
+    const token = createAllyToken(ally, workingState);
+    workingState = {
+      ...workingState,
+      tokens: [...workingState.tokens, token],
+    };
+  }
+
+  return {
+    ...workingState,
+    tokens: relabelEnemyTokens(workingState.tokens),
+  };
+}
+
 export function addEnemyToState(state: CombatState, enemy: EnemyRecord): CombatState {
   return {
     ...state,
@@ -812,9 +885,15 @@ export function removeTokenFromState(state: CombatState, tokenId: string): Comba
   if (!token) return state;
 
   let excludedPartyCharacterIds = state.excludedPartyCharacterIds;
+  let excludedAllyIds = state.excludedAllyIds;
   if (token.kind === "party" && token.characterId) {
     if (!excludedPartyCharacterIds.includes(token.characterId)) {
       excludedPartyCharacterIds = [...excludedPartyCharacterIds, token.characterId];
+    }
+  }
+  if (token.kind === "ally" && token.allyId) {
+    if (!excludedAllyIds.includes(token.allyId)) {
+      excludedAllyIds = [...excludedAllyIds, token.allyId];
     }
   }
 
@@ -829,6 +908,7 @@ export function removeTokenFromState(state: CombatState, tokenId: string): Comba
   return {
     ...state,
     excludedPartyCharacterIds,
+    excludedAllyIds,
     tokens,
     initiative,
     turn,
@@ -966,6 +1046,7 @@ export function resetCombatBoard(
     blockedCells: state.blockedCells ?? [],
     tokens: [],
     excludedPartyCharacterIds: characters.map((character) => character.id),
+    excludedAllyIds: [],
     initiative: { status: "none", results: {}, order: [] },
     turn: DEFAULT_COMBAT_TURN,
     pendingAttacks: [],

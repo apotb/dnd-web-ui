@@ -1,4 +1,5 @@
 import type { ParsedCharacter } from "@/lib/character/utils";
+import type { PartyAlly } from "@/lib/schemas/party";
 import type { CharacterActionEntry } from "@/lib/dnd/character-actions";
 import { ACTION_COST_LABELS } from "@/lib/dnd/character-actions";
 import { formatBattleActionTooltip } from "@/lib/combat/battle-tooltip";
@@ -150,15 +151,20 @@ export function canTakeReactions(token: CombatToken, context?: TokenStatusContex
 
 export interface TokenStatusContext {
   conditionsByCharacterId?: Record<string, string[]>;
+  conditionsByAllyId?: Record<string, string[]>;
   hpByCharacterId?: Record<string, number>;
 }
 
 export function buildTokenStatusContext(
-  characters: ParsedCharacter[]
+  characters: ParsedCharacter[],
+  allies: PartyAlly[] = []
 ): TokenStatusContext {
   return {
     conditionsByCharacterId: Object.fromEntries(
       characters.map((character) => [character.id, character.data.combat.conditions ?? []])
+    ),
+    conditionsByAllyId: Object.fromEntries(
+      allies.map((ally) => [ally.id, ally.conditions ?? []])
     ),
     hpByCharacterId: Object.fromEntries(
       characters.map((character) => [character.id, character.data.combat.currentHp])
@@ -174,8 +180,12 @@ function getTokenConditionSlugs(
     token.characterId && context?.conditionsByCharacterId
       ? context.conditionsByCharacterId[token.characterId] ?? []
       : [];
+  const fromAlly =
+    token.kind === "ally" && token.allyId && context?.conditionsByAllyId
+      ? context.conditionsByAllyId[token.allyId] ?? []
+      : [];
   const fromEffects = getTokenStatusEntries(token).map((entry) => entry.slug);
-  return [...fromCharacter, ...fromEffects];
+  return [...fromCharacter, ...fromAlly, ...fromEffects];
 }
 
 function getEffectiveTokenHp(
@@ -220,7 +230,11 @@ export function getTokenStatusEntries(
     token.characterId && context?.conditionsByCharacterId
       ? context.conditionsByCharacterId[token.characterId] ?? []
       : [];
-  for (const slug of fromCharacter) {
+  const fromAlly =
+    token.kind === "ally" && token.allyId && context?.conditionsByAllyId
+      ? context.conditionsByAllyId[token.allyId] ?? []
+      : [];
+  for (const slug of [...fromCharacter, ...fromAlly]) {
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);
     entries.push({ slug, label: getConditionDisplayName(slug) });
