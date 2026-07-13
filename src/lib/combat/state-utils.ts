@@ -117,6 +117,11 @@ export function createDefaultCombatState(
   };
 }
 
+/** True only for never-initialized combat state; not after reset or manual token removal. */
+export function shouldBootstrapDefaultCombatState(state: CombatState): boolean {
+  return state.tokens.length === 0 && state.excludedPartyCharacterIds.length === 0;
+}
+
 export function clampTokenToGrid(token: CombatToken, state: CombatState): CombatToken {
   const maxX = Math.max(0, state.gridWidth - token.width);
   const maxY = Math.max(0, state.gridHeight - token.height);

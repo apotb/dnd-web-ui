@@ -81,6 +81,8 @@ import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import type { CombatState, CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 import { DEFAULT_BOARD_TITLE, isCombatantToken, isHiddenEnemy, isTokenInTurnOrder } from "@/lib/schemas/combat-state";
 import {
+  BARE_BOARD_GRID_SIZE,
+  DEFAULT_TILE_FEET,
   MAX_GRID_SIZE,
   MAX_TILE_FEET,
   MIN_GRID_SIZE,
@@ -4469,7 +4471,13 @@ export function CombatBoard({
       destructive: true,
       onConfirm: async () => {
         const previousPath = combatStateRef.current.backgroundPath;
-        const next = { ...combatStateRef.current, backgroundPath: null };
+        const next = updateGridInState(
+          { ...combatStateRef.current, backgroundPath: null },
+          { gridWidth: BARE_BOARD_GRID_SIZE, gridHeight: BARE_BOARD_GRID_SIZE, tileFeet: DEFAULT_TILE_FEET }
+        );
+        if (collisionEditMode) {
+          setCollisionDraft(new Set());
+        }
         await persist(next);
         await removeCombatImageIfUnreferenced(supabase, previousPath);
       },

@@ -3,6 +3,7 @@ import { parseCharacterRow, type ParsedCharacter } from "@/lib/character/utils";
 import {
   createDefaultCombatState,
   normalizeCombatState,
+  shouldBootstrapDefaultCombatState,
   type EnemyRecord,
 } from "@/lib/combat/state-utils";
 import { CombatBoard } from "@/components/combat/combat-board";
@@ -33,7 +34,7 @@ export default async function CombatPage({
   );
 
   let combatState = normalizeCombatState(parseCombatState(campaign?.combat_state ?? {}));
-  if (combatState.tokens.length === 0) {
+  if (shouldBootstrapDefaultCombatState(combatState)) {
     combatState = createDefaultCombatState(characters);
   }
 
