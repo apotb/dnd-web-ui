@@ -48,6 +48,8 @@ export const combatTurnSchema = z.object({
   multiattackBranchIndex: z.number().int().nullable().default(null),
   /** Remaining Multiattack strikes by normalized weapon name for the active turn. */
   multiattackRemaining: z.record(z.string(), z.number()).default({}),
+  /** Token that owns the current Multiattack pool for this turn. */
+  multiattackTokenId: z.string().nullable().default(null),
 });
 
 export const pendingAttackTargetSchema = z.object({
@@ -63,6 +65,7 @@ export const pendingAttackTargetSchema = z.object({
   attackRoll: z.number().int().min(1).max(20).nullable().optional(),
   attackRoll2: z.number().int().min(1).max(20).nullable().optional(),
   attackDisadvantage: z.boolean().default(false),
+  attackAdvantage: z.boolean().default(false),
   attackTotal: z.number().int().nullable().optional(),
   hit: z.boolean().nullable().optional(),
   critical: z.boolean().nullable().optional(),
@@ -187,6 +190,8 @@ export const combatTokenSchema = z.object({
   pickupQuantity: z.number().int().min(1).default(1),
   /** When true, enemy tokens are invisible to players until revealed. */
   hidden: z.boolean().default(false),
+  /** D&D condition slugs for enemy tokens (party/allies store conditions on character/roster). */
+  conditions: z.array(z.string()).default([]),
   /** Active combat feature effects (e.g. shell-defense). Persists across turns until removed. */
   activeEffects: z.array(z.string()).default([]),
   /** When true, this enemy token's XP has already been added to the DM xp pool. */
@@ -212,6 +217,11 @@ export const DEFAULT_BOARD_TITLE = "Combat";
 export const blockedCellSchema = z.object({
   x: z.number().int().min(0),
   y: z.number().int().min(0),
+});
+
+export const combatHelpGrantSchema = z.object({
+  helperTokenId: z.string(),
+  beneficiaryTokenId: z.string(),
 });
 
 export const combatStateSchema = z.object({
@@ -240,11 +250,14 @@ export const combatStateSchema = z.object({
     deathSaveRolled: false,
     multiattackBranchIndex: null,
     multiattackRemaining: {},
+    multiattackTokenId: null,
   }),
   pendingAttacks: z.array(pendingAttackSchema).default([]),
   pendingOpportunityAttacks: pendingOpportunityAttacksSchema.nullable().default(null),
   /** Token ids that have spent their reaction since their last turn. */
   reactionUsedTokenIds: z.array(z.string()).default([]),
+  /** Active Help grants: beneficiary gains advantage on first attack vs target adjacent to helper. */
+  helpGrants: z.array(combatHelpGrantSchema).default([]),
   boardTitle: z.string().default(DEFAULT_BOARD_TITLE),
   savedEncounterId: z.string().uuid().nullable().default(null),
   /** When true, the DM client automatically approves player actions awaiting review. */
@@ -268,6 +281,7 @@ export type PendingAttack = z.infer<typeof pendingAttackSchema>;
 export type CombatInitiative = z.infer<typeof combatInitiativeSchema>;
 export type CombatTurn = z.infer<typeof combatTurnSchema>;
 export type InitiativeTokenResult = z.infer<typeof initiativeTokenResultSchema>;
+export type CombatHelpGrant = z.infer<typeof combatHelpGrantSchema>;
 export type CombatState = z.infer<typeof combatStateSchema>;
 
 export function isCombatantToken(token: CombatToken): boolean {
@@ -298,6 +312,7 @@ export const DEFAULT_COMBAT_TURN: CombatTurn = {
   deathSaveRolled: false,
   multiattackBranchIndex: null,
   multiattackRemaining: {},
+  multiattackTokenId: null,
 };
 
 export function normalizeCombatTurn(state: CombatState): CombatState {
@@ -324,6 +339,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
         deathSaveRolled: false,
         multiattackBranchIndex: null,
         multiattackRemaining: {},
+        multiattackTokenId: null,
       },
     };
   }
@@ -346,6 +362,7 @@ export function normalizeCombatTurn(state: CombatState): CombatState {
       deathSaveRolled: state.turn.deathSaveRolled ?? false,
       multiattackBranchIndex: state.turn.multiattackBranchIndex ?? null,
       multiattackRemaining: state.turn.multiattackRemaining ?? {},
+      multiattackTokenId: state.turn.multiattackTokenId ?? null,
     },
     pendingAttacks: state.pendingAttacks ?? [],
     pendingOpportunityAttacks: state.pendingOpportunityAttacks ?? null,

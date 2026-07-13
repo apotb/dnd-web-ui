@@ -190,6 +190,10 @@ export function hasMagicInitiateFeat(data: CharacterData): boolean {
   return getAllCharacterFeatIds(data).includes("magic-initiate");
 }
 
+export function hasAthleteFeat(data: CharacterData): boolean {
+  return getAllCharacterFeatIds(data).includes("athlete");
+}
+
 export function sheetFeatSourceLabel(entry: SheetFeatEntry): string {
   switch (entry.source) {
     case "species":

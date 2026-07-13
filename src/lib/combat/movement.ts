@@ -201,6 +201,13 @@ export function canUseDashMovement(dashUsed: boolean, actionUsed: boolean): bool
   return !dashUsed && !actionUsed;
 }
 
+export function getStepMovementCostFt(
+  state: CombatState,
+  options?: { crawling?: boolean }
+): number {
+  return options?.crawling ? state.tileFeet * 2 : state.tileFeet;
+}
+
 export function computeReachableDestinations(
   token: CombatToken,
   state: CombatState,
@@ -210,17 +217,25 @@ export function computeReachableDestinations(
     dashUsed: boolean;
     actionUsed?: boolean;
     allowDash?: boolean;
+    crawling?: boolean;
   }
 ): ReachableDestination[] {
-  const { speedFt, usedFeet, dashUsed, actionUsed = false, allowDash = true } = options;
-  const canExtendWithDash = allowDash && canUseDashMovement(dashUsed, actionUsed);
-  const tileFeet = state.tileFeet;
+  const {
+    speedFt,
+    usedFeet,
+    dashUsed,
+    actionUsed = false,
+    allowDash = true,
+    crawling = false,
+  } = options;
+  const effectiveAllowDash = allowDash && !crawling;
+  const canExtendWithDash = effectiveAllowDash && canUseDashMovement(dashUsed, actionUsed);
   const { normalRemainingFeet, maxRemainingFeet } = getMovementBudgetFeet(
     speedFt,
     usedFeet,
     dashUsed,
     actionUsed,
-    allowDash
+    effectiveAllowDash
   );
 
   if (maxRemainingFeet <= 0) return [];
@@ -256,7 +271,8 @@ export function computeReachableDestinations(
       const nx = current.x + dir.x;
       const ny = current.y + dir.y;
       const nextKey = `${nx},${ny}`;
-      const nextCost = current.costFeet + tileFeet;
+      const stepCost = getStepMovementCostFt(state, { crawling });
+      const nextCost = current.costFeet + stepCost;
 
       if (nextCost > maxRemainingFeet) continue;
       if (!canStepFootprint(current.x, current.y, nx, ny, token, state)) continue;

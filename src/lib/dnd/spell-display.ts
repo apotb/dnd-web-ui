@@ -2,6 +2,7 @@ import type { Spell } from "@/lib/schemas/character";
 import { isManagedGrantSpell } from "@/lib/character/spell-sources";
 import { formatBattleTooltip } from "@/lib/combat/battle-tooltip";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
+import { formatSpellCastingTimeForDisplay } from "@/lib/dnd/spell-casting-time";
 import { formatSpellMaterialLine, formatSpellComponentsAbbreviated } from "@/lib/dnd/spell-glossary";
 
 export function spellLevelLabel(level: number): string {
@@ -151,7 +152,7 @@ export function buildSpellPickerMetadataLines(
 
   const castingTime = spell.castingTime?.trim();
   if (castingTime) {
-    lines.push(`Cast time: ${castingTime}`);
+    lines.push(`Cast time: ${formatSpellCastingTimeForDisplay(castingTime)}`);
   }
 
   const range = spell.range?.trim();

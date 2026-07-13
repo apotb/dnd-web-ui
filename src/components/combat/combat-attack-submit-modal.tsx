@@ -8,7 +8,9 @@ import {
   battleTooltipFallbackCharacter,
   buildBattleAttackTooltipParts,
 } from "@/lib/combat/battle-tooltip";
-import { formatAttackDisadvantageLabel } from "@/lib/combat/targeting";
+import { formatAttackAdvantageLabel, formatAttackDisadvantageLabel } from "@/lib/combat/targeting";
+import { buildTokenStatusContext } from "@/lib/combat/feature-effects";
+import { getHelpAttackAdvantageLabel, resolveAttackRollMode, type AttackRollMode } from "@/lib/combat/help";
 import { getTokenAc } from "@/lib/combat/attack-resolution";
 import { getTokenHpDisplay } from "@/lib/combat/hp-adjust";
 import type { CharacterData } from "@/lib/schemas/character";
@@ -16,13 +18,14 @@ import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import {
   areDamageRollsComplete,
+  AdvantageHitRollField,
   DamageRollField,
   DisadvantageHitRollField,
   emptyDamageRolls,
   getDamageSubmitValues,
   HitRollField,
   isCriticalHitRollInput,
-  isDisadvantageHitRollComplete,
+  isDualHitRollComplete,
   isD20RollComplete,
   parseD20Roll,
   resolveWeaponGripDamageDice,
@@ -62,6 +65,7 @@ interface CombatAttackSubmitModalProps {
   attackerCharacter?: CharacterData;
   combatState?: CombatState;
   attackDisadvantageByTokenId?: Record<string, boolean>;
+  attackAdvantageByTokenId?: Record<string, boolean>;
   charactersById?: Record<string, ParsedCharacter>;
   enemiesBySlug?: Record<string, { data: EnemyData }>;
   catalogItems?: Record<string, Item>;
@@ -129,6 +133,7 @@ export function CombatAttackSubmitModal({
   attackerCharacter,
   combatState,
   attackDisadvantageByTokenId = {},
+  attackAdvantageByTokenId = {},
   charactersById = {},
   enemiesBySlug = {},
   catalogItems = {},
@@ -151,6 +156,11 @@ export function CombatAttackSubmitModal({
         { omitBonusActionNote: true }
       ),
     [attack, attackerCharacter]
+  );
+
+  const tokenStatusContext = useMemo(
+    () => buildTokenStatusContext(Object.values(charactersById)),
+    [charactersById]
   );
 
   const protectionOptionsByTarget = useMemo(() => {
@@ -183,6 +193,17 @@ export function CombatAttackSubmitModal({
     );
   }
 
+  function getTargetRollMode(targetId: string): AttackRollMode {
+    return resolveAttackRollMode(
+      attackAdvantageByTokenId[targetId] === true,
+      hasTargetDisadvantage(targetId)
+    );
+  }
+
+  function hasTargetDualRoll(targetId: string): boolean {
+    return getTargetRollMode(targetId) != null;
+  }
+
   function disadvantageLabelForTarget(target: CombatToken): string | null {
     if (!attackDisadvantageByTokenId[target.id]) return null;
     if (attackerToken && combatState) {
@@ -192,6 +213,18 @@ export function CombatAttackSubmitModal({
       );
     }
     return "Disadvantage on attack roll";
+  }
+
+  function advantageLabelForTarget(target: CombatToken): string | null {
+    if (!attackAdvantageByTokenId[target.id]) return null;
+    if (attackerToken && combatState) {
+      return (
+        getHelpAttackAdvantageLabel(attackerToken, target, combatState) ??
+        formatAttackAdvantageLabel(attackerToken, target, attack, tokenStatusContext) ??
+        "Advantage on attack roll"
+      );
+    }
+    return "Advantage on attack roll";
   }
 
   const [attackRoll, setAttackRoll] = useState("");
@@ -224,11 +257,9 @@ export function CombatAttackSubmitModal({
     [attackerCharacter, catalogItems]
   );
 
-  const singleTargetDisadvantage =
-    targets.length === 1
-      ? attackDisadvantageByTokenId[targets[0].id] === true ||
-        Boolean(protectionByTargetId[targets[0].id])
-      : false;
+  const singleTargetRollMode =
+    targets.length === 1 ? getTargetRollMode(targets[0].id) : null;
+  const singleTargetDualRoll = singleTargetRollMode != null;
 
   const effectiveDamageDice = useMemo(
     () => resolveWeaponGripDamageDice(attack, weaponGrip),
@@ -237,10 +268,11 @@ export function CombatAttackSubmitModal({
 
   const isCriticalHit = useMemo(() => {
     if (isSave || isAuto || multiTarget) return false;
-    if (singleTargetDisadvantage) {
+    if (singleTargetDualRoll) {
       return isCriticalHitRollInput(attackRoll, {
         roll2: attackRoll2,
-        disadvantage: true,
+        advantage: singleTargetRollMode === "advantage",
+        disadvantage: singleTargetRollMode === "disadvantage",
       });
     }
     return isCriticalHitRollInput(attackRoll);
@@ -250,7 +282,8 @@ export function CombatAttackSubmitModal({
     isAuto,
     isSave,
     multiTarget,
-    singleTargetDisadvantage,
+    singleTargetDualRoll,
+    singleTargetRollMode,
   ]);
 
   useEffect(() => {
@@ -279,8 +312,8 @@ export function CombatAttackSubmitModal({
     isSave ||
     (isAuto
       ? sharedDamageComplete
-      : singleTargetDisadvantage
-        ? isDisadvantageHitRollComplete(attackRoll, attackRoll2) && sharedDamageComplete
+      : singleTargetDualRoll
+        ? isDualHitRollComplete(attackRoll, attackRoll2) && sharedDamageComplete
         : isD20RollComplete(attackRoll) && sharedDamageComplete);
 
   const multiTargetReady =
@@ -291,8 +324,8 @@ export function CombatAttackSubmitModal({
         attackRoll2: "",
         damageAmount: "",
       };
-      if (hasTargetDisadvantage(target.id)) {
-        return isDisadvantageHitRollComplete(entry.attackRoll, entry.attackRoll2);
+      if (hasTargetDualRoll(target.id)) {
+        return isDualHitRollComplete(entry.attackRoll, entry.attackRoll2);
       }
       return isD20RollComplete(entry.attackRoll);
     });
@@ -333,11 +366,11 @@ export function CombatAttackSubmitModal({
             attackRoll2: "",
             damageAmount: "",
           };
-          const disadvantage = hasTargetDisadvantage(target.id);
+          const rollMode = getTargetRollMode(target.id);
           return {
             tokenId: target.id,
             attackRoll: parseD20Roll(entry.attackRoll),
-            attackRoll2: disadvantage ? parseD20Roll(entry.attackRoll2) : null,
+            attackRoll2: rollMode ? parseD20Roll(entry.attackRoll2) : null,
             damageText: sharedDamage.damageText,
             damageRolls: sharedDamage.damageRolls,
             damageAmount: parseOptionalInt(entry.damageAmount) ?? sharedDamage.damageAmount,
@@ -350,7 +383,7 @@ export function CombatAttackSubmitModal({
     onSubmit({
       attackRoll: isSave || isAuto ? null : parseD20Roll(attackRoll),
       attackRoll2:
-        isSave || isAuto || !singleTargetDisadvantage ? null : parseD20Roll(attackRoll2),
+        isSave || isAuto || !singleTargetDualRoll ? null : parseD20Roll(attackRoll2),
       damageDice: effectiveDamageDice,
       weaponGrip,
       protectionByTargetId: activeProtection,
@@ -379,11 +412,16 @@ export function CombatAttackSubmitModal({
             return (
               <div key={target.id} className="combat-attack-submit-target">
                 <strong>{target.label}</strong>
-                {hasTargetDisadvantage(target.id) ? (
+                {hasTargetDisadvantage(target.id) && getTargetRollMode(target.id) !== "advantage" ? (
                   <span className="retro-muted">
                     {protectionActive
                       ? "Disadvantage (Protection)"
                       : disadvantageLabelForTarget(target) ?? "Disadvantage on attack roll"}
+                  </span>
+                ) : null}
+                {attackAdvantageByTokenId[target.id] && getTargetRollMode(target.id) === "advantage" ? (
+                  <span className="retro-muted">
+                    {advantageLabelForTarget(target) ?? "Advantage on attack roll"}
                   </span>
                 ) : null}
                 {protectors.length > 0 ? (
@@ -431,8 +469,17 @@ export function CombatAttackSubmitModal({
         {!isSave && !multiTarget ? (
           <div className="combat-attack-submit-fields">
             {!isAuto ? (
-              singleTargetDisadvantage ? (
+              singleTargetRollMode === "disadvantage" ? (
                 <DisadvantageHitRollField
+                  roll1={attackRoll}
+                  roll2={attackRoll2}
+                  onRoll1Change={setAttackRoll}
+                  onRoll2Change={setAttackRoll2}
+                  attackBonus={attack.attackBonus}
+                  disabled={submitting}
+                />
+              ) : singleTargetRollMode === "advantage" ? (
+                <AdvantageHitRollField
                   roll1={attackRoll}
                   roll2={attackRoll2}
                   onRoll1Change={setAttackRoll}
@@ -511,12 +558,31 @@ export function CombatAttackSubmitModal({
                 attackRoll2: "",
                 damageAmount: "",
               };
-              const disadvantage = hasTargetDisadvantage(target.id);
+              const rollMode = getTargetRollMode(target.id);
               return (
                 <div key={target.id} className="combat-attack-submit-target-block">
                   <strong>{target.label}</strong>
-                  {disadvantage ? (
+                  {rollMode === "disadvantage" ? (
                     <DisadvantageHitRollField
+                      roll1={entry.attackRoll}
+                      roll2={entry.attackRoll2}
+                      onRoll1Change={(value) =>
+                        setPerTargetRolls((current) => ({
+                          ...current,
+                          [target.id]: { ...entry, attackRoll: value },
+                        }))
+                      }
+                      onRoll2Change={(value) =>
+                        setPerTargetRolls((current) => ({
+                          ...current,
+                          [target.id]: { ...entry, attackRoll2: value },
+                        }))
+                      }
+                      attackBonus={attack.attackBonus}
+                      disabled={submitting}
+                    />
+                  ) : rollMode === "advantage" ? (
+                    <AdvantageHitRollField
                       roll1={entry.attackRoll}
                       roll2={entry.attackRoll2}
                       onRoll1Change={(value) =>

@@ -177,6 +177,7 @@ export function savedEncounterToCombatState(
     battleParticipantCharacterIds: [],
     battleAmmoPrepared: false,
     reactionUsedTokenIds: [],
+    helpGrants: [],
   };
 
   const tokens: CombatToken[] = [];

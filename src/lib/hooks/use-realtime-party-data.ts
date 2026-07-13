@@ -22,7 +22,12 @@ const subscriptions = new Map<string, PartyDataSubscription>();
 
 function partyDataRevision(data: PartyData): string {
   return [
-    data.allies.map((ally) => `${ally.id}:${ally.currentHp}:${ally.name}`).join(","),
+    data.allies
+      .map(
+        (ally) =>
+          `${ally.id}:${ally.currentHp}:${ally.name}:${(ally.conditions ?? []).join(".")}`
+      )
+      .join(","),
     data.animals.map((animal) => animal.id).join(","),
     data.items.map((item) => `${item.id}:${item.quantity}`).join(","),
     data.notes,

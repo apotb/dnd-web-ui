@@ -24,6 +24,14 @@ export function getSpellCastingCost(castingTime: string): SpellCastingCost | nul
   return null;
 }
 
+/** Compact cast-time label for lists and tooltips (reaction triggers stay in the description). */
+export function formatSpellCastingTimeForDisplay(castingTime: string): string {
+  const trimmed = castingTime.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.toLowerCase().startsWith("1 reaction")) return "1 reaction";
+  return trimmed;
+}
+
 /** True when a spell can be cast on a single combat turn (action or bonus action). */
 export function isSpellCastableInCombat(
   catalog: Pick<PhbSpell, "castingTime">

@@ -54,7 +54,8 @@ import {
   type ParsedEnemyAction,
 } from "@/lib/combat/enemy-action-parser";
 import {
-  buildInitialMultiattackRemaining,
+  ensureMultiattackTurnState,
+  getMultiattackMaxForWeapon,
   getMultiattackRemainingForWeapon,
   getMultiattackSpec,
   isWeaponInMultiattackBranch,
@@ -129,6 +130,19 @@ export interface CombatOption {
   };
   /** Overrides default action cost (e.g. Multiattack strikes). */
   actionCostOverride?: "multiattack";
+  /** Remaining/max strikes for Multiattack weapon options. */
+  multiattackUses?: { remaining: number; max: number };
+  /** Get Up movement metadata (combat:get-up). */
+  getUp?: {
+    costFeet: number;
+    remainingMovementFeet: number;
+    affordable: boolean;
+  };
+  /** Crawl movement metadata (combat:crawl). */
+  crawl?: {
+    remainingMovementFeet: number;
+    affordable: boolean;
+  };
 }
 
 export const COMBAT_CAST_SPELL_ACTION_ID = "core:cast-spell";
@@ -270,7 +284,7 @@ export function buildMoveCombatOption(context: {
   return {
     id: COMBAT_MOVE_OPTION_ID,
     name: CORE_MOVE_ACTION.name,
-    subtitle: `${ACTION_COST_LABELS.movement} · ${context.remainingFeet} ft left`,
+    subtitle: `${context.remainingFeet} ft left`,
     tooltip: formatBattleMoveTooltip(context),
     kind: "movement",
     action: CORE_MOVE_ACTION,
@@ -490,6 +504,22 @@ export function isShellDefenseEnterOption(option: CombatOption): boolean {
 
 export function isEmergeFromShellOption(option: CombatOption): boolean {
   return option.action?.id === EMERGE_FROM_SHELL_ACTION_ID;
+}
+
+export function isGetUpOption(option: CombatOption): boolean {
+  return option.id === "combat:get-up";
+}
+
+export function isGetUpAffordable(option: CombatOption): boolean {
+  return option.getUp?.affordable ?? false;
+}
+
+export function isCrawlOption(option: CombatOption): boolean {
+  return option.id === "combat:crawl";
+}
+
+export function isCrawlAffordable(option: CombatOption): boolean {
+  return option.crawl?.affordable ?? false;
 }
 
 function buildHpPoolOption(
@@ -925,16 +955,20 @@ function buildPartyOptionGroups(
 
 function buildEnemyAttackOption(
   attack: DerivedAttack,
-  options?: { actionCostOverride?: "multiattack"; remaining?: number }
+  options?: {
+    actionCostOverride?: "multiattack";
+    multiattackUses?: { remaining: number; max: number };
+  }
 ): CombatOption {
   return {
     id: `attack:${attack.id}`,
     name: attack.name,
-    subtitle: attackOptionSubtitle(attack, options?.remaining),
+    subtitle: attackOptionSubtitle(attack),
     tooltip: formatBattleAttackTooltip(attack, battleTooltipFallbackCharacter),
     kind: "attack",
     attack,
     actionCostOverride: options?.actionCostOverride,
+    multiattackUses: options?.multiattackUses,
   };
 }
 
@@ -966,12 +1000,14 @@ function isParsedActionInMultiattackBranch(
 
 function buildNpcOptionGroups(
   enemyData: EnemyData | null,
+  tokenId: string | null,
   turn: {
     actionUsed: boolean;
     dashUsed: boolean;
     freeObjectInteractionUsed: boolean;
     multiattackBranchIndex: number | null;
     multiattackRemaining: Record<string, number>;
+    multiattackTokenId: string | null;
   },
   isEngaged: boolean,
   canUseHelp: boolean,
@@ -985,7 +1021,7 @@ function buildNpcOptionGroups(
     false
   );
 
-  if (!enemyData || turn.actionUsed) {
+  if (!enemyData) {
     return {
       actions: standardActions,
       multiattackActions: [],
@@ -995,24 +1031,28 @@ function buildNpcOptionGroups(
 
   const parsedActions = parseEnemyActions(enemyData.actions);
   const multiattackSpec = getMultiattackSpec(enemyData.actions);
-  const effectiveBranchIndex =
-    turn.multiattackBranchIndex ??
-    (multiattackSpec && multiattackSpec.branches.length === 1 ? 0 : null);
+  const ensured = ensureMultiattackTurnState(turn, enemyData.actions, tokenId);
+  const effectiveBranchIndex = ensured.multiattackBranchIndex;
+  const effectiveRemaining = ensured.multiattackRemaining;
   const activeBranch =
     effectiveBranchIndex != null && multiattackSpec
       ? multiattackSpec.branches[effectiveBranchIndex]
       : null;
-  const effectiveRemaining =
-    Object.keys(turn.multiattackRemaining).length > 0
-      ? turn.multiattackRemaining
-      : activeBranch
-        ? buildInitialMultiattackRemaining(activeBranch, parsedActions)
-        : {};
-  const multiattackActive =
+  const hasMultiattackRemaining =
     multiattackSpec != null &&
-    !turn.actionUsed &&
     effectiveBranchIndex != null &&
     totalMultiattackRemaining(effectiveRemaining) > 0;
+  const multiattackActive = hasMultiattackRemaining;
+
+  if (turn.actionUsed && !hasMultiattackRemaining) {
+    return {
+      actions: standardActions,
+      multiattackActions: [],
+      bonusActions: [],
+      multiattackBranches: multiattackSpec?.branches,
+      multiattackPreamble: multiattackSpec?.preamble,
+    };
+  }
 
   const actionOptions: CombatOption[] = [];
   const multiattackOptions: CombatOption[] = [];
@@ -1032,32 +1072,38 @@ function buildNpcOptionGroups(
         const inMultiattackBranch =
           activeBranch != null && isParsedActionInMultiattackBranch(parsed, activeBranch);
 
-        if (multiattackActive && inMultiattackBranch) {
+        if (multiattackActive && inMultiattackBranch && activeBranch) {
           const remaining = getMultiattackRemainingForWeapon(
             effectiveRemaining,
             parsed.action.name,
             parsed
           );
           if (remaining > 0) {
+            const max = getMultiattackMaxForWeapon(activeBranch, parsed, parsedActions);
             multiattackOptions.push(
               buildEnemyAttackOption(attack, {
                 actionCostOverride: "multiattack",
-                remaining,
+                multiattackUses: { remaining, max },
               })
             );
           }
-        } else if (!inMultiattackBranch || !multiattackSpec) {
+        } else if (
+          !turn.actionUsed &&
+          (!inMultiattackBranch || !multiattackSpec)
+        ) {
           actionOptions.push(buildEnemyAttackOption(attack));
         }
       }
       continue;
     }
 
-    actionOptions.push(buildEnemyOtherActionOption(parsed.action, parsed.index));
+    if (!turn.actionUsed) {
+      actionOptions.push(buildEnemyOtherActionOption(parsed.action, parsed.index));
+    }
   }
 
   return {
-    actions: [...actionOptions, ...standardActions],
+    actions: turn.actionUsed ? [] : [...actionOptions, ...standardActions],
     multiattackActions: multiattackOptions,
     multiattackBranches: multiattackSpec?.branches,
     multiattackPreamble: multiattackSpec?.preamble,
@@ -1104,6 +1150,7 @@ export function isImplementedCombatOption(option: CombatOption): boolean {
     isLeaveAreaOption(option) ||
     isShellDefenseEnterOption(option) ||
     isEmergeFromShellOption(option) ||
+    (isGetUpOption(option) && isGetUpAffordable(option)) ||
     isHpPoolCombatOptionKind(option) ||
     isEnemyStatBlockActionOption(option) ||
     (option.action != null && isRegisteredCombatFeatureAction(option.action.id))
@@ -1175,6 +1222,7 @@ export function getCombatOptionGroupsForToken(
     freeObjectInteractionUsed: context.freeObjectInteractionUsed,
     multiattackBranchIndex: context.combatState.turn.multiattackBranchIndex ?? null,
     multiattackRemaining: context.combatState.turn.multiattackRemaining ?? {},
+    multiattackTokenId: context.combatState.turn.multiattackTokenId ?? null,
   };
 
   if (token.kind === "enemy" && context.enemyData) {
@@ -1183,6 +1231,7 @@ export function getCombatOptionGroupsForToken(
     }
     return buildNpcOptionGroups(
       context.enemyData,
+      token.id,
       multiattackTurn,
       isTokenEngaged(context.token, context.combatState, tokenStatusContext),
       canUseHelpAction(context.token, context.combatState),
@@ -1196,6 +1245,7 @@ export function getCombatOptionGroupsForToken(
     }
     return buildNpcOptionGroups(
       context.enemyData,
+      token.id,
       multiattackTurn,
       isTokenEngaged(context.token, context.combatState, tokenStatusContext),
       canUseHelpAction(context.token, context.combatState),

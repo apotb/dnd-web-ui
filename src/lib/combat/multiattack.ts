@@ -6,7 +6,32 @@ import {
   type ParsedEnemyAction,
 } from "@/lib/combat/enemy-action-parser";
 import type { EnemyNamedBlock } from "@/lib/schemas/enemy";
-import type { CombatState } from "@/lib/schemas/combat-state";
+import type { CombatState, CombatTurn } from "@/lib/schemas/combat-state";
+
+export type MultiattackTurnFields = Pick<
+  CombatTurn,
+  | "actionUsed"
+  | "multiattackBranchIndex"
+  | "multiattackRemaining"
+  | "multiattackTokenId"
+>;
+
+function shouldInitializeMultiattackRemaining(
+  turn: MultiattackTurnFields,
+  tokenId: string | null | undefined
+): boolean {
+  if (tokenId) {
+    if ((turn.multiattackTokenId ?? null) !== tokenId) {
+      return true;
+    }
+    if (!turn.actionUsed) {
+      return Object.keys(turn.multiattackRemaining ?? {}).length === 0;
+    }
+    return false;
+  }
+
+  return !turn.actionUsed;
+}
 
 export interface MultiattackBranch {
   label: string;
@@ -266,8 +291,114 @@ export function getMultiattackRemainingForWeapon(
   return 0;
 }
 
+export function getMultiattackMaxForWeapon(
+  branch: MultiattackBranch,
+  parsed: ParsedEnemyAction,
+  parsedActions: ParsedEnemyAction[]
+): number {
+  const key = normalizeEnemyWeaponKey(parsed.action.name);
+  if (branch.weaponLimits[key] != null) {
+    return branch.weaponLimits[key];
+  }
+
+  const initial = buildInitialMultiattackRemaining(branch, parsedActions);
+  if (initial[key] != null) return initial[key];
+  if (
+    (parsed.kind === "weapon-melee" || parsed.kind === "weapon-dual") &&
+    initial.__melee__ != null
+  ) {
+    return initial.__melee__;
+  }
+  if (
+    (parsed.kind === "weapon-ranged" || parsed.kind === "weapon-dual") &&
+    initial.__ranged__ != null
+  ) {
+    return initial.__ranged__;
+  }
+  return 0;
+}
+
+export function ensureMultiattackTurnState(
+  turn: MultiattackTurnFields,
+  enemyActions: EnemyNamedBlock[],
+  tokenId?: string | null
+): MultiattackTurnFields {
+  const spec = getMultiattackSpec(enemyActions);
+  if (!spec) {
+    return {
+      actionUsed: turn.actionUsed,
+      multiattackBranchIndex: turn.multiattackBranchIndex,
+      multiattackRemaining: turn.multiattackRemaining ?? {},
+      multiattackTokenId: turn.multiattackTokenId ?? null,
+    };
+  }
+
+  const branchIndex =
+    turn.multiattackBranchIndex ?? (spec.branches.length === 1 ? 0 : null);
+  if (branchIndex == null) {
+    return {
+      actionUsed: turn.actionUsed,
+      multiattackBranchIndex: turn.multiattackBranchIndex,
+      multiattackRemaining: turn.multiattackRemaining ?? {},
+      multiattackTokenId: turn.multiattackTokenId ?? null,
+    };
+  }
+
+  const branch = spec.branches[branchIndex];
+  if (!branch) {
+    return {
+      actionUsed: turn.actionUsed,
+      multiattackBranchIndex: turn.multiattackBranchIndex,
+      multiattackRemaining: turn.multiattackRemaining ?? {},
+      multiattackTokenId: turn.multiattackTokenId ?? null,
+    };
+  }
+
+  const parsedActions = parseEnemyActions(enemyActions);
+  const shouldInitialize = shouldInitializeMultiattackRemaining(turn, tokenId);
+  const multiattackRemaining = shouldInitialize
+    ? buildInitialMultiattackRemaining(branch, parsedActions)
+    : (turn.multiattackRemaining ?? {});
+
+  return {
+    actionUsed: turn.actionUsed,
+    multiattackBranchIndex: branchIndex,
+    multiattackRemaining,
+    multiattackTokenId:
+      shouldInitialize && tokenId
+        ? tokenId
+        : (turn.multiattackTokenId ?? null),
+  };
+}
+
+export function applyMultiattackTurnStateToCombat(
+  state: CombatState,
+  tokenId: string,
+  enemyActions: EnemyNamedBlock[]
+): CombatState {
+  const resolved = ensureMultiattackTurnState(state.turn, enemyActions, tokenId);
+  const current = state.turn;
+  if (
+    resolved.multiattackBranchIndex === (current.multiattackBranchIndex ?? null) &&
+    resolved.multiattackTokenId === (current.multiattackTokenId ?? null) &&
+    JSON.stringify(resolved.multiattackRemaining) ===
+      JSON.stringify(current.multiattackRemaining ?? {})
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    turn: {
+      ...current,
+      ...resolved,
+    },
+  };
+}
+
 export function applyMultiattackBranchSelection(
   state: CombatState,
+  tokenId: string,
   branchIndex: number,
   initialRemaining: Record<string, number>
 ): CombatState {
@@ -277,6 +408,7 @@ export function applyMultiattackBranchSelection(
       ...state.turn,
       multiattackBranchIndex: branchIndex,
       multiattackRemaining: initialRemaining,
+      multiattackTokenId: tokenId,
     },
   };
 }

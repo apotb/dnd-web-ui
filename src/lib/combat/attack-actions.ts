@@ -27,6 +27,7 @@ import {
   buildMaterialCastPlan,
 } from "@/lib/dnd/spell-materials";
 import type { EnemyData } from "@/lib/schemas/enemy";
+import type { PartyAlly } from "@/lib/schemas/party";
 import type { CombatState, CombatToken, PendingAttack } from "@/lib/schemas/combat-state";
 import { persistCombatState } from "@/lib/hooks/use-realtime-combat-state";
 import { canUserActForToken } from "@/lib/combat/turn";
@@ -86,6 +87,8 @@ async function persistCharacterHpUpdates(
           ...character.data.combat,
           currentHp: update.currentHp,
           tempHp: update.tempHp,
+          ...(update.conditions != null ? { conditions: update.conditions } : {}),
+          ...(update.deathSaves != null ? { deathSaves: update.deathSaves } : {}),
         },
         ...(update.inventoryItems != null
           ? {
@@ -115,7 +118,8 @@ async function finalizePendingAttack(
   state: CombatState,
   pending: PendingAttack,
   charactersById: Record<string, ParsedCharacter>,
-  enemiesBySlug: Record<string, { data: EnemyData }> = {}
+  enemiesBySlug: Record<string, { data: EnemyData }> = {},
+  alliesById: Record<string, PartyAlly> = {}
 ): Promise<{ next: CombatState; characterUpdates: CharacterHpUpdate[]; error?: string }> {
   const stateWithPending = getPendingAttackById(state, pending.id)
     ? state
@@ -124,7 +128,8 @@ async function finalizePendingAttack(
     stateWithPending,
     pending,
     charactersById,
-    enemiesBySlug
+    enemiesBySlug,
+    alliesById
   );
   const error = await persistCombatState(campaignId, next);
   if (error) {
@@ -149,13 +154,21 @@ async function maybeFinalizeAfterSaves(
   state: CombatState,
   pending: PendingAttack,
   charactersById: Record<string, ParsedCharacter>,
-  enemiesBySlug: Record<string, { data: EnemyData }> = {}
+  enemiesBySlug: Record<string, { data: EnemyData }> = {},
+  alliesById: Record<string, PartyAlly> = {}
 ): Promise<{ next: CombatState; characterUpdates: CharacterHpUpdate[]; error?: string } | null> {
   if (!shouldAutoApprovePendingAttack(state, pending)) {
     return null;
   }
   const stateWithPending = updatePendingAttack(state, pending.id, pending);
-  return finalizePendingAttack(campaignId, stateWithPending, pending, charactersById, enemiesBySlug);
+  return finalizePendingAttack(
+    campaignId,
+    stateWithPending,
+    pending,
+    charactersById,
+    enemiesBySlug,
+    alliesById
+  );
 }
 
 export async function submitCombatAttack(
@@ -172,6 +185,7 @@ export async function submitCombatAttack(
     submission: AttackSubmissionInput;
     charactersById: Record<string, ParsedCharacter>;
     enemiesBySlug: Record<string, { data: EnemyData }>;
+    alliesById?: Record<string, PartyAlly>;
     catalogItems?: Record<string, import("@/lib/schemas/item").Item>;
     classCatalog?: import("@/lib/dnd/phb/types").PhbClass[];
   }
@@ -254,7 +268,8 @@ export async function submitCombatAttack(
       state,
       pending,
       options.charactersById,
-      options.enemiesBySlug
+      options.enemiesBySlug,
+      options.alliesById ?? {}
     );
   }
 
@@ -278,6 +293,7 @@ export async function submitCombatSpellCast(
     combatOption: CombatOption;
     charactersById: Record<string, ParsedCharacter>;
     enemiesBySlug?: Record<string, { data: EnemyData }>;
+    alliesById?: Record<string, PartyAlly>;
     catalogItems?: Record<string, import("@/lib/schemas/item").Item>;
   }
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
@@ -329,7 +345,8 @@ export async function submitCombatSpellCast(
       state,
       pending,
       options.charactersById,
-      options.enemiesBySlug ?? {}
+      options.enemiesBySlug ?? {},
+      options.alliesById ?? {}
     );
   }
 
@@ -427,6 +444,7 @@ export async function submitCombatSaveRoll(
     saveRoll2?: number | null;
     charactersById: Record<string, ParsedCharacter>;
     enemiesBySlug?: Record<string, { data: EnemyData }>;
+    alliesById?: Record<string, PartyAlly>;
   }
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   const pending = getPendingAttackById(state, options.pendingAttackId);
@@ -448,7 +466,8 @@ export async function submitCombatSaveRoll(
     next,
     updated,
     options.charactersById,
-    options.enemiesBySlug ?? {}
+    options.enemiesBySlug ?? {},
+    options.alliesById ?? {}
   );
   if (finalized) {
     return finalized;
@@ -472,7 +491,8 @@ export async function submitCombatDmSaveRolls(
   saves: Array<{ tokenId: string; saveRoll: number; saveTotal: number; saveRoll2?: number | null }>,
   charactersById: Record<string, ParsedCharacter>,
   isDm: boolean,
-  enemiesBySlug: Record<string, { data: EnemyData }> = {}
+  enemiesBySlug: Record<string, { data: EnemyData }> = {},
+  alliesById: Record<string, PartyAlly> = {}
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   const pending = getPendingAttackById(state, pendingAttackId);
   if (!pending || !isDm) {
@@ -487,7 +507,8 @@ export async function submitCombatDmSaveRolls(
     next,
     updated,
     charactersById,
-    enemiesBySlug
+    enemiesBySlug,
+    alliesById
   );
   if (finalized) {
     return finalized;
@@ -503,7 +524,8 @@ export async function resolveCombatAttack(
   pending: PendingAttack,
   charactersById: Record<string, ParsedCharacter>,
   isDm: boolean,
-  enemiesBySlug: Record<string, { data: EnemyData }> = {}
+  enemiesBySlug: Record<string, { data: EnemyData }> = {},
+  alliesById: Record<string, PartyAlly> = {}
 ): Promise<{ next: CombatState; characterUpdates?: CharacterHpUpdate[]; error?: string }> {
   if (!isDm) {
     return { next: state, error: "Only the DM can resolve attacks." };
@@ -514,7 +536,8 @@ export async function resolveCombatAttack(
     state,
     pending,
     charactersById,
-    enemiesBySlug
+    enemiesBySlug,
+    alliesById
   );
   return {
     next: result.next,

@@ -6,10 +6,12 @@ import {
   getTokenSaveRollMode,
   transitionToDmReview,
 } from "@/lib/combat/attack-resolution";
+import { getHelpAttackAdvantage, resolveAttackRollMode } from "@/lib/combat/help";
 import {
   findHostileTargetAtCell,
   getAoePreviewTargets,
   getAttackRollDisadvantage,
+  getAttackRollAdvantage,
   getValidHostileTargetsForAttack,
   isTokenOnGrid,
   parseAttackRangeSpec,
@@ -245,9 +247,14 @@ export function createPendingAttack(
       requiresSave,
     });
     const protectionDisadvantage = Boolean(protectionByTargetId[token.id]);
+    const helpAdvantage = getHelpAttackAdvantage(attacker, token, state);
     const attackDisadvantage =
       getAttackRollDisadvantage(attacker, token, state, attack, tokenStatusContext) ||
       protectionDisadvantage;
+    const attackAdvantage =
+      helpAdvantage ||
+      getAttackRollAdvantage(attacker, token, state, attack, tokenStatusContext);
+    const rollMode = resolveAttackRollMode(attackAdvantage, attackDisadvantage);
 
     const perTarget = submission.perTarget?.find((entry) => entry.tokenId === token.id);
     const attackRoll = perTarget?.attackRoll ?? submission.attackRoll ?? null;
@@ -259,13 +266,14 @@ export function createPendingAttack(
     if (rollType === "attack" && attackRoll != null && base.ac != null) {
       const hitResult = computeHitFromRoll(attackRoll, attack.attackBonus, base.ac, {
         attackRoll2,
-        disadvantage: attackDisadvantage,
+        rollMode,
       });
       const resolvedTarget: PendingAttackTarget = {
         ...base,
         attackRoll,
-        attackRoll2: attackDisadvantage ? attackRoll2 : null,
-        attackDisadvantage,
+        attackRoll2: rollMode ? attackRoll2 : null,
+        attackDisadvantage: rollMode === "disadvantage",
+        attackAdvantage: rollMode === "advantage",
         attackTotal: hitResult.total,
         hit: hitResult.hit,
         critical: hitResult.critical,
@@ -294,7 +302,8 @@ export function createPendingAttack(
 
     return {
       ...base,
-      attackDisadvantage,
+      attackDisadvantage: rollMode === "disadvantage",
+      attackAdvantage: rollMode === "advantage",
       saveAdvantage: getTokenSaveRollMode(token, attack.saveAbility) === "advantage",
       saveDisadvantage: getTokenSaveRollMode(token, attack.saveAbility) === "disadvantage",
       damageText,

@@ -28,4 +28,20 @@ describe("formatSpellPickerTooltip", () => {
       ].join("\n")
     );
   });
+
+  it("shortens verbose reaction casting times in metadata", () => {
+    const tooltip = formatSpellPickerTooltip({
+      name: "Shield",
+      castingTime:
+        "1 reaction, which you take when you are hit by an attack or targeted by the magic missile spell",
+      range: "Self",
+      description: "An invisible barrier of magical force appears and protects you.",
+    });
+
+    assert.ok(tooltip.includes("Cast time: 1 reaction"));
+    assert.equal(
+      tooltip.includes("which you take when you are hit"),
+      false
+    );
+  });
 });

@@ -8,6 +8,7 @@ import {
   type EncumbranceInfo,
 } from "@/lib/character/encumbrance";
 import { syncCombatAfterHpChange, ensureZeroHpDownedConditions } from "@/lib/dnd/dying-state";
+import { syncExhaustionCondition } from "@/lib/combat/combat-conditions";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
 import { PHB_SPECIES } from "@/lib/dnd/phb/species";
@@ -389,10 +390,11 @@ export function syncCombatDerivedStats(
   const hitDiceSpent = Math.min(data.combat.hitDiceSpent ?? 0, hitDiceTotal);
   const currentHp = Math.min(data.combat.currentHp, maxHp);
   const exhaustion = data.exhaustionLevels.length;
-  const conditions =
-    currentHp === 0
-      ? ensureZeroHpDownedConditions(data.combat.conditions ?? [])
-      : data.combat.conditions;
+  let conditions = data.combat.conditions ?? [];
+  if (currentHp === 0) {
+    conditions = ensureZeroHpDownedConditions(conditions);
+  }
+  conditions = syncExhaustionCondition(conditions, exhaustion);
   return {
     ...data,
     combat: {

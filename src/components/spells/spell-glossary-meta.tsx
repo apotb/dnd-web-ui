@@ -14,6 +14,7 @@ import {
   SPELL_FLAG_TOOLTIPS,
   type SpellComponentLetter,
 } from "@/lib/dnd/spell-glossary";
+import { formatSpellCastingTimeForDisplay } from "@/lib/dnd/spell-casting-time";
 import { useSpellRowTooltipOverride } from "@/components/spells/spell-row-tooltip-context";
 import { cn } from "@/lib/utils";
 
@@ -89,7 +90,9 @@ export function SpellGlossaryMeta({
     spell.ritual ||
     spell.concentration;
   const actionRangeLine = [
-    showCastingTime ? spell.castingTime : "",
+    showCastingTime && spell.castingTime
+      ? formatSpellCastingTimeForDisplay(spell.castingTime)
+      : "",
     spell.range ?? "",
     showDuration
       ? formatSpellDurationForDisplay(spell.duration ?? "", {

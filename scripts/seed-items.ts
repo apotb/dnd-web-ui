@@ -20,6 +20,7 @@ const SKIP_SLUGS = new Set([
   "little-bag-of-sand",
   "empty-waterskin",
   "tej",
+  "colorful-cloak",
   "quiver",
   "case-crossbow",
   // Focus duplicates removed in 082_dedup_focus_items.sql

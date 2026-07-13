@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { ReactElement } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -9,49 +10,72 @@ import {
   getConditionTooltip,
   type PhbCondition,
 } from "@/lib/dnd/conditions";
+import { getProtectedConditionNote } from "@/lib/combat/combat-conditions";
 
 interface ConditionsEditorProps {
   conditions: string[];
   catalog: PhbCondition[];
   editable?: boolean;
+  protectedSlugs?: string[];
   onChange?: (conditions: string[]) => void;
+}
+
+function toggleCondition(conditions: string[], slug: string): string[] {
+  if (conditions.includes(slug)) return conditions.filter((entry) => entry !== slug);
+  return [...conditions, slug];
+}
+
+function resolveConditionTooltip(
+  slug: string,
+  catalog: PhbCondition[],
+  isProtected: boolean
+): string | null {
+  const description = getConditionTooltip(slug, catalog);
+  if (isProtected) {
+    const note = getProtectedConditionNote(slug);
+    return description ? `${description}\n\n${note}` : note;
+  }
+  return description;
+}
+
+function wrapConditionTooltip(
+  tooltip: string | null,
+  node: ReactElement,
+  wrapForDisabled = false
+) {
+  if (!tooltip) return node;
+  const child = wrapForDisabled ? (
+    <span className="inline-flex">{node}</span>
+  ) : (
+    node
+  );
+  return <Tooltip content={tooltip}>{child}</Tooltip>;
 }
 
 export function ConditionsEditor({
   conditions,
   catalog,
   editable = false,
+  protectedSlugs = [],
   onChange,
 }: ConditionsEditorProps) {
   const [query, setQuery] = useState("");
 
   const appliedSet = useMemo(() => new Set(conditions), [conditions]);
+  const protectedSet = useMemo(() => new Set(protectedSlugs), [protectedSlugs]);
 
-  const matches = useMemo(() => {
+  const visibleCatalog = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let list = catalog.filter((c) => !appliedSet.has(c.slug));
-    if (q) {
-      list = list.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q)
-      );
-    }
-    return list.slice(0, 30);
-  }, [appliedSet, catalog, query]);
+    if (!q) return catalog;
+    return catalog.filter(
+      (condition) =>
+        condition.name.toLowerCase().includes(q) ||
+        condition.slug.toLowerCase().includes(q)
+    );
+  }, [catalog, query]);
 
-  function removeCondition(slug: string) {
-    if (!editable || !onChange) return;
-    onChange(conditions.filter((c) => c !== slug));
-  }
-
-  function addCondition(slug: string) {
-    if (!editable || !onChange || appliedSet.has(slug)) return;
-    onChange([...conditions, slug]);
-    setQuery("");
-  }
-
-  return (
-    <div className="space-y-2">
+  if (!editable || !onChange) {
+    return (
       <div className="flex flex-wrap gap-1.5">
         {conditions.length === 0 ? (
           <span className="text-sm text-muted-foreground">None</span>
@@ -60,12 +84,7 @@ export function ConditionsEditor({
             const label = getConditionDisplayName(slug, catalog);
             const tooltip = getConditionTooltip(slug, catalog);
             const chip = (
-              <Badge
-                key={slug}
-                variant="secondary"
-                className={editable ? "cursor-pointer" : undefined}
-                onClick={editable ? () => removeCondition(slug) : undefined}
-              >
+              <Badge key={slug} variant="secondary">
                 {label}
               </Badge>
             );
@@ -79,33 +98,93 @@ export function ConditionsEditor({
           })
         )}
       </div>
+    );
+  }
 
-      {editable && onChange ? (
-        <div className="space-y-2">
-          <Input
-            placeholder="Search conditions to add…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          {query.trim() && matches.length > 0 ? (
-            <div className="max-h-40 overflow-y-auto rounded-md border bg-background">
-              {matches.map((condition) => (
-                <button
-                  key={condition.slug}
-                  type="button"
-                  className="block w-full px-3 py-2 text-left text-sm hover:bg-muted/60"
-                  onClick={() => addCondition(condition.slug)}
-                >
-                  {condition.name}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {query.trim() && matches.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No matching conditions.</p>
-          ) : null}
+  return (
+    <div className="space-y-2">
+      {conditions.length > 0 ? (
+        <div className="creator-chip-row">
+          {          conditions.map((slug) => {
+            const label = getConditionDisplayName(slug, catalog);
+            const isProtected = protectedSet.has(slug);
+            const tooltip = resolveConditionTooltip(slug, catalog, isProtected);
+            if (isProtected) {
+              return (
+                <span key={slug} className="inline-flex">
+                  {wrapConditionTooltip(
+                    tooltip,
+                    <button
+                      type="button"
+                      className="candy-btn candy-btn-sm candy-btn-active"
+                      disabled
+                    >
+                      {label}
+                    </button>,
+                    true
+                  )}
+                </span>
+              );
+            }
+            return (
+              <span key={slug} className="inline-flex">
+                {wrapConditionTooltip(
+                  tooltip,
+                  <button
+                    type="button"
+                    className="candy-btn candy-btn-sm candy-btn-active"
+                    onClick={() => onChange(conditions.filter((entry) => entry !== slug))}
+                  >
+                    {label} ×
+                  </button>
+                )}
+              </span>
+            );
+          })}
         </div>
       ) : null}
+
+      <Input
+        className="candy-input"
+        placeholder="Search conditions…"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+
+      <div className="creator-chip-row creator-lang-grid max-h-48 overflow-y-auto">
+        {visibleCatalog.map((condition) => {
+          const isSelected = appliedSet.has(condition.slug);
+          const isProtected = protectedSet.has(condition.slug);
+          const isDisabled = isProtected && isSelected;
+          const tooltip = resolveConditionTooltip(
+            condition.slug,
+            catalog,
+            isDisabled
+          );
+          return (
+            <span key={condition.slug} className="inline-flex">
+              {wrapConditionTooltip(
+                tooltip,
+                <button
+                  type="button"
+                  disabled={isDisabled}
+                  className={`candy-btn candy-btn-sm${isSelected ? " candy-btn-active" : ""}`}
+                  onClick={() => {
+                    if (isDisabled) return;
+                    onChange(toggleCondition(conditions, condition.slug));
+                  }}
+                >
+                  {condition.name}
+                </button>,
+                isDisabled
+              )}
+            </span>
+          );
+        })}
+        {visibleCatalog.length === 0 ? (
+          <span className="text-xs retro-muted">No conditions found.</span>
+        ) : null}
+      </div>
     </div>
   );
 }

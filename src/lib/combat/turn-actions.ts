@@ -1,18 +1,19 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { advanceTurn } from "@/lib/combat/turn";
+import { advanceTurn, canAdvanceTurnWithDeathSave } from "@/lib/combat/turn";
 import {
   canAdvanceTurnWithOpportunityAttacks,
 } from "@/lib/combat/opportunity-attacks";
 import { canAdvanceTurnWithPendingAttacks } from "@/lib/combat/pending-attacks";
 import { persistCombatState } from "@/lib/hooks/use-realtime-combat-state";
+import type { CharacterData } from "@/lib/schemas/character";
 import type { CombatState } from "@/lib/schemas/combat-state";
 
 export async function endCombatTurn(
   campaignId: string,
   state: CombatState,
-  options: { isDm: boolean }
+  options: { isDm: boolean; currentTurnCombat?: CharacterData["combat"] }
 ): Promise<{ next: CombatState; error?: string }> {
   if (!canAdvanceTurnWithOpportunityAttacks(state)) {
     return {
@@ -25,6 +26,13 @@ export async function endCombatTurn(
     return {
       next: state,
       error: "Resolve pending actions before ending this turn.",
+    };
+  }
+
+  if (!canAdvanceTurnWithDeathSave(state, options.currentTurnCombat)) {
+    return {
+      next: state,
+      error: "Make your death saving throw before ending this turn.",
     };
   }
 

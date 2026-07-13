@@ -124,6 +124,11 @@ import {
   fetchCatalogSpeciesClient,
   type CatalogSpellRow,
 } from "@/lib/content/catalog-client";
+import {
+  finalizeDmConditionEdit,
+  getDmProtectedConditionSlugs,
+  resolveManagedConditions,
+} from "@/lib/combat/combat-conditions";
 import type { PhbCondition } from "@/lib/dnd/conditions";
 import {
   findBackgroundByName,
@@ -1339,6 +1344,28 @@ export function CharacterSheet({
     () => getLanguagesWithSources(data, featureCatalogs),
     [data, featureCatalogs]
   );
+  const managedCombatConditions = useMemo(
+    () =>
+      resolveManagedConditions(
+        data.combat.conditions ?? [],
+        data.combat.currentHp,
+        data.exhaustionLevels.length
+      ),
+    [data.combat.conditions, data.combat.currentHp, data.exhaustionLevels.length]
+  );
+  const protectedConditionSlugs = useMemo(
+    () =>
+      getDmProtectedConditionSlugs(
+        data.combat.currentHp,
+        managedCombatConditions,
+        data.exhaustionLevels.length
+      ),
+    [
+      data.combat.currentHp,
+      data.exhaustionLevels.length,
+      managedCombatConditions,
+    ]
+  );
   const skillSourcesMap = useMemo(
     () => getSkillSourcesMap(data, featureCatalogs),
     [data, featureCatalogs]
@@ -2197,10 +2224,20 @@ export function CharacterSheet({
             </CardHeader>
             <CardContent className="space-y-3">
               <ConditionsEditor
-                conditions={data.combat.conditions}
+                conditions={managedCombatConditions}
                 catalog={conditionCatalog}
                 editable={editable}
-                onChange={(conditions) => updateCombat({ conditions })}
+                protectedSlugs={protectedConditionSlugs}
+                onChange={(conditions) =>
+                  updateCombat({
+                    conditions: finalizeDmConditionEdit(
+                      conditions,
+                      data.combat.currentHp,
+                      managedCombatConditions,
+                      data.exhaustionLevels.length
+                    ),
+                  })
+                }
               />
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -3781,9 +3818,9 @@ export function CharacterSheet({
           <DeathSaveRollModal
             data={data}
             onCancel={() => setDeathSaveRollOpen(false)}
+            onClose={() => setDeathSaveRollOpen(false)}
             onApply={(combat) => {
               updateCombat(combat);
-              setDeathSaveRollOpen(false);
             }}
           />,
           document.body

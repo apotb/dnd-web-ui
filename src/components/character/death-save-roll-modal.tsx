@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   applyDeathSaveRoll,
   interpretDeathSaveRoll,
+  type DeathSaveApplyResult,
 } from "@/lib/dnd/death-saves";
 import { parseD20Roll, sanitizeDieRollInput } from "@/lib/dnd/dice";
 import type { CharacterData } from "@/lib/schemas/character";
@@ -11,7 +12,10 @@ import type { CharacterData } from "@/lib/schemas/character";
 interface DeathSaveRollModalProps {
   data: CharacterData;
   onCancel: () => void;
-  onApply: (combat: CharacterData["combat"]) => void;
+  onApply: (
+    combat: CharacterData["combat"]
+  ) => void | boolean | Promise<void | boolean>;
+  onClose?: () => void;
 }
 
 type Step = "roll" | "result";
@@ -20,33 +24,51 @@ export function DeathSaveRollModal({
   data,
   onCancel,
   onApply,
+  onClose,
 }: DeathSaveRollModalProps) {
   const [step, setStep] = useState<Step>("roll");
   const [rollInput, setRollInput] = useState("");
-  const [parsedRoll, setParsedRoll] = useState<number | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [appliedRoll, setAppliedRoll] = useState<number | null>(null);
+  const [appliedResult, setAppliedResult] = useState<DeathSaveApplyResult | null>(
+    null
+  );
+  const [beforeSaves, setBeforeSaves] = useState<{
+    successes: number;
+    failures: number;
+  } | null>(null);
 
   const rollValue = parseD20Roll(rollInput);
   const hasValidRoll = rollValue != null;
   const { successes, failures } = data.combat.deathSaves;
+  const close = onClose ?? onCancel;
 
   const interpretation =
-    parsedRoll != null ? interpretDeathSaveRoll(parsedRoll) : null;
-  const preview =
-    parsedRoll != null ? applyDeathSaveRoll(data.combat, parsedRoll) : null;
+    appliedRoll != null ? interpretDeathSaveRoll(appliedRoll) : null;
 
-  function goToResult() {
-    if (rollValue == null) return;
-    setParsedRoll(rollValue);
-    setStep("result");
-  }
+  async function goToResult() {
+    if (rollValue == null || applying) return;
 
-  function apply() {
-    if (!preview) return;
-    onApply(preview.combat);
+    const result = applyDeathSaveRoll(data.combat, rollValue);
+    setApplying(true);
+    try {
+      const outcome = await onApply(result.combat);
+      if (outcome === false) return;
+
+      setBeforeSaves({ successes, failures });
+      setAppliedRoll(rollValue);
+      setAppliedResult(result);
+      setStep("result");
+    } finally {
+      setApplying(false);
+    }
   }
 
   return (
-    <div className="supply-picker-overlay" onClick={onCancel}>
+    <div
+      className="supply-picker-overlay"
+      onClick={step === "roll" ? onCancel : close}
+    >
       <div
         className="supply-picker-modal retro-box death-save-roll-modal"
         onClick={(event) => event.stopPropagation()}
@@ -90,14 +112,14 @@ export function DeathSaveRollModal({
               <button
                 type="button"
                 className="candy-btn"
-                onClick={goToResult}
-                disabled={!hasValidRoll}
+                onClick={() => void goToResult()}
+                disabled={!hasValidRoll || applying}
               >
                 Continue
               </button>
             </div>
           </>
-        ) : interpretation && preview ? (
+        ) : interpretation && appliedResult && beforeSaves ? (
           <>
             <p className="retro-box-title">Death save result</p>
             <p className="retro-muted">
@@ -106,30 +128,31 @@ export function DeathSaveRollModal({
             </p>
             <p className="retro-muted">{interpretation.detail}</p>
             <div className="death-save-roll-preview">
-              {preview.regainedConsciousness ? (
+              {appliedResult.regainedConsciousness ? (
                 <p>Hit points: 0 → 1</p>
               ) : null}
               <p>
-                Successes: {successes}/3 →{" "}
-                {preview.combat.deathSaves.successes}/3
+                Successes: {beforeSaves.successes}/3 →{" "}
+                {appliedResult.combat.deathSaves.successes}/3
               </p>
               <p>
-                Failures: {failures}/3 → {preview.combat.deathSaves.failures}/3
+                Failures: {beforeSaves.failures}/3 →{" "}
+                {appliedResult.combat.deathSaves.failures}/3
               </p>
-              {preview.becameStable ? (
+              {appliedResult.becameStable ? (
                 <p className="death-save-roll-outcome death-save-roll-outcome--stable">
                   You become stable (unconscious at 0 HP; no more death saves
                   until you take damage).
                 </p>
               ) : null}
-              {preview.becameDead ? (
+              {appliedResult.becameDead ? (
                 <p className="death-save-roll-outcome death-save-roll-outcome--dead">
                   Three failures — your character dies.
                 </p>
               ) : null}
             </div>
             <div className="supply-picker-actions death-save-roll-actions death-save-roll-actions--single">
-              <button type="button" className="candy-btn" onClick={apply}>
+              <button type="button" className="candy-btn" onClick={close}>
                 Continue
               </button>
             </div>

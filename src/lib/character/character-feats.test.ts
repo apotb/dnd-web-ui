@@ -6,6 +6,7 @@ import {
   getAllCharacterFeatIds,
   getCharacterSheetFeats,
   hasMagicInitiateFeat,
+  hasAthleteFeat,
   removeCharacterFeat,
 } from "@/lib/character/character-feats";
 import { createDefaultCharacterData, type CharacterData } from "@/lib/schemas/character";
@@ -92,5 +93,13 @@ describe("character-feats", () => {
     });
     const next = changeCharacterFeat(data, "dm:0", "lucky");
     assert.deepEqual(next.dmGrantedFeats, ["lucky"]);
+  });
+
+  it("detects Athlete feat", () => {
+    const data = createDefaultCharacterData({
+      levelUpFeats: { "4": "athlete" },
+    });
+    assert.equal(hasAthleteFeat(data), true);
+    assert.equal(hasAthleteFeat(createDefaultCharacterData()), false);
   });
 });

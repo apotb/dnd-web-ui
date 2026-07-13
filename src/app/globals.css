@@ -3600,10 +3600,13 @@ html.campaign-bg-active .retro-back-link {
 
 .combat-dm-approval-banner {
   flex-shrink: 0;
-  min-height: 2rem;
+  box-sizing: border-box;
+  height: 2rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-top: 1px;
+  line-height: 1;
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -4777,13 +4780,29 @@ html.campaign-bg-active .retro-back-link {
 }
 
 .combat-attack-option-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
   font-weight: 700;
   font-size: 0.85rem;
   line-height: 1.2;
+  max-width: 100%;
+}
+
+.combat-attack-option-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100%;
+  min-width: 0;
+}
+
+.combat-attack-option-uses {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #facc15;
 }
 
 .combat-attack-option-sub {

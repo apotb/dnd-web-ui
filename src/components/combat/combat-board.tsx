@@ -123,6 +123,7 @@ import { CombatShellDefenseConfirmModal } from "@/components/combat/combat-shell
 import { CombatHpPoolModal } from "@/components/combat/combat-hp-pool-modal";
 import { CombatXpModal } from "@/components/combat/combat-xp-modal";
 import { CombatOtherActionsModal } from "@/components/combat/combat-other-actions-modal";
+import { CombatStatesModal } from "@/components/combat/combat-states-modal";
 import { CombatSpellCastModal } from "@/components/combat/combat-spell-cast-modal";
 import {
   CombatSpellPickerModal,
@@ -151,6 +152,7 @@ import {
   isDashActionOption,
   isDisengageActionOption,
   isEmergeFromShellOption,
+  isGetUpOption,
   isHelpActionOption,
   isHpPoolCombatOptionKind,
   isEnemyStatBlockActionOption,
@@ -166,6 +168,7 @@ import {
 } from "@/lib/combat/combat-options";
 import {
   applyMultiattackBranchSelection,
+  applyMultiattackTurnStateToCombat,
   buildInitialMultiattackRemaining,
 } from "@/lib/combat/multiattack";
 import { parseEnemyActions } from "@/lib/combat/enemy-action-parser";
@@ -182,7 +185,9 @@ import {
   recordCombatBonusActionUsed,
   recordCombatDash,
   recordCombatDisengage,
+  recordCombatGetUp,
   recordCombatEquipmentChange,
+  recordCombatHelp,
   recordCombatLayOnHands,
   recordCombatObjectPickup,
 } from "@/lib/combat/combat-action-actions";
@@ -214,6 +219,19 @@ import {
   isTokenRestrictedByEffects,
   SHELL_DEFENSE_EFFECT_ID,
 } from "@/lib/combat/feature-effects";
+import {
+  finalizeDmConditionEdit,
+  getConditionsForToken,
+  getDmProtectedConditionSlugs,
+  syncTokenConditionsAfterHpChange,
+} from "@/lib/combat/combat-conditions";
+import {
+  buildCrawlCombatOption,
+  buildGetUpCombatOption,
+  getGetUpMovementCostForToken,
+  isTokenProne,
+  removeProneFromCharacterData,
+} from "@/lib/combat/prone-actions";
 import { applyStabilize } from "@/lib/dnd/dying-state";
 import { getTokenAc, getTokenSaveModifier } from "@/lib/combat/attack-resolution";
 import {
@@ -231,7 +249,9 @@ import {
   buildVisionCellBands,
   getTargetingHighlights,
   getAttackRollDisadvantage,
+  getAttackRollAdvantage,
   formatAttackDisadvantageLabel,
+  formatAttackAdvantageLabel,
   isTokenOnGrid,
   parseAttackRangeSpec,
 } from "@/lib/combat/targeting";
@@ -269,10 +289,12 @@ import {
   getOpportunityAttackAttackerIds,
   getOpportunityAttackReactors,
 } from "@/lib/combat/engagement";
+import { getHelpAttackAdvantage, getHelpAttackAdvantageLabel } from "@/lib/combat/help";
 import { endCombatTurn } from "@/lib/combat/turn-actions";
 import {
   applyActionGranted,
   applyDeathSaveRolled,
+  canAdvanceTurnWithDeathSave,
   canUserActForToken,
   canUserControlTurn,
   canUserEndTurn,
@@ -644,6 +666,7 @@ export function CombatBoard({
     isOpportunityAttack?: boolean;
     attackerToken?: CombatToken;
     attackDisadvantageByTokenId?: Record<string, boolean>;
+    attackAdvantageByTokenId?: Record<string, boolean>;
     spellCastSlotLevel?: number;
   } | null>(null);
   const [hoveredTargetingCell, setHoveredTargetingCell] = useState<{
@@ -704,6 +727,8 @@ export function CombatBoard({
   const [applyingHp, setApplyingHp] = useState(false);
   const [adjustingMovement, setAdjustingMovement] = useState(false);
   const [grantingAction, setGrantingAction] = useState(false);
+  const [statesModalOpen, setStatesModalOpen] = useState(false);
+  const [savingStates, setSavingStates] = useState(false);
   const [endTurnConfirmOpen, setEndTurnConfirmOpen] = useState(false);
   const [collisionEditMode, setCollisionEditMode] = useState(false);
   const [collisionDraft, setCollisionDraft] = useState<Set<string>>(() => new Set());
@@ -1229,6 +1254,42 @@ export function CombatBoard({
     ? charactersById[selectedToken.characterId] ?? null
     : null;
 
+  const statesModalContext = useMemo(() => {
+    if (!selectedToken || selectedToken.kind === "marker") return null;
+    const ally =
+      selectedToken.kind === "ally" && selectedToken.allyId
+        ? alliesById[selectedToken.allyId] ?? null
+        : null;
+    const enemyData = resolveEnemyDataForToken(selectedToken);
+    const { currentHp } = getTokenHpDisplay(
+      selectedToken,
+      selectedActingCharacter,
+      enemyData
+    );
+    const conditions = getConditionsForToken(
+      selectedToken,
+      selectedActingCharacter,
+      ally
+    );
+    const exhaustionLevel =
+      selectedActingCharacter?.data.exhaustionLevels.length ?? 0;
+    return {
+      tokenLabel: getCombatTokenDisplayLabel(selectedToken),
+      conditions,
+      protectedSlugs: getDmProtectedConditionSlugs(
+        currentHp,
+        conditions,
+        exhaustionLevel
+      ),
+      exhaustionLevel,
+    };
+  }, [
+    alliesById,
+    resolveEnemyDataForToken,
+    selectedActingCharacter,
+    selectedToken,
+  ]);
+
   const userControllableBattleOverTokens = useMemo(() => {
     if (!battleOver) return [];
     return combatState.tokens.filter((token) => {
@@ -1320,14 +1381,27 @@ export function CombatBoard({
   const actingTokenRestricted = actingToken
     ? isTokenRestrictedByEffects(actingToken)
     : false;
+  const actingTokenAlly =
+    actingToken?.kind === "ally" && actingToken.allyId
+      ? alliesById[actingToken.allyId] ?? null
+      : null;
+  const actingTokenProne = actingToken
+    ? isTokenProne(
+        actingToken,
+        tokenStatusContext,
+        actingTokenCharacter,
+        actingTokenAlly
+      )
+    : false;
   const canUseDash =
     !battleOver &&
     !dashUsed &&
     !actionUsed &&
     !actingTokenRestricted &&
-    !actingTokenIncapacitated;
+    !actingTokenIncapacitated &&
+    !actingTokenProne;
   const showMovePanel =
-    (remainingMovementFeet > 0 || canUseDash) &&
+    (remainingMovementFeet > 0 || canUseDash || actingTokenProne) &&
     !actingTokenRestricted &&
     !actingTokenIncapacitated;
   const dashPreviewFeet = getDashPreviewRemainingFeet(
@@ -1441,6 +1515,34 @@ export function CombatBoard({
     twoWeaponFightingUsedOffHand,
   ]);
 
+  const getUpOption = useMemo(() => {
+    if (!actingTokenProne || !actingToken) return null;
+    const costFeet = getGetUpMovementCostForToken(
+      actingToken,
+      actingTokenCharacter,
+      actingTokenEnemyData,
+      featureCatalogs.species
+    );
+    return buildGetUpCombatOption({
+      costFeet,
+      remainingMovementFeet,
+    });
+  }, [
+    actingToken,
+    actingTokenCharacter,
+    actingTokenEnemyData,
+    actingTokenProne,
+    featureCatalogs.species,
+    remainingMovementFeet,
+  ]);
+
+  const crawlOption = useMemo(() => {
+    if (!actingTokenProne) return null;
+    return buildCrawlCombatOption({ remainingMovementFeet });
+  }, [actingTokenProne, remainingMovementFeet]);
+
+  const movementCrawling = actingTokenProne && movementMode;
+
   const showSavingThrowsPanel =
     currentTurnOptionGroups.actions.length > 0 &&
     currentTurnOptionGroups.actions.every((option) => isSavingThrowsOption(option));
@@ -1454,13 +1556,37 @@ export function CombatBoard({
     combatState.turn.multiattackBranchIndex == null;
 
   const showMultiattackSection =
-    !battleOver &&
-    !actionUsed &&
-    (currentTurnOptionGroups.multiattackBranches?.length ?? 0) > 0;
+    !battleOver && currentTurnOptionGroups.multiattackActions.length > 0;
 
   useEffect(() => {
     setMultiattackBranchDismissed(false);
   }, [actingToken?.id, combatState.turn.index, combatState.turn.round]);
+
+  useEffect(() => {
+    if (!isDm || battleOver || !actingToken || !actingTokenEnemyData) return;
+    if (actingToken.kind !== "enemy" && actingToken.kind !== "ally") return;
+    if (getCurrentTurnTokenId(combatState) !== actingToken.id) return;
+
+    const synced = applyMultiattackTurnStateToCombat(
+      combatState,
+      actingToken.id,
+      actingTokenEnemyData.actions
+    );
+    if (synced === combatState) return;
+
+    void (async () => {
+      const error = await persistCombatState(campaignId, synced);
+      if (error) return;
+      setDraft(synced);
+    })();
+  }, [
+    actingToken,
+    actingTokenEnemyData,
+    battleOver,
+    campaignId,
+    combatState,
+    isDm,
+  ]);
 
   const userCanEndTurn =
     !battleOver &&
@@ -1595,6 +1721,10 @@ export function CombatBoard({
     : null;
 
   const turnEndBlockedByPendingAttacks = !canAdvanceTurnWithPendingAttacks(combatState);
+  const turnEndBlockedByDeathSave = !canAdvanceTurnWithDeathSave(
+    combatState,
+    currentTurnCharacter?.data.combat
+  );
   const enemyTurnBlockedByOpportunityAttacks =
     opportunityAttacksPending &&
     currentTurnToken != null &&
@@ -1607,7 +1737,10 @@ export function CombatBoard({
     if (!userCanEndTurn || endingTurn) return;
     setEndingTurn(true);
     setMovementMode(false);
-    const { next, error } = await endCombatTurn(campaignId, combatState, { isDm });
+    const { next, error } = await endCombatTurn(campaignId, combatState, {
+      isDm,
+      currentTurnCombat: currentTurnCharacter?.data.combat,
+    });
     setEndingTurn(false);
     setEndTurnConfirmOpen(false);
     if (error) {
@@ -1655,8 +1788,10 @@ export function CombatBoard({
     setStabilizeTargetPicker({ allies, viaSpell });
   }
 
-  async function handleApplyDeathSave(nextCombat: import("@/lib/schemas/character").CharacterData["combat"]) {
-    if (!actingToken || !actingTokenCharacter) return;
+  async function handleApplyDeathSave(
+    nextCombat: import("@/lib/schemas/character").CharacterData["combat"]
+  ): Promise<boolean> {
+    if (!actingToken || !actingTokenCharacter) return false;
 
     const saveResult = await saveCharacterData(
       actingTokenCharacter.id,
@@ -1666,7 +1801,7 @@ export function CombatBoard({
     );
     if (saveResult.error) {
       showAlert(saveResult.error);
-      return;
+      return false;
     }
 
     setLocalCharacters((current) =>
@@ -1684,10 +1819,10 @@ export function CombatBoard({
     const persistError = await persist(nextState);
     if (persistError) {
       showAlert(persistError);
-      return;
+      return false;
     }
 
-    setDeathSaveRollOpen(false);
+    return true;
   }
 
   async function handleConfirmStabilize(targetToken: CombatToken, viaSpell: boolean) {
@@ -1733,6 +1868,27 @@ export function CombatBoard({
       viaSpell
         ? `${getCombatTokenDisplayLabel(targetToken)} is stabilized (Spare the Dying).`
         : `${getCombatTokenDisplayLabel(targetToken)} is stabilized.`
+    );
+  }
+
+  async function handleConfirmHelp(ally: CombatToken) {
+    if (!actingToken) return;
+
+    const { next, error } = await recordCombatHelp(campaignId, combatState, {
+      isDm,
+      beneficiaryTokenId: ally.id,
+    });
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(next);
+    }
+
+    setHelpTargetPickerAllies(null);
+    showAlert(
+      `${getCombatTokenDisplayLabel(actingToken)} helps ${getCombatTokenDisplayLabel(ally)}.`
     );
   }
 
@@ -1827,6 +1983,56 @@ export function CombatBoard({
       }
       if (isDm) {
         setDraft(next);
+      }
+      return;
+    }
+
+    if (isGetUpOption(option)) {
+      if (!userControlsCombat || !actingToken || battleOver) return;
+      const costFeet = option.getUp?.costFeet;
+      if (costFeet == null) return;
+      const { next, partyData: nextPartyData, error } = await recordCombatGetUp(
+        campaignId,
+        combatState,
+        {
+          isDm,
+          tokenId: actingToken.id,
+          costFeet,
+          speedFt: currentSpeedFt,
+          dashUsed,
+          character: actingTokenCharacter,
+          ally: actingTokenAlly,
+          partyData,
+        }
+      );
+      if (error) {
+        showAlert(error);
+        return;
+      }
+      if (isDm) {
+        setDraft(next);
+      }
+      if (actingTokenCharacter) {
+        const nextConditions = removeProneFromCharacterData(actingTokenCharacter);
+        setLocalCharacters((current) =>
+          current.map((character) =>
+            character.id === actingTokenCharacter.id
+              ? {
+                  ...character,
+                  data: {
+                    ...character.data,
+                    combat: {
+                      ...character.data.combat,
+                      conditions: nextConditions,
+                    },
+                  },
+                }
+              : character
+          )
+        );
+      }
+      if (nextPartyData && nextPartyData !== partyData) {
+        await refreshCampaignPartyData(campaignId);
       }
       return;
     }
@@ -1969,6 +2175,7 @@ export function CombatBoard({
             attack,
             targets
           ),
+          attackAdvantageByTokenId: buildAttackAdvantageMap(actingToken, attack, targets),
         });
         return;
       }
@@ -2057,6 +2264,21 @@ export function CombatBoard({
     );
   }
 
+  function buildAttackAdvantageMap(
+    attacker: CombatToken | null | undefined,
+    attack: DerivedAttack,
+    targets: CombatToken[]
+  ): Record<string, boolean> {
+    if (!attacker) return {};
+    return Object.fromEntries(
+      targets.map((target) => [
+        target.id,
+        getHelpAttackAdvantage(attacker, target, combatState) ||
+          getAttackRollAdvantage(attacker, target, combatState, attack, tokenStatusContext),
+      ])
+    );
+  }
+
   function resolvePendingDisadvantageLabel(
     pending: PendingAttack,
     targetTokenId: string
@@ -2088,6 +2310,38 @@ export function CombatBoard({
     );
   }
 
+  function resolvePendingAdvantageLabel(
+    pending: PendingAttack,
+    targetTokenId: string
+  ): string | null {
+    const target = pending.targets.find((entry) => entry.tokenId === targetTokenId);
+    if (!target?.attackAdvantage) return null;
+
+    const attacker = combatState.tokens.find((token) => token.id === pending.attackerTokenId);
+    const targetToken = combatState.tokens.find((token) => token.id === targetTokenId);
+    if (!attacker || !targetToken) return "Advantage on attack roll";
+
+    const character = attacker.characterId
+      ? charactersById[attacker.characterId] ?? null
+      : null;
+    const attackerEnemyData = resolveEnemyDataForToken(attacker);
+    const attack = findDerivedAttackByOptionId(
+      pending.optionId,
+      attacker,
+      character,
+      catalogItems,
+      classCatalog,
+      attackerEnemyData
+    );
+    if (!attack) return "Advantage on attack roll";
+
+    return (
+      getHelpAttackAdvantageLabel(attacker, targetToken, combatState) ??
+      formatAttackAdvantageLabel(attacker, targetToken, attack, tokenStatusContext) ??
+      "Advantage on attack roll"
+    );
+  }
+
   function openAttackSubmit(
     targets: CombatToken[],
     aoeCenter: { x: number; y: number } | null,
@@ -2105,6 +2359,7 @@ export function CombatBoard({
         attackTargeting.attack,
         targets
       ),
+      attackAdvantageByTokenId: buildAttackAdvantageMap(attacker, attackTargeting.attack, targets),
       spellCastSlotLevel: attackTargeting.spellCastSlotLevel,
     });
     setAttackTargeting(null);
@@ -2268,6 +2523,7 @@ export function CombatBoard({
       submission: values,
       charactersById,
       enemiesBySlug,
+      alliesById,
       catalogItems,
       classCatalog,
     });
@@ -2312,6 +2568,7 @@ export function CombatBoard({
         attack,
         [provokingToken]
       ),
+      attackAdvantageByTokenId: buildAttackAdvantageMap(userOaAttackerToken, attack, [provokingToken]),
     });
   }
 
@@ -2350,6 +2607,7 @@ export function CombatBoard({
       saveRoll2,
       charactersById,
       enemiesBySlug,
+      alliesById,
     });
     setSubmittingSaveId(null);
     if (error) {
@@ -2374,7 +2632,8 @@ export function CombatBoard({
       saves,
       charactersById,
       isDm,
-      enemiesBySlug
+      enemiesBySlug,
+      alliesById
     );
     setSubmittingSaveId(null);
     if (error) {
@@ -2395,7 +2654,8 @@ export function CombatBoard({
       reviewed,
       charactersById,
       isDm,
-      enemiesBySlug
+      enemiesBySlug,
+      alliesById
     );
     setResolvingAttackId(null);
     if (error) {
@@ -2457,7 +2717,15 @@ export function CombatBoard({
       if (resolvingAttackId === pending.id) continue;
 
       autoResolvingAttackIdsRef.current.add(pending.id);
-      void resolveCombatAttack(campaignId, combatState, pending, charactersById, isDm, enemiesBySlug)
+      void resolveCombatAttack(
+        campaignId,
+        combatState,
+        pending,
+        charactersById,
+        isDm,
+        enemiesBySlug,
+        alliesById
+      )
         .then(({ next, error, characterUpdates }) => {
           if (error) {
             showAlert(error);
@@ -2471,6 +2739,7 @@ export function CombatBoard({
         });
     }
   }, [
+    alliesById,
     autoApprove,
     autoApproveDm,
     campaignId,
@@ -2593,7 +2862,8 @@ export function CombatBoard({
       usedFeet: movementUsedFeet,
       dashUsed,
       actionUsed,
-      allowDash: true,
+      allowDash: !movementCrawling,
+      crawling: movementCrawling,
     });
   }, [
     actingToken,
@@ -2602,6 +2872,7 @@ export function CombatBoard({
     currentSpeedFt,
     dashUsed,
     actionUsed,
+    movementCrawling,
     movementMode,
     movementUsedFeet,
     userControlsCombat,
@@ -2787,6 +3058,7 @@ export function CombatBoard({
     );
     const next = applyMultiattackBranchSelection(
       combatState,
+      actingToken.id,
       branchIndex,
       initialRemaining
     );
@@ -3020,12 +3292,17 @@ export function CombatBoard({
       nextHp,
       (token.damageTaken ?? 0) + damageDelta
     );
+    const enemyNextConditions =
+      token.kind === "enemy"
+        ? syncTokenConditionsAfterHpChange(currentHp, nextHp, token.conditions ?? [])
+        : undefined;
 
     let next = updateTokenInState(combatState, token.id, {
       currentHp: patched.currentHp,
       maxHp,
       damageTaken: patched.damageTaken,
       ...(patched.hidden != null ? { hidden: patched.hidden } : {}),
+      ...(enemyNextConditions != null ? { conditions: enemyNextConditions } : {}),
     });
 
     if (token.kind === "enemy" && !(token.hidden ?? false) && (patched.hidden ?? false)) {
@@ -3072,6 +3349,91 @@ export function CombatBoard({
     }
 
     setApplyingHp(false);
+  }
+
+  async function handleSaveTokenStates(proposed: string[]) {
+    if (!selectedToken || selectedToken.kind === "marker" || !statesModalContext) return;
+
+    const token = selectedToken;
+    const character = selectedActingCharacter;
+    const ally =
+      token.kind === "ally" && token.allyId ? alliesById[token.allyId] ?? null : null;
+    const enemyData = resolveEnemyDataForToken(token);
+    const { currentHp } = getTokenHpDisplay(token, character, enemyData);
+    const currentConditions = statesModalContext.conditions;
+    const exhaustionLevel = statesModalContext.exhaustionLevel;
+    const nextConditions = finalizeDmConditionEdit(
+      proposed,
+      currentHp,
+      currentConditions,
+      exhaustionLevel
+    );
+
+    setSavingStates(true);
+
+    if (token.kind === "party" && character) {
+      const nextCombat = { ...character.data.combat, conditions: nextConditions };
+      const saveResult = await saveCharacterData(
+        character.id,
+        { ...character.data, combat: nextCombat },
+        undefined,
+        { isDm: true, originalData: character.data }
+      );
+      if (saveResult.error) {
+        setSavingStates(false);
+        showAlert(saveResult.error);
+        return;
+      }
+      setLocalCharacters((current) =>
+        current.map((entry) =>
+          entry.id === character.id
+            ? {
+                ...entry,
+                data: {
+                  ...entry.data,
+                  combat: nextCombat,
+                },
+              }
+            : entry
+        )
+      );
+    } else if (token.kind === "ally" && token.allyId) {
+      const nextPartyData: PartyData = {
+        ...partyData,
+        allies: partyData.allies.map((entry) =>
+          entry.id === token.allyId
+            ? { ...entry, conditions: nextConditions }
+            : entry
+        ),
+      };
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("campaigns")
+        .update({ party_data: nextPartyData })
+        .eq("id", campaignId);
+      if (error) {
+        setSavingStates(false);
+        showAlert(error.message);
+        return;
+      }
+      await refreshCampaignPartyData(campaignId);
+    } else if (token.kind === "enemy") {
+      const next = updateTokenInState(combatState, token.id, {
+        conditions: nextConditions,
+      });
+      const persistError = await persist(next);
+      if (persistError) {
+        setSavingStates(false);
+        showAlert(persistError);
+        return;
+      }
+    } else {
+      setSavingStates(false);
+      return;
+    }
+
+    setSavingStates(false);
+    setStatesModalOpen(false);
   }
 
   async function handleDistributeXp(selectedCharacterIds: string[], allyCount: number) {
@@ -4706,6 +5068,7 @@ export function CombatBoard({
                       <>
                         {showMovePanel ? (
                           <CombatMovePanel
+                            proneMode={actingTokenProne}
                             remainingFeet={remainingMovementFeet}
                             speedFeet={currentSpeedFt}
                             dashAvailableFeet={dashPreviewFeet}
@@ -4725,6 +5088,11 @@ export function CombatBoard({
                             onSelectDash={() => {
                               if (battleOver || dashUsed || actionUsed) return;
                               setPendingDashActionConfirm(true);
+                            }}
+                            crawlOption={crawlOption}
+                            getUpOption={getUpOption}
+                            onSelectGetUp={() => {
+                              if (getUpOption) handleSelectCombatOption(getUpOption);
                             }}
                           />
                         ) : null}
@@ -4781,7 +5149,8 @@ export function CombatBoard({
                             disabled={
                               turnActionsLocked ||
                               opportunityAttacksPending ||
-                              turnEndBlockedByPendingAttacks
+                              turnEndBlockedByPendingAttacks ||
+                              turnEndBlockedByDeathSave
                             }
                           />
                         ) : null}
@@ -5015,6 +5384,18 @@ export function CombatBoard({
                         >
                           {grantingAction ? "…" : "Grant action"}
                         </button>
+                        <button
+                          type="button"
+                          className="candy-btn"
+                          disabled={
+                            !selectedToken ||
+                            selectedToken.kind === "marker" ||
+                            savingStates
+                          }
+                          onClick={() => setStatesModalOpen(true)}
+                        >
+                          States
+                        </button>
                       </div>
                     </>
                   )}
@@ -5027,8 +5408,8 @@ export function CombatBoard({
                 className={`combat-dm-approval-banner${
                   dmApprovalTrayAttacks.length > 0
                     ? " combat-dm-approval-banner--active"
-                    : currentTurnToken
-                      ? ` ${tokenColorClass(currentTurnToken.kind)}`
+                    : selectedToken
+                      ? ` ${tokenColorClass(selectedToken.kind)}`
                       : ""
                 }`}
                 role={dmApprovalTrayAttacks.length > 0 ? "status" : undefined}
@@ -5036,15 +5417,15 @@ export function CombatBoard({
                 aria-label={
                   dmApprovalTrayAttacks.length > 0
                     ? undefined
-                    : currentTurnToken
-                      ? `Current turn: ${getCombatTokenDisplayLabel(currentTurnToken)}`
+                    : selectedToken
+                      ? `Selected: ${getCombatTokenDisplayLabel(selectedToken)}`
                       : undefined
                 }
               >
                 {dmApprovalTrayAttacks.length > 0
                   ? "AWAITING DM APPROVAL"
-                  : currentTurnToken
-                    ? getCombatTokenDisplayLabel(currentTurnToken)
+                  : selectedToken
+                    ? getCombatTokenDisplayLabel(selectedToken)
                     : null}
               </div>
             ) : null}
@@ -5060,6 +5441,7 @@ export function CombatBoard({
                 enemiesBySlug={enemiesBySlug}
                 classCatalog={classCatalog}
                 resolveDisadvantageLabel={resolvePendingDisadvantageLabel}
+                resolveAdvantageLabel={resolvePendingAdvantageLabel}
                 resolvingAttackId={resolvingAttackId}
                 submittingSaveId={submittingSaveId}
                 onReject={(pendingAttackId) => void handleRejectAttack(pendingAttackId)}
@@ -5156,6 +5538,7 @@ export function CombatBoard({
           }
           combatState={combatState}
           attackDisadvantageByTokenId={attackSubmitDraft.attackDisadvantageByTokenId ?? {}}
+          attackAdvantageByTokenId={attackSubmitDraft.attackAdvantageByTokenId ?? {}}
           charactersById={charactersById}
           enemiesBySlug={enemiesBySlug}
           catalogItems={catalogItems}
@@ -5197,7 +5580,7 @@ export function CombatBoard({
         <CombatHelpTargetModal
           allies={helpTargetPickerAllies}
           resolvePortraitUrl={(token) => resolveTokenPortraitUrl(supabase, token)}
-          onSelect={() => setHelpTargetPickerAllies(null)}
+          onSelect={(ally) => void handleConfirmHelp(ally)}
           onCancel={() => setHelpTargetPickerAllies(null)}
         />
       ) : null}
@@ -5237,7 +5620,8 @@ export function CombatBoard({
             <DeathSaveRollModal
               data={actingTokenCharacter.data}
               onCancel={() => setDeathSaveRollOpen(false)}
-              onApply={(combat) => void handleApplyDeathSave(combat)}
+              onClose={() => setDeathSaveRollOpen(false)}
+              onApply={(combat) => handleApplyDeathSave(combat)}
             />,
             document.body
           )
@@ -5306,6 +5690,16 @@ export function CombatBoard({
         <CombatOtherActionsModal
           onCancel={() => setPendingOtherActionsConfirm(false)}
           onUse={() => void handleConfirmOtherActions()}
+        />
+      ) : null}
+      {statesModalOpen && statesModalContext ? (
+        <CombatStatesModal
+          tokenLabel={statesModalContext.tokenLabel}
+          conditions={statesModalContext.conditions}
+          protectedSlugs={statesModalContext.protectedSlugs}
+          saving={savingStates}
+          onCancel={() => setStatesModalOpen(false)}
+          onSave={(nextConditions) => void handleSaveTokenStates(nextConditions)}
         />
       ) : null}
       {pendingSpellcasting && actingTokenCharacter ? (

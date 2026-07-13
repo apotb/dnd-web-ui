@@ -66,17 +66,17 @@ describe("dying-state", () => {
     assert.deepEqual(result.deathSaves, { successes: 0, failures: 0 });
   });
 
-  it("applyWakeFromZeroHp removes all auto downed conditions", () => {
+  it("applyWakeFromZeroHp removes unconscious and incapacitated but keeps prone", () => {
     const result = applyWakeFromZeroHp(
       baseCombat({
         currentHp: 0,
-        conditions: [DYING_CONDITION_SLUG, "unconscious", "incapacitated", "prone"],
+        conditions: [DYING_CONDITION_SLUG, "unconscious", "incapacitated", "prone", "poisoned"],
         deathSaves: { successes: 1, failures: 2 },
       }),
       5
     );
     assert.equal(result.currentHp, 5);
-    assert.deepEqual(result.conditions, []);
+    assert.deepEqual(result.conditions, ["prone", "poisoned"]);
     assert.deepEqual(result.deathSaves, { successes: 0, failures: 0 });
   });
 
@@ -97,15 +97,15 @@ describe("dying-state", () => {
     assert.ok(hasDyingCondition(result));
   });
 
-  it("syncCombatAfterHpChange wakes on heal above 0", () => {
+  it("syncCombatAfterHpChange wakes on heal above 0 but keeps prone", () => {
     const combat = baseCombat({
       currentHp: 0,
-      conditions: [DYING_CONDITION_SLUG, "unconscious"],
+      conditions: [DYING_CONDITION_SLUG, "unconscious", "incapacitated", "prone"],
       deathSaves: { successes: 0, failures: 2 },
     });
     const result = syncCombatAfterHpChange(combat, 3, { previousHp: 0 });
     assert.equal(result.currentHp, 3);
-    assert.deepEqual(result.conditions, []);
+    assert.deepEqual(result.conditions, ["prone"]);
     assert.deepEqual(result.deathSaves, { successes: 0, failures: 0 });
   });
 
@@ -139,7 +139,7 @@ describe("dying-state", () => {
     assert.ok(knocked.includes("prone"));
 
     const woke = syncDownedConditionsAfterHpChange(0, 5, knocked);
-    assert.deepEqual(woke, []);
+    assert.deepEqual(woke, ["prone"]);
   });
 
   it("syncCombatAfterHpChange enforces downed conditions when already at 0 HP", () => {

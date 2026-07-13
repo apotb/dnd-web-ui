@@ -165,6 +165,8 @@ export const PHB_ITEMS: PhbItem[] = [
   { id: "block-of-incense", name: "Block of Incense", weightLb: 0, type: "gear" },
   { id: "little-bag-of-sand", name: "Little Bag of Sand", weightLb: 0, type: "gear" },
   { id: "tej", name: "Tej (mug)", weightLb: 1, type: "consumable" },
+  { id: "lightweight-hooded-cloak", name: "Cloak, lightweight hooded", weightLb: 1, type: "gear" },
+  { id: "colorful-cloak", name: "Colorful cloak", weightLb: 1, type: "gear" },
   { id: "prayer-book", name: "Prayer book", weightLb: 5, type: "gear" },
   { id: "prayer-wheel", name: "Prayer wheel", weightLb: 1, type: "gear" },
   { id: "fine-clothes", name: "Fine clothes", weightLb: 6, type: "gear" },

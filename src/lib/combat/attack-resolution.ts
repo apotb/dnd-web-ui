@@ -4,23 +4,27 @@ import { parseDamageNotation } from "@/lib/dnd/dice";
 import { consumeLoadedAmmunition, isRecoverableAmmunition } from "@/lib/dnd/ammunition";
 import { consumeSpellMaterials } from "@/lib/dnd/spell-materials";
 import { consumeThrownWeaponInventoryItem } from "@/lib/character/equip-rules";
-import {
-  placeAmmoPickupMarker,
-  placeThrownWeaponPickupMarker,
-} from "@/lib/combat/state-utils";
+import { placeAmmoPickupMarker, placeThrownWeaponPickupMarker, resolveTokenEnemyData } from "@/lib/combat/state-utils";
 import { getCombatTokenDisplayLabel } from "@/lib/combat/party-token-label";
 import { patchTokenHpFromDamage } from "@/lib/combat/hp-adjust";
 import { applyBattleOverEconomyReset, isBattleOver } from "@/lib/combat/battle-over";
 import { syncInitiativeAfterTokenHidden } from "@/lib/combat/initiative";
 import { canSkipOpportunityAttackAction, completeOpportunityAttackForAttacker } from "@/lib/combat/opportunity-attacks";
-import { decrementMultiattackRemaining } from "@/lib/combat/multiattack";
+import { decrementMultiattackRemaining, ensureMultiattackTurnState } from "@/lib/combat/multiattack";
 import {
   hasPendingAttackForAttacker,
   removePendingAttack,
 } from "@/lib/combat/pending-attacks";
+import {
+  consumeHelpGrantsForBeneficiary,
+  resolveAttackRollMode,
+  resolveEffectiveAttackRoll,
+  type AttackRollMode,
+} from "@/lib/combat/help";
 import { isBattleActive, isDmControlledToken } from "@/lib/combat/turn";
 import { creditXpForDefeatedEnemies } from "@/lib/combat/xp-pool";
 import type { EnemyRecord } from "@/lib/combat/state-utils";
+import type { PartyAlly } from "@/lib/schemas/party";
 import type { EnemyData } from "@/lib/schemas/enemy";
 import type { CharacterData } from "@/lib/schemas/character";
 import { consumeSpellSlotOnCharacter } from "@/lib/dnd/spellcasting";
@@ -149,25 +153,32 @@ export function computeEffectiveSaveRollValue(
   return resolveEffectiveSaveRoll(saveRoll, saveRoll2, mode);
 }
 
-export function resolveEffectiveAttackRoll(
-  roll: number,
-  roll2: number | null | undefined,
-  disadvantage: boolean
-): number {
-  if (!disadvantage || roll2 == null) return roll;
-  return Math.min(roll, roll2);
+export { resolveEffectiveAttackRoll, resolveAttackRollMode, type AttackRollMode } from "@/lib/combat/help";
+
+export function getTargetAttackRollMode(target: {
+  attackAdvantage?: boolean;
+  attackDisadvantage?: boolean;
+}): AttackRollMode {
+  return resolveAttackRollMode(
+    target.attackAdvantage ?? false,
+    target.attackDisadvantage ?? false
+  );
 }
 
 export function isCriticalAttackRoll(
   attackRoll: number | null | undefined,
-  options?: { attackRoll2?: number | null; disadvantage?: boolean }
+  options?: {
+    attackRoll2?: number | null;
+    advantage?: boolean;
+    disadvantage?: boolean;
+    rollMode?: AttackRollMode;
+  }
 ): boolean {
   if (attackRoll == null) return false;
-  const usedRoll = resolveEffectiveAttackRoll(
-    attackRoll,
-    options?.attackRoll2,
-    options?.disadvantage ?? false
-  );
+  const mode =
+    options?.rollMode ??
+    resolveAttackRollMode(options?.advantage ?? false, options?.disadvantage ?? false);
+  const usedRoll = resolveEffectiveAttackRoll(attackRoll, options?.attackRoll2, mode);
   return usedRoll === 20;
 }
 
@@ -175,13 +186,17 @@ export function computeHitFromRoll(
   attackRoll: number,
   attackBonus: number,
   ac: number,
-  options?: { attackRoll2?: number | null; disadvantage?: boolean }
+  options?: {
+    attackRoll2?: number | null;
+    advantage?: boolean;
+    disadvantage?: boolean;
+    rollMode?: AttackRollMode;
+  }
 ): { total: number; hit: boolean; critical: boolean; usedRoll: number } {
-  const usedRoll = resolveEffectiveAttackRoll(
-    attackRoll,
-    options?.attackRoll2,
-    options?.disadvantage ?? false
-  );
+  const mode =
+    options?.rollMode ??
+    resolveAttackRollMode(options?.advantage ?? false, options?.disadvantage ?? false);
+  const usedRoll = resolveEffectiveAttackRoll(attackRoll, options?.attackRoll2, mode);
   const total = usedRoll + attackBonus;
   const critical = usedRoll === 20;
   const fumble = usedRoll === 1;
@@ -207,7 +222,8 @@ export function applyResolvedAttack(
   state: CombatState,
   pending: PendingAttack,
   charactersById: Record<string, ParsedCharacter> = {},
-  enemiesBySlug: Record<string, Pick<EnemyRecord, "data">> = {}
+  enemiesBySlug: Record<string, Pick<EnemyRecord, "data">> = {},
+  alliesById: Record<string, PartyAlly> = {}
 ): {
   next: CombatState;
   characterUpdates: CharacterHpUpdate[];
@@ -227,6 +243,8 @@ export function applyResolvedAttack(
       characterId,
       currentHp: patch.currentHp,
       tempHp: patch.tempHp,
+      conditions: patch.conditions,
+      deathSaves: patch.deathSaves,
       inventoryItems: patch.inventoryItems,
       spellSlots: patch.spellSlots,
     });
@@ -401,11 +419,28 @@ export function applyResolvedAttack(
           : {}),
       };
     } else if (pending.actionCost === "multiattack") {
+      const attackerToken = state.tokens.find((token) => token.id === pending.attackerTokenId);
+      const enemyData = attackerToken
+        ? resolveTokenEnemyData(
+            attackerToken,
+            enemiesBySlug as Record<string, { data: EnemyData }>,
+            alliesById
+          )
+        : null;
+      if (enemyData) {
+        const ensured = ensureMultiattackTurnState(
+          turn,
+          enemyData.actions,
+          pending.attackerTokenId
+        );
+        turn = { ...turn, ...ensured };
+      }
       if (!turn.actionUsed) {
         turn = { ...turn, actionUsed: true };
       }
       turn = {
         ...turn,
+        multiattackTokenId: pending.attackerTokenId,
         multiattackRemaining: decrementMultiattackRemaining(
           turn.multiattackRemaining ?? {},
           pending.optionName
@@ -430,6 +465,13 @@ export function applyResolvedAttack(
     },
     pending.id
   );
+
+  if (
+    pending.rollType === "attack" &&
+    pending.targets.some((target) => target.attackAdvantage)
+  ) {
+    nextState = consumeHelpGrantsForBeneficiary(nextState, pending.attackerTokenId);
+  }
 
   if (pending.isOpportunityAttack) {
     nextState = completeOpportunityAttackForAttacker(nextState, pending.attackerTokenId);
@@ -481,6 +523,7 @@ export function buildPendingTargetFromToken(
     saveSubmitted: !context.requiresSave,
     needsDmSave,
     attackDisadvantage: false,
+    attackAdvantage: false,
     saveAdvantage: false,
     saveDisadvantage: false,
   };

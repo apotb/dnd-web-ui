@@ -4,8 +4,12 @@ import type { ParsedCharacter } from "@/lib/character/utils";
 import {
   COMBAT_CAST_SPELL_ACTION_ID,
   getCombatOptionGroupsForToken,
+  isGetUpAffordable,
+  isGetUpOption,
+  isImplementedCombatOption,
   isSpellcastingEntryOption,
 } from "@/lib/combat/combat-options";
+import { buildGetUpCombatOption } from "@/lib/combat/prone-actions";
 import { PHB_CLASSES } from "@/lib/dnd/phb/classes";
 import { ALL_SPECIES } from "@/lib/dnd/phb/species";
 import { SHELL_DEFENSE_ENTER_ACTION_ID } from "@/lib/combat/feature-effects";
@@ -13,6 +17,7 @@ import type { Spell } from "@/lib/schemas/character";
 import { createDefaultCharacterData } from "@/lib/schemas/character";
 import { listCombatCastableLeveledSpells } from "@/lib/dnd/combat-spells";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
+import { createDefaultEnemyData } from "@/lib/schemas/enemy";
 
 function spell(overrides: Partial<Spell> & Pick<Spell, "name" | "level">): Spell {
   return {
@@ -312,5 +317,159 @@ describe("getCombatOptionGroupsForToken spellcasting entries", () => {
     });
 
     assert.equal(groups.actions.length, 0);
+  });
+});
+
+function thugEnemyData() {
+  return createDefaultEnemyData({
+    actions: [
+      { name: "Multiattack", description: "The thug makes two melee attacks." },
+      {
+        name: "Mace",
+        description:
+          "Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 5 (1d6 + 2) bludgeoning damage.",
+      },
+    ],
+  });
+}
+
+function enemyTokenWithTurn(): CombatToken {
+  return {
+    id: "enemy-thug",
+    kind: "enemy",
+    name: "Thug",
+    label: "A",
+    tooltip: "",
+    portraitPath: null,
+    enemySlug: "thug",
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+    placed: true,
+    damageTaken: 0,
+    currentHp: 32,
+    maxHp: 32,
+    hasCollision: false,
+    isObject: false,
+    itemPickup: false,
+    pickupQuantity: 1,
+    hidden: false,
+    activeEffects: [],
+  };
+}
+
+function enemyCombatState(
+  token: CombatToken,
+  turnOverrides: Partial<CombatState["turn"]> = {}
+): CombatState {
+  return {
+    gridWidth: 20,
+    gridHeight: 20,
+    tileFeet: 5,
+    backgroundPath: null,
+    blockedCells: [],
+    tokens: [token],
+    excludedPartyCharacterIds: [],
+    initiative: { status: "ready", results: {}, order: [token.id] },
+    turn: {
+      active: true,
+      index: 0,
+      round: 1,
+      movementUsedFeet: 0,
+      dashUsed: false,
+      actionUsedForTwoWeapon: false,
+      twoWeaponFightingUsedOffHand: null,
+      actionUsed: false,
+      bonusActionUsed: false,
+      disengageUsed: false,
+      freeObjectInteractionUsed: false,
+      multiattackBranchIndex: null,
+      multiattackRemaining: {},
+      ...turnOverrides,
+    },
+    pendingAttacks: [],
+    pendingOpportunityAttacks: null,
+    boardTitle: "Combat",
+    savedEncounterId: null,
+    autoApprove: false,
+  };
+}
+
+describe("getCombatOptionGroupsForToken multiattack", () => {
+  it("keeps multiattack options after actionUsed when strikes remain", () => {
+    const token = enemyTokenWithTurn();
+    const state = enemyCombatState(token, {
+      actionUsed: true,
+      multiattackBranchIndex: 0,
+      multiattackRemaining: { mace: 1 },
+      multiattackTokenId: token.id,
+    });
+
+    const groups = getCombatOptionGroupsForToken(token, {
+      character: null,
+      enemyData: thugEnemyData(),
+      catalogItems: {},
+      classCatalog: PHB_CLASSES,
+      featureCatalogs: {},
+      actionUsedForTwoWeapon: false,
+      twoWeaponFightingUsedOffHand: null,
+      actionUsed: true,
+      bonusActionUsed: false,
+      dashUsed: false,
+      freeObjectInteractionUsed: false,
+      combatState: state,
+      token,
+      canUseObject: false,
+    });
+
+    assert.equal(groups.multiattackActions.length, 1);
+    assert.equal(groups.multiattackActions[0]?.name, "Mace");
+    assert.deepEqual(groups.multiattackActions[0]?.multiattackUses, { remaining: 1, max: 2 });
+    assert.equal(groups.actions.length, 0);
+  });
+
+  it("hides multiattack options when all strikes are spent", () => {
+    const token = enemyTokenWithTurn();
+    const state = enemyCombatState(token, {
+      actionUsed: true,
+      multiattackBranchIndex: 0,
+      multiattackRemaining: {},
+      multiattackTokenId: token.id,
+    });
+
+    const groups = getCombatOptionGroupsForToken(token, {
+      character: null,
+      enemyData: thugEnemyData(),
+      catalogItems: {},
+      classCatalog: PHB_CLASSES,
+      featureCatalogs: {},
+      actionUsedForTwoWeapon: false,
+      twoWeaponFightingUsedOffHand: null,
+      actionUsed: true,
+      bonusActionUsed: false,
+      dashUsed: false,
+      freeObjectInteractionUsed: false,
+      combatState: state,
+      token,
+      canUseObject: false,
+    });
+
+    assert.equal(groups.multiattackActions.length, 0);
+  });
+});
+
+describe("Get Up combat option", () => {
+  it("identifies Get Up options and affordability", () => {
+    const affordable = buildGetUpCombatOption({ costFeet: 15, remainingMovementFeet: 30 });
+    const unaffordable = buildGetUpCombatOption({ costFeet: 15, remainingMovementFeet: 5 });
+
+    assert.equal(isGetUpOption(affordable), true);
+    assert.equal(isGetUpAffordable(affordable), true);
+    assert.equal(isImplementedCombatOption(affordable), true);
+
+    assert.equal(isGetUpOption(unaffordable), true);
+    assert.equal(isGetUpAffordable(unaffordable), false);
+    assert.equal(isImplementedCombatOption(unaffordable), false);
   });
 });

@@ -220,4 +220,14 @@ describe("feature-effects", () => {
     assert.ok(entries.some((entry) => entry.slug === "incapacitated"));
     assert.ok(entries.some((entry) => entry.slug === "prone"));
   });
+
+  it("surfaces enemy token conditions on token status entries", () => {
+    const token = makeToken({
+      kind: "enemy",
+      conditions: ["poisoned", "frightened"],
+    });
+    const entries = getTokenStatusEntries(token);
+    assert.ok(entries.some((entry) => entry.slug === "poisoned"));
+    assert.ok(entries.some((entry) => entry.slug === "frightened"));
+  });
 });

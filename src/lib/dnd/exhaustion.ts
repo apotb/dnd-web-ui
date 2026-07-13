@@ -1,4 +1,5 @@
 import type { HarptosDate } from "@/lib/dnd/harptos-calendar";
+import { syncExhaustionCondition } from "@/lib/combat/combat-conditions";
 import type {
   CharacterData,
   ExhaustionLevel,
@@ -194,6 +195,7 @@ export function syncCombatExhaustion(data: CharacterData): CharacterData {
     combat: {
       ...data.combat,
       exhaustion: level,
+      conditions: syncExhaustionCondition(data.combat.conditions ?? [], level),
     },
   };
 }

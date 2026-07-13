@@ -6,6 +6,12 @@ import { applyObjectPickup } from "@/lib/combat/object-pickup";
 import { applyAmmoRefill } from "@/lib/combat/ammo-refill";
 import { applyEquipmentChange } from "@/lib/combat/object-equipment-change";
 import {
+  applyCombatGetUp,
+  removeProneFromCharacterData,
+  removeProneFromPartyData,
+} from "@/lib/combat/prone-actions";
+import { applyHelpGrant } from "@/lib/combat/help";
+import {
   applyActionUsed,
   applyBonusActionUsed,
   applyDashActionUsed,
@@ -16,6 +22,7 @@ import { persistCombatState } from "@/lib/hooks/use-realtime-combat-state";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { CombatState } from "@/lib/schemas/combat-state";
 import type { Item } from "@/lib/schemas/item";
+import type { PartyAlly, PartyData } from "@/lib/schemas/party";
 
 export async function recordMainHandAttackUsed(
   campaignId: string,
@@ -95,6 +102,93 @@ export async function recordCombatDash(
   return { next, error: error?.message };
 }
 
+function sameConditionSets(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const setA = new Set(a);
+  return b.every((slug) => setA.has(slug));
+}
+
+async function persistPartyData(
+  campaignId: string,
+  partyData: PartyData
+): Promise<string | undefined> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("campaigns")
+    .update({ party_data: partyData })
+    .eq("id", campaignId);
+  return error?.message;
+}
+
+export async function recordCombatGetUp(
+  campaignId: string,
+  state: CombatState,
+  options: {
+    isDm: boolean;
+    tokenId: string;
+    costFeet: number;
+    speedFt: number;
+    dashUsed: boolean;
+    character?: ParsedCharacter | null;
+    ally?: PartyAlly | null;
+    partyData?: PartyData;
+  }
+): Promise<{ next: CombatState; partyData?: PartyData; error?: string }> {
+  const next = applyCombatGetUp(
+    state,
+    options.tokenId,
+    options.costFeet,
+    options.speedFt,
+    options.dashUsed
+  );
+
+  if (next.turn.movementUsedFeet === state.turn.movementUsedFeet) {
+    return { next: state };
+  }
+
+  if (options.isDm) {
+    const error = await persistCombatState(campaignId, next);
+    if (error) return { next: state, error };
+  } else {
+    const supabase = createClient();
+    const { error } = await supabase.rpc("record_combat_get_up", {
+      p_campaign_id: campaignId,
+      p_cost_feet: options.costFeet,
+    });
+    if (error) return { next: state, error: error.message };
+  }
+
+  let nextPartyData = options.partyData;
+
+  if (options.character) {
+    const current = options.character.data.combat.conditions ?? [];
+    const updated = removeProneFromCharacterData(options.character);
+    if (!sameConditionSets(current, updated)) {
+      const { error: saveError } = await saveCharacterData(
+        options.character.id,
+        {
+          ...options.character.data,
+          combat: {
+            ...options.character.data.combat,
+            conditions: updated,
+          },
+        },
+        undefined,
+        { isDm: options.isDm, originalData: options.character.data }
+      );
+      if (saveError) return { next: state, error: saveError };
+    }
+  } else if (options.ally && options.partyData) {
+    nextPartyData = removeProneFromPartyData(options.partyData, options.ally.id);
+    if (nextPartyData !== options.partyData) {
+      const error = await persistPartyData(campaignId, nextPartyData);
+      if (error) return { next: state, error };
+    }
+  }
+
+  return { next, partyData: nextPartyData };
+}
+
 export async function recordCombatActionUsed(
   campaignId: string,
   state: CombatState,
@@ -138,6 +232,39 @@ export async function recordCombatBonusActionUsed(
   const supabase = createClient();
   const { error } = await supabase.rpc("record_combat_bonus_action_used", {
     p_campaign_id: campaignId,
+  });
+
+  return { next, error: error?.message };
+}
+
+export async function recordCombatHelp(
+  campaignId: string,
+  state: CombatState,
+  options: { isDm: boolean; beneficiaryTokenId: string }
+): Promise<{ next: CombatState; error?: string }> {
+  const helperTokenId = state.initiative.order[state.turn.index];
+  if (!helperTokenId) {
+    return { next: state, error: "No active combatant." };
+  }
+
+  const next = applyHelpGrant(state, helperTokenId, options.beneficiaryTokenId);
+
+  if (
+    next.turn.actionUsed === state.turn.actionUsed &&
+    (next.helpGrants ?? []).length === (state.helpGrants ?? []).length
+  ) {
+    return { next: state, error: "Help cannot be used right now." };
+  }
+
+  if (options.isDm) {
+    const error = await persistCombatState(campaignId, next);
+    return { next, error: error ?? undefined };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.rpc("record_combat_help", {
+    p_campaign_id: campaignId,
+    p_beneficiary_token_id: options.beneficiaryTokenId,
   });
 
   return { next, error: error?.message };

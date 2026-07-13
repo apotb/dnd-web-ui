@@ -54,10 +54,10 @@ export const weaponPropertiesSchema = z.object({
   weaponCategory: z.enum(["simple", "martial"]).default("simple"),
   weaponRange: z.enum(["melee", "ranged"]).default("melee"),
   weaponProperties: z.array(z.string()).default([]),
-  rangeNormal: z.number().optional(),
-  rangeLong: z.number().optional(),
-  throwRangeNormal: z.number().optional(),
-  throwRangeLong: z.number().optional(),
+  rangeNormal: z.number().nullish(),
+  rangeLong: z.number().nullish(),
+  throwRangeNormal: z.number().nullish(),
+  throwRangeLong: z.number().nullish(),
 });
 
 export const armorPropertiesSchema = z.object({

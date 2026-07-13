@@ -17,6 +17,10 @@ interface CombatDmApprovalTrayProps {
     pending: PendingAttack,
     targetTokenId: string
   ) => string | null;
+  resolveAdvantageLabel?: (
+    pending: PendingAttack,
+    targetTokenId: string
+  ) => string | null;
   resolvingAttackId: string | null;
   submittingSaveId: string | null;
   onReject: (pendingAttackId: string) => void;
@@ -39,6 +43,7 @@ export function CombatDmApprovalTray({
   enemiesBySlug,
   classCatalog,
   resolveDisadvantageLabel,
+  resolveAdvantageLabel,
   resolvingAttackId,
   submittingSaveId,
   onReject,
@@ -79,6 +84,11 @@ export function CombatDmApprovalTray({
             resolveDisadvantageLabel={
               resolveDisadvantageLabel
                 ? (targetTokenId) => resolveDisadvantageLabel(pending, targetTokenId)
+                : undefined
+            }
+            resolveAdvantageLabel={
+              resolveAdvantageLabel
+                ? (targetTokenId) => resolveAdvantageLabel(pending, targetTokenId)
                 : undefined
             }
             resolveSaveModifier={(targetTokenId) => resolveSaveModifier(pending, targetTokenId)}

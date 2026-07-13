@@ -1,5 +1,8 @@
+import { expireHelpGrantsForHelper } from "@/lib/combat/help";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { applyBattleOverEconomyReset, isBattleOver } from "@/lib/combat/battle-over";
+import { needsDeathSavingThrow } from "@/lib/dnd/dying-state";
+import type { CharacterData } from "@/lib/schemas/character";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 
 export function isBattleActive(state: CombatState): boolean {
@@ -91,6 +94,18 @@ export function canUserEndTurn(
   return canUserControlTurn(userId, isDm, state, token, character);
 }
 
+export function canAdvanceTurnWithDeathSave(
+  state: CombatState,
+  combat: CharacterData["combat"] | null | undefined
+): boolean {
+  if (state.turn.deathSaveRolled) return true;
+
+  const token = getCurrentTurnToken(state);
+  if (!token || token.kind !== "party" || !combat) return true;
+
+  return !needsDeathSavingThrow(combat);
+}
+
 export const TURN_RESET_FIELDS = {
   movementUsedFeet: 0,
   dashUsed: false,
@@ -103,6 +118,7 @@ export const TURN_RESET_FIELDS = {
   deathSaveRolled: false,
   multiattackBranchIndex: null,
   multiattackRemaining: {},
+  multiattackTokenId: null,
 } as const;
 
 export function advanceTurn(state: CombatState): CombatState {
@@ -118,6 +134,8 @@ export function advanceTurn(state: CombatState): CombatState {
     nextRound += 1;
   }
 
+  const startingTokenId = order[nextIndex];
+
   return {
     ...state,
     turn: {
@@ -128,8 +146,9 @@ export function advanceTurn(state: CombatState): CombatState {
     },
     pendingOpportunityAttacks: null,
     reactionUsedTokenIds: state.reactionUsedTokenIds.filter(
-      (tokenId) => tokenId !== order[nextIndex]
+      (tokenId) => tokenId !== startingTokenId
     ),
+    helpGrants: expireHelpGrantsForHelper(state, startingTokenId).helpGrants,
   };
 }
 
@@ -215,6 +234,27 @@ export function applyBonusActionUsed(state: CombatState): CombatState {
     turn: {
       ...state.turn,
       bonusActionUsed: true,
+    },
+  };
+}
+
+export function applyGetUpMovementUsed(
+  state: CombatState,
+  costFeet: number,
+  maxMovementFeet: number
+): CombatState {
+  if (!isBattleActive(state)) return state;
+  if (isBattleOver(state)) return state;
+  if (costFeet <= 0) return state;
+
+  const usedFeet = state.turn.movementUsedFeet;
+  if (costFeet > maxMovementFeet) return state;
+
+  return {
+    ...state,
+    turn: {
+      ...state.turn,
+      movementUsedFeet: usedFeet + costFeet,
     },
   };
 }

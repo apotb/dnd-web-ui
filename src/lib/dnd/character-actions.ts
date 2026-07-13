@@ -143,6 +143,24 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
     sourceLabel: "Standard",
   },
   {
+    id: "core:crawl",
+    name: "Crawl",
+    cost: "movement",
+    description:
+      "While prone, crawl instead of walking. For every foot you travel, you consume an extra foot of movement. You remain prone.",
+    source: "core",
+    sourceLabel: "Standard",
+  },
+  {
+    id: "core:get-up",
+    name: "Get Up",
+    cost: "movement",
+    description:
+      "Stand up and end the Prone condition. Costs movement equal to half your base speed (5 feet with the Athlete feat).",
+    source: "core",
+    sourceLabel: "Standard",
+  },
+  {
     id: "core:interact",
     name: "Use an Object (1st use)",
     cost: "free",
@@ -155,6 +173,8 @@ const CORE_ACTIONS: CharacterActionEntry[] = [
 
 const NON_COMBAT_PANEL_ACTION_IDS = new Set([
   "core:move",
+  "core:crawl",
+  "core:get-up",
   "core:dash",
   "core:interact",
   "core:opportunity-attack",
@@ -344,7 +364,9 @@ function movementSectionSort(
   const order = (id: string) => {
     if (id === "core:move") return 0;
     if (id === "core:dash") return 1;
-    return 2;
+    if (id === "core:crawl") return 2;
+    if (id === "core:get-up") return 3;
+    return 4;
   };
   const diff = order(a.id) - order(b.id);
   if (diff !== 0) return diff;

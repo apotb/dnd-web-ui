@@ -107,6 +107,7 @@ export function createDefaultCombatState(
     battleParticipantCharacterIds: [],
     battleAmmoPrepared: false,
     reactionUsedTokenIds: [],
+    helpGrants: [],
   };
 
   return {
@@ -1059,6 +1060,7 @@ export function resetCombatBoard(
     battleParticipantCharacterIds: [],
     battleAmmoPrepared: false,
     reactionUsedTokenIds: [],
+    helpGrants: [],
   };
 }
 

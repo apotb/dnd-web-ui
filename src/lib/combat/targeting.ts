@@ -1,6 +1,7 @@
-import { isHostileToken, isTokenEngaged } from "@/lib/combat/engagement";
+import { areTokensWithinMeleeRange, isHostileToken, isTokenEngaged } from "@/lib/combat/engagement";
 import { isCellBlocked } from "@/lib/combat/collision";
 import type { TokenStatusContext } from "@/lib/combat/feature-effects";
+import { isTokenProne } from "@/lib/combat/prone-actions";
 import { isMeleeWeaponAttack, type DerivedAttack } from "@/lib/dnd/attacks";
 import type { CombatState, CombatToken } from "@/lib/schemas/combat-state";
 import { isHiddenEnemy } from "@/lib/schemas/combat-state";
@@ -252,6 +253,37 @@ export function hasRangedAttackAdjacentDisadvantage(
   return isRangedAttackRoll(attack) && isTokenEngaged(attacker, state, context);
 }
 
+function isAttackRoll(attack: DerivedAttack): boolean {
+  return (attack.rollType ?? "attack") === "attack";
+}
+
+export function hasProneAttackerDisadvantage(
+  attacker: CombatToken,
+  context?: TokenStatusContext
+): boolean {
+  return isTokenProne(attacker, context);
+}
+
+export function getProneTargetAttackRollModifier(
+  attacker: CombatToken,
+  target: CombatToken,
+  context?: TokenStatusContext
+): "advantage" | "disadvantage" | null {
+  if (!isTokenProne(target, context)) return null;
+  return areTokensWithinMeleeRange(attacker, target) ? "advantage" : "disadvantage";
+}
+
+export function getAttackRollAdvantage(
+  attacker: CombatToken,
+  target: CombatToken,
+  state: CombatState,
+  attack: DerivedAttack,
+  context?: TokenStatusContext
+): boolean {
+  if (!isAttackRoll(attack)) return false;
+  return getProneTargetAttackRollModifier(attacker, target, context) === "advantage";
+}
+
 export function getAttackRollDisadvantage(
   attacker: CombatToken,
   target: CombatToken,
@@ -259,11 +291,27 @@ export function getAttackRollDisadvantage(
   attack: DerivedAttack,
   context?: TokenStatusContext
 ): boolean {
+  if (!isAttackRoll(attack)) return false;
   const spec = parseAttackRangeSpec(attack);
   return (
     isAttackAtLongRange(attacker, target, state, spec) ||
-    hasRangedAttackAdjacentDisadvantage(attacker, state, attack, context)
+    hasRangedAttackAdjacentDisadvantage(attacker, state, attack, context) ||
+    hasProneAttackerDisadvantage(attacker, context) ||
+    getProneTargetAttackRollModifier(attacker, target, context) === "disadvantage"
   );
+}
+
+export function formatAttackAdvantageLabel(
+  attacker: CombatToken,
+  target: CombatToken,
+  attack: DerivedAttack,
+  context?: TokenStatusContext
+): string | null {
+  if (!isAttackRoll(attack)) return null;
+  if (getProneTargetAttackRollModifier(attacker, target, context) === "advantage") {
+    return "Prone target within 5 ft (advantage)";
+  }
+  return null;
 }
 
 export function formatAttackDisadvantageLabel(
@@ -273,13 +321,28 @@ export function formatAttackDisadvantageLabel(
   attack: DerivedAttack,
   context?: TokenStatusContext
 ): string | null {
+  if (!isAttackRoll(attack)) return null;
   const spec = parseAttackRangeSpec(attack);
   const longRange = isAttackAtLongRange(attacker, target, state, spec);
   const adjacent = hasRangedAttackAdjacentDisadvantage(attacker, state, attack, context);
-  if (!longRange && !adjacent) return null;
-  if (longRange && adjacent) return "Disadvantage (long range, adjacent enemy)";
-  if (longRange) return "Long range (disadvantage)";
-  return "Adjacent enemy (disadvantage)";
+  const proneAttacker = hasProneAttackerDisadvantage(attacker, context);
+  const proneTargetDistant =
+    getProneTargetAttackRollModifier(attacker, target, context) === "disadvantage";
+
+  const reasons: string[] = [];
+  if (longRange) reasons.push("long range");
+  if (adjacent) reasons.push("adjacent enemy");
+  if (proneAttacker) reasons.push("prone attacker");
+  if (proneTargetDistant) reasons.push("prone target beyond 5 ft");
+
+  if (reasons.length === 0) return null;
+  if (reasons.length === 1) {
+    if (longRange) return "Long range (disadvantage)";
+    if (adjacent) return "Adjacent enemy (disadvantage)";
+    if (proneAttacker) return "Prone (disadvantage on attack rolls)";
+    return "Prone target beyond 5 ft (disadvantage)";
+  }
+  return `Disadvantage (${reasons.join(", ")})`;
 }
 
 export function isTokenInAttackRange(

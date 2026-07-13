@@ -184,8 +184,11 @@ function getTokenConditionSlugs(
     token.kind === "ally" && token.allyId && context?.conditionsByAllyId
       ? context.conditionsByAllyId[token.allyId] ?? []
       : [];
-  const fromEffects = getTokenStatusEntries(token).map((entry) => entry.slug);
-  return [...fromCharacter, ...fromAlly, ...fromEffects];
+  const fromEnemy = token.kind === "enemy" ? token.conditions ?? [] : [];
+  const fromEffects = getActiveEffectDefs(token).flatMap(
+    (def) => def.appliedConditionSlugs ?? []
+  );
+  return [...fromCharacter, ...fromAlly, ...fromEnemy, ...fromEffects];
 }
 
 function getEffectiveTokenHp(
@@ -234,7 +237,8 @@ export function getTokenStatusEntries(
     token.kind === "ally" && token.allyId && context?.conditionsByAllyId
       ? context.conditionsByAllyId[token.allyId] ?? []
       : [];
-  for (const slug of [...fromCharacter, ...fromAlly]) {
+  const fromEnemy = token.kind === "enemy" ? token.conditions ?? [] : [];
+  for (const slug of [...fromCharacter, ...fromAlly, ...fromEnemy]) {
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);
     entries.push({ slug, label: getConditionDisplayName(slug) });

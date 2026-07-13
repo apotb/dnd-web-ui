@@ -102,7 +102,14 @@ export function CombatOptionPanel({
                   disabled={disabled}
                   onClick={() => onSelectOption(option)}
                 >
-                  <span className="combat-attack-option-name">{option.name}</span>
+                  <span className="combat-attack-option-name">
+                    <span className="combat-attack-option-name-text">{option.name}</span>
+                    {option.multiattackUses ? (
+                      <span className="combat-attack-option-uses">
+                        {option.multiattackUses.remaining}/{option.multiattackUses.max}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="combat-attack-option-sub">
                     {isPending ? "Pending…" : option.subtitle}
                   </span>

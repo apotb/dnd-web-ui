@@ -12,9 +12,15 @@ export const AUTO_ZERO_HP_CONDITIONS = [
   "prone",
 ] as const;
 
+/** Removed when HP rises above 0; prone persists until the creature stands up. */
+export const WAKE_FROM_ZERO_HP_CONDITIONS = [
+  "incapacitated",
+  "unconscious",
+] as const;
+
 const ALL_AUTO_DOWNED_CONDITIONS = [
   DYING_CONDITION_SLUG,
-  ...AUTO_ZERO_HP_CONDITIONS,
+  ...WAKE_FROM_ZERO_HP_CONDITIONS,
 ] as const;
 
 export function hasDyingCondition(combat: CharacterData["combat"]): boolean {
@@ -40,7 +46,7 @@ export function syncDownedConditionsAfterHpChange(
     return ensureZeroHpDownedConditions(conditions);
   }
   if (previousHp === 0 && newHp > 0) {
-    return removeConditionSlugs(conditions, [...AUTO_ZERO_HP_CONDITIONS]);
+    return removeConditionSlugs(conditions, [...WAKE_FROM_ZERO_HP_CONDITIONS]);
   }
   if (newHp === 0) {
     return ensureZeroHpDownedConditions(conditions);

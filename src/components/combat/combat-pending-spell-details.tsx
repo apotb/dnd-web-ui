@@ -1,6 +1,7 @@
 "use client";
 
 import { SpellMaterialLine } from "@/components/spells/spell-glossary-meta";
+import { formatSpellCastingTimeForDisplay } from "@/lib/dnd/spell-casting-time";
 import type { PendingSpellDetails } from "@/lib/schemas/combat-state";
 
 interface CombatPendingSpellDetailsProps {
@@ -34,7 +35,12 @@ export function CombatPendingSpellDetails({ details }: CombatPendingSpellDetails
         <MetaLine label="Cast using:" value="Cantrip" />
       ) : null}
 
-      {details.castingTime ? <MetaLine label="Cast time:" value={details.castingTime} /> : null}
+      {details.castingTime ? (
+        <MetaLine
+          label="Cast time:"
+          value={formatSpellCastingTimeForDisplay(details.castingTime)}
+        />
+      ) : null}
       {details.range ? <MetaLine label="Range:" value={details.range} /> : null}
       {details.duration ? <MetaLine label="Duration:" value={details.duration} /> : null}
       {details.components ? <MetaLine label="Components:" value={details.components} /> : null}

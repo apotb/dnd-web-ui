@@ -12,11 +12,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   ITEM_CATEGORIES,
   categoryLabel,
   rarityLabel,
   RARITY_COLOR,
+  formatItemTooltip,
   type Item,
   type ItemCategory,
   getWeaponProperties,
@@ -87,33 +89,35 @@ function ItemRow({ item, onSelect }: { item: Item; onSelect: () => void }) {
     : categoryLabel(item.category as ItemCategory);
 
   return (
-    <button
-      className="w-full flex items-start gap-3 rounded-md border p-3 text-left hover:bg-accent transition-colors"
-      onClick={onSelect}
-    >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm">{item.name}</span>
-          {item.is_magic && (
-            <Badge variant="secondary" className={`text-xs ${RARITY_COLOR[item.rarity as keyof typeof RARITY_COLOR]}`}>
-              {rarityLabel(item.rarity as keyof typeof RARITY_COLOR)}
-            </Badge>
-          )}
-          {item.requires_attunement && (
-            <Badge variant="outline" className="text-xs">Attunement</Badge>
+    <Tooltip content={formatItemTooltip(item)}>
+      <button
+        className="w-full flex items-start gap-3 rounded-md border p-3 text-left hover:bg-accent transition-colors"
+        onClick={onSelect}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{item.name}</span>
+            {item.is_magic && (
+              <Badge variant="secondary" className={`text-xs ${RARITY_COLOR[item.rarity as keyof typeof RARITY_COLOR]}`}>
+                {rarityLabel(item.rarity as keyof typeof RARITY_COLOR)}
+              </Badge>
+            )}
+            {item.requires_attunement && (
+              <Badge variant="outline" className="text-xs">Attunement</Badge>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">{subtitle}</p>
+          {item.weight_lb != null && (
+            <p className="text-xs text-muted-foreground">{item.weight_lb} lb</p>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-0.5 truncate">{subtitle}</p>
-        {item.weight_lb != null && (
-          <p className="text-xs text-muted-foreground">{item.weight_lb} lb</p>
+        {item.cost_gp != null && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+            {item.cost_gp % 1 === 0 ? item.cost_gp : item.cost_gp.toFixed(2)} gp
+          </span>
         )}
-      </div>
-      {item.cost_gp != null && (
-        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-          {item.cost_gp % 1 === 0 ? item.cost_gp : item.cost_gp.toFixed(2)} gp
-        </span>
-      )}
-    </button>
+      </button>
+    </Tooltip>
   );
 }
 

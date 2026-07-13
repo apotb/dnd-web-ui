@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  AdvantageHitRollField,
   DamageAppliedField,
   DamageRollField,
   damageRollsToInputValues,
@@ -17,6 +18,7 @@ import {
   computeDamageApplied,
   computeHitFromRoll,
   formatDamageAppliedBreakdown,
+  getTargetAttackRollMode,
   resolveFinalDamageApplied,
 } from "@/lib/combat/attack-resolution";
 import { getDmSaveTargets } from "@/lib/combat/pending-attack-builder";
@@ -27,6 +29,7 @@ interface CombatAttackReviewCardProps {
   pending: PendingAttack;
   attackerLabel: string;
   resolveDisadvantageLabel?: (targetTokenId: string) => string | null;
+  resolveAdvantageLabel?: (targetTokenId: string) => string | null;
   resolveSaveModifier?: (targetTokenId: string) => number | null;
   onReject: () => void;
   onConfirm: (pending: PendingAttack) => void;
@@ -78,6 +81,7 @@ export function CombatAttackReviewCard({
   pending,
   attackerLabel,
   resolveDisadvantageLabel,
+  resolveAdvantageLabel,
   resolveSaveModifier,
   onReject,
   onConfirm,
@@ -133,10 +137,11 @@ export function CombatAttackReviewCard({
 
     const roll = parseD20Roll(value);
     const roll2 = target.attackRoll2 ?? null;
+    const rollMode = getTargetAttackRollMode(target);
     if (roll != null && target.ac != null) {
       const hitResult = computeHitFromRoll(roll, attackBonus, target.ac, {
         attackRoll2: roll2,
-        disadvantage: target.attackDisadvantage,
+        rollMode,
       });
       updateTarget(tokenId, {
         attackRoll: roll,
@@ -159,10 +164,11 @@ export function CombatAttackReviewCard({
 
     const roll2 = parseD20Roll(value);
     const roll = target.attackRoll ?? null;
+    const rollMode = getTargetAttackRollMode(target);
     if (roll != null && roll2 != null && target.ac != null) {
       const hitResult = computeHitFromRoll(roll, attackBonus, target.ac, {
         attackRoll2: roll2,
-        disadvantage: true,
+        rollMode,
       });
       updateTarget(tokenId, {
         attackRoll2: roll2,
@@ -269,6 +275,9 @@ export function CombatAttackReviewCard({
             <strong>{target.label}</strong>
             <span className="retro-muted">
               AC {target.ac ?? "?"} · {formatHpLine(target)}
+              {target.attackAdvantage
+                ? ` · ${resolveAdvantageLabel?.(target.tokenId) ?? "Advantage on attack roll"}`
+                : ""}
               {target.attackDisadvantage
                 ? ` · ${resolveDisadvantageLabel?.(target.tokenId) ?? "Disadvantage on attack roll"}`
                 : ""}
@@ -277,8 +286,17 @@ export function CombatAttackReviewCard({
 
             {pending.rollType === "attack" && !isAwaitingSaves ? (
               <div className="combat-attack-review-fields">
-                {target.attackDisadvantage ? (
+                {getTargetAttackRollMode(target) === "disadvantage" ? (
                   <DisadvantageHitRollField
+                    roll1={target.attackRoll?.toString() ?? ""}
+                    roll2={target.attackRoll2?.toString() ?? ""}
+                    onRoll1Change={(value) => handleAttackRollChange(target.tokenId, value)}
+                    onRoll2Change={(value) => handleAttackRoll2Change(target.tokenId, value)}
+                    attackBonus={attackBonus}
+                    disabled={busy}
+                  />
+                ) : getTargetAttackRollMode(target) === "advantage" ? (
+                  <AdvantageHitRollField
                     roll1={target.attackRoll?.toString() ?? ""}
                     roll2={target.attackRoll2?.toString() ?? ""}
                     onRoll1Change={(value) => handleAttackRollChange(target.tokenId, value)}
