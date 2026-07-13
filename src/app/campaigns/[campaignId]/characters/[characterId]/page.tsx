@@ -66,6 +66,7 @@ export default async function CharacterDetailPage({
             ownedCharacterId={access.ownedCharacter?.id ?? null}
             initialPartyCharacters={initialPartyCharacters}
             hpPoolCombatPreferred={hpPoolCombatPreferred}
+            initialCombatState={combatState}
           />
         </section>
       </>

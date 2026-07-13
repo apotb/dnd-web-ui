@@ -2,6 +2,7 @@ import type { CharacterData } from "@/lib/schemas/character";
 import { clampInspiration } from "@/lib/dnd/calculations";
 import { syncAcFromEquipment } from "@/lib/character/ac-derivation";
 import { syncCombatDerivedStats } from "@/lib/character/combat-derivation";
+import { syncDeathSavesAfterDeadRemoved } from "@/lib/dnd/dying-state";
 import { sanitizeEquippedItems } from "@/lib/character/equip-rules";
 import { ensureUniqueInventoryIds } from "@/lib/character/inventory-stack";
 import { syncSavingThrowsFromClass, resolveCharacterClass } from "@/lib/character/class-derivation";
@@ -45,12 +46,17 @@ export function prepareCharacterDataForSave(
     : granted;
   const syncedAc = syncAcFromEquipment(withSpells, {}, classes);
   const synced = syncCombatDerivedStats(syncedAc, classes);
+  const combat =
+    options?.originalData != null
+      ? syncDeathSavesAfterDeadRemoved(options.originalData.combat, synced.combat)
+      : synced.combat;
   const inspirationSource = options?.isDm
     ? synced.inspiration ?? 0
     : options?.originalData?.inspiration ?? synced.inspiration ?? 0;
 
   return {
     ...synced,
+    combat,
     inspiration: clampInspiration(inspirationSource, synced),
   };
 }

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { requireCampaignAccess } from "@/lib/auth/campaign-access";
 import { parseCharacterRow } from "@/lib/character/utils";
 import { fetchCatalogClasses } from "@/lib/content/catalog";
+import { parseCombatState } from "@/lib/schemas/combat-state";
 import { parseWorldData } from "@/lib/schemas/world";
 import { createClient } from "@/lib/supabase/server";
 import { CharacterSheetsList } from "@/components/character/character-sheets-list";
@@ -22,6 +23,12 @@ export default async function CharactersPage({
     .eq("campaign_id", campaignId)
     .order("name");
 
+  const { data: campaign } = await supabase
+    .from("campaigns")
+    .select("combat_state")
+    .eq("id", campaignId)
+    .single();
+
   const characters = (rows ?? []).map((row) =>
     parseCharacterRow(row as Character, access.isDm)
   );
@@ -37,6 +44,7 @@ export default async function CharactersPage({
         userId={access.user?.id ?? null}
         initialWorldData={parseWorldData(access.campaign.world_data)}
         ownedCharacterId={access.ownedCharacter?.id ?? null}
+        initialCombatState={parseCombatState(campaign?.combat_state ?? {})}
       />
     </Suspense>
   );

@@ -11,9 +11,11 @@ import {
 import { CharacterImportButton } from "@/components/character/character-import-button";
 import { useShowDmUi } from "@/components/layout/dm-view-provider";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
+import { isCharacterDead } from "@/lib/dnd/dying-state";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { PhbClass } from "@/lib/dnd/phb/types";
 import type { WorldData } from "@/lib/schemas/world";
+import type { CombatState } from "@/lib/schemas/combat-state";
 
 interface CharacterSheetsListProps {
   campaignId: string;
@@ -24,6 +26,7 @@ interface CharacterSheetsListProps {
   initialWorldData: WorldData;
   ownedCharacterId?: string | null;
   hideTitle?: boolean;
+  initialCombatState?: CombatState;
 }
 
 function selectionStorageKey(campaignId: string) {
@@ -60,6 +63,7 @@ export function CharacterSheetsList({
   initialWorldData,
   ownedCharacterId = null,
   hideTitle = false,
+  initialCombatState,
 }: CharacterSheetsListProps) {
   const searchParams = useSearchParams();
   const showDmUi = useShowDmUi(isDm);
@@ -165,6 +169,7 @@ export function CharacterSheetsList({
             {sortedCharacters.map((character) => {
               const isUserCharacter =
                 !!userId && character.owner_user_id === userId;
+              const isDead = isCharacterDead(character.data.combat);
 
               return (
               <button
@@ -178,6 +183,11 @@ export function CharacterSheetsList({
                 {isUserCharacter ? (
                   <span className="character-owned-star" aria-hidden>
                     ★
+                  </span>
+                ) : null}
+                {isDead ? (
+                  <span className="character-dead-icon" aria-hidden>
+                    ☠
                   </span>
                 ) : null}
                 {character.name}
@@ -210,6 +220,7 @@ export function CharacterSheetsList({
                   initialWorldData={initialWorldData}
                   ownedCharacterId={ownedCharacterId}
                   partyCharacters={characters}
+                  initialCombatState={initialCombatState}
                 />
               </section>
             </>

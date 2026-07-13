@@ -21,13 +21,17 @@ import { HpPoolModal } from "@/components/character/hp-pool-modal";
 import { LevelUpModal } from "@/components/character/level-up-modal";
 import { AlertModal } from "@/components/ui/alert-modal";
 import { useShowDmUi } from "@/components/layout/dm-view-provider";
+import { persistCharacterDeath } from "@/lib/combat/character-death-actions";
 import { saveCharacterData } from "@/lib/character/save-character-data";
+import { hasDeadCondition, isCharacterDead } from "@/lib/dnd/dying-state";
 import { syncCharacterTopLevelFields } from "@/lib/character/utils";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import { useRealtimeWorldData } from "@/lib/hooks/use-realtime-world-data";
 import { useRealtimeCharacters } from "@/lib/hooks/use-realtime-characters";
+import { useRealtimeCombatState } from "@/lib/hooks/use-realtime-combat-state";
 import { getCampaignCalendarDate, type WorldData } from "@/lib/schemas/world";
 import type { CharacterData } from "@/lib/schemas/character";
+import { parseCombatState, type CombatState } from "@/lib/schemas/combat-state";
 import type { PhbBackground, PhbClass, PhbSpecies } from "@/lib/dnd/phb/types";
 import { canCharacterLevelUp } from "@/lib/dnd/xp";
 
@@ -54,6 +58,7 @@ interface CharacterSheetViewerProps {
   /** Live party list from a parent that already subscribes to character updates. */
   partyCharacters?: ParsedCharacter[];
   hpPoolCombatPreferred?: boolean;
+  initialCombatState?: CombatState;
 }
 
 export const CharacterSheetViewer = forwardRef<
@@ -72,11 +77,16 @@ export const CharacterSheetViewer = forwardRef<
     initialPartyCharacters = [],
     partyCharacters: partyCharactersFromParent,
     hpPoolCombatPreferred = false,
+    initialCombatState,
   },
   ref
 ) {
   const router = useRouter();
   const showDmUi = useShowDmUi(isDm);
+  const combatState = useRealtimeCombatState(
+    campaignId,
+    initialCombatState ?? parseCombatState({})
+  );
   const worldData = useRealtimeWorldData(campaignId, initialWorldData);
   const subscribedPartyCharacters = useRealtimeCharacters(
     campaignId,
@@ -95,6 +105,8 @@ export const CharacterSheetViewer = forwardRef<
   );
   const campaignDate = getCampaignCalendarDate(worldData);
   const [data, setData] = useState<CharacterData>(character.data);
+  const isDead = isCharacterDead(data.combat);
+  const effectiveCanEdit = canEdit && (!isDead || showDmUi);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -169,7 +181,7 @@ export const CharacterSheetViewer = forwardRef<
   }
 
   async function flushSave(): Promise<string | null> {
-    if (!canEdit || saveInFlightRef.current) return null;
+    if (!effectiveCanEdit || saveInFlightRef.current) return null;
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
@@ -200,7 +212,7 @@ export const CharacterSheetViewer = forwardRef<
   }
 
   async function persistNow(next: CharacterData) {
-    if (!canEdit) return;
+    if (!effectiveCanEdit) return;
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
@@ -229,7 +241,7 @@ export const CharacterSheetViewer = forwardRef<
   }
 
   function scheduleSave() {
-    if (!canEdit) return;
+    if (!effectiveCanEdit) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
     saveTimer.current = setTimeout(() => {
@@ -239,7 +251,7 @@ export const CharacterSheetViewer = forwardRef<
   }
 
   const flushSaveNow = useCallback(async () => {
-    if (!canEdit) return;
+    if (!effectiveCanEdit) return;
 
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
@@ -262,7 +274,7 @@ export const CharacterSheetViewer = forwardRef<
       const error = await flushSave();
       if (error) throw new Error(error);
     }
-  }, [canEdit, character.data, character.id, classes, isDm]);
+  }, [effectiveCanEdit, character.data, character.id, classes, isDm]);
 
   flushSaveNowRef.current = flushSaveNow;
 
@@ -321,7 +333,7 @@ export const CharacterSheetViewer = forwardRef<
   }, [navSaveComplete, navWaitError, router]);
 
   useEffect(() => {
-    if (!canEdit) return;
+    if (!effectiveCanEdit) return;
 
     function handleDocumentClick(event: MouseEvent) {
       if (!isPendingSaveNow()) return;
@@ -350,10 +362,10 @@ export const CharacterSheetViewer = forwardRef<
 
     document.addEventListener("click", handleDocumentClick, true);
     return () => document.removeEventListener("click", handleDocumentClick, true);
-  }, [canEdit, startNavWait]);
+  }, [effectiveCanEdit, startNavWait]);
 
   useEffect(() => {
-    if (!canEdit) return;
+    if (!effectiveCanEdit) return;
 
     function handleBeforeUnload(event: BeforeUnloadEvent) {
       if (!isPendingSaveNow()) return;
@@ -364,7 +376,32 @@ export const CharacterSheetViewer = forwardRef<
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [canEdit]);
+  }, [effectiveCanEdit]);
+
+  async function handleDeathSaveApply(nextCombat: CharacterData["combat"]) {
+    const nextData = { ...dataRef.current, combat: nextCombat };
+
+    if (hasDeadCondition(nextCombat)) {
+      const { error } = await persistCharacterDeath({
+        campaignId,
+        characterId: character.id,
+        nextData,
+        combatState,
+        classes,
+        isDm,
+        originalData: character.data,
+      });
+      if (error) {
+        setSaveError(error);
+        return;
+      }
+      markLocalEdit(nextData);
+      lastSyncedRevisionRef.current = localRevisionRef.current;
+      return;
+    }
+
+    await persistNow(nextData);
+  }
 
   function handleChange(next: CharacterData) {
     const pendingShortRestChanged =
@@ -444,37 +481,40 @@ export const CharacterSheetViewer = forwardRef<
     return { error: error ?? null };
   }
 
-  const headerActions = canEdit ? (
-    <>
-      <JsonImportExport
-        name={character.name}
-        playerName={character.player_name}
-        data={data}
-        onImport={handleImport}
-      />
-      {canDelete && showDmUi ? (
-        <CharacterDeleteButton
-          characterId={character.id}
-          campaignId={campaignId}
-          characterName={character.name}
-        />
-      ) : null}
-    </>
-  ) : undefined;
+  const headerActions =
+    effectiveCanEdit || (canDelete && showDmUi) ? (
+      <>
+        {effectiveCanEdit ? (
+          <JsonImportExport
+            name={character.name}
+            playerName={character.player_name}
+            data={data}
+            onImport={handleImport}
+          />
+        ) : null}
+        {canDelete && showDmUi ? (
+          <CharacterDeleteButton
+            characterId={character.id}
+            campaignId={campaignId}
+            characterName={character.name}
+          />
+        ) : null}
+      </>
+    ) : undefined;
 
   const showShortRestHealModal =
-    canEdit &&
+    effectiveCanEdit &&
     data.combat.pendingShortRest &&
     character.id !== ownedCharacterId;
 
   const levelUpAvailable = canCharacterLevelUp(data);
-  const canStartLevelUp = showDmUi && canEdit && levelUpAvailable;
+  const canStartLevelUp = showDmUi && effectiveCanEdit && levelUpAvailable;
 
   const navWaitMessage = navWaitError ?? NAV_WAIT_MESSAGE;
 
   return (
     <>
-      {mounted && canEdit && (saving || saveError)
+      {mounted && effectiveCanEdit && (saving || saveError)
         ? createPortal(
             <div
               className={`sheet-save-status${saveError ? " sheet-save-status--error" : ""}`}
@@ -486,7 +526,7 @@ export const CharacterSheetViewer = forwardRef<
             document.body
           )
         : null}
-      {mounted && canEdit ? (
+      {mounted && effectiveCanEdit ? (
         <AlertModal
           open={navWaitOpen}
           title="Saving changes"
@@ -496,23 +536,24 @@ export const CharacterSheetViewer = forwardRef<
         />
       ) : null}
       <CreationChoiceEditProvider>
-        {canEdit ? <CreationChoiceUnsavedGuard /> : null}
+        {effectiveCanEdit ? <CreationChoiceUnsavedGuard /> : null}
         <CharacterSheet
           data={data}
           isDm={isDm}
-          editable={canEdit}
-          canToggleEquipment={canEdit}
-          onChange={canEdit ? handleChange : undefined}
+          editable={effectiveCanEdit}
+          canToggleEquipment={effectiveCanEdit}
+          onChange={effectiveCanEdit ? handleChange : undefined}
+          onDeathSaveApply={effectiveCanEdit ? handleDeathSaveApply : undefined}
           headerActions={headerActions}
           classes={classes}
           campaignId={campaignId}
           characterId={character.id}
-          canEditPortrait={canEdit}
-          onPersistPortrait={canEdit ? persistPortrait : undefined}
+          canEditPortrait={effectiveCanEdit}
+          onPersistPortrait={effectiveCanEdit ? persistPortrait : undefined}
           campaignDate={campaignDate}
-          canRest={canEdit}
+          canRest={effectiveCanEdit}
           hpPoolCombatPreferred={hpPoolCombatPreferred}
-          onUseHpPool={canEdit ? (featureId) => setHpPoolFeatureId(featureId) : undefined}
+          onUseHpPool={effectiveCanEdit ? (featureId) => setHpPoolFeatureId(featureId) : undefined}
           onStartLevelUp={canStartLevelUp ? () => setLevelUpOpen(true) : undefined}
         />
       </CreationChoiceEditProvider>

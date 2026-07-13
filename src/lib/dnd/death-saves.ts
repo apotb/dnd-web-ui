@@ -1,4 +1,5 @@
 import {
+  applyDeathFromSavingThrows,
   applyStabilize,
   applyWakeFromZeroHp,
 } from "@/lib/dnd/dying-state";
@@ -101,10 +102,7 @@ export function applyDeathSaveRoll(
 
   if (failures >= 3) {
     becameDead = true;
-    nextCombat = {
-      ...nextCombat,
-      deathSaves: { successes: nextCombat.deathSaves.successes, failures: 3 },
-    };
+    nextCombat = applyDeathFromSavingThrows(nextCombat);
   }
 
   return {
@@ -115,4 +113,10 @@ export function applyDeathSaveRoll(
   };
 }
 
-export { hasDyingCondition, needsDeathSavingThrow } from "@/lib/dnd/dying-state";
+export {
+  getDeathSaveDeathMessage,
+  hasDeadCondition,
+  hasDyingCondition,
+  isCharacterDead,
+  needsDeathSavingThrow,
+} from "@/lib/dnd/dying-state";

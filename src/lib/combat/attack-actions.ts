@@ -17,6 +17,7 @@ import {
   removePendingAttack,
   updatePendingAttack,
 } from "@/lib/combat/pending-attacks";
+import { removeDeadCharacterTokensFromState } from "@/lib/combat/character-death-actions";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import type { ParsedCharacter } from "@/lib/character/utils";
 import type { DerivedAttack } from "@/lib/dnd/attacks";
@@ -124,13 +125,14 @@ async function finalizePendingAttack(
   const stateWithPending = getPendingAttackById(state, pending.id)
     ? state
     : addPendingAttack(state, pending);
-  const { next, characterUpdates } = applyResolvedAttack(
+  const { next: resolved, characterUpdates } = applyResolvedAttack(
     stateWithPending,
     pending,
     charactersById,
     enemiesBySlug,
     alliesById
   );
+  const next = removeDeadCharacterTokensFromState(resolved, characterUpdates);
   const error = await persistCombatState(campaignId, next);
   if (error) {
     return { next: state, characterUpdates: [], error };

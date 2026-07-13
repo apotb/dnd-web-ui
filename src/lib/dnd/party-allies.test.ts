@@ -249,7 +249,7 @@ describe("party-allies", () => {
 
     const synced = syncAllyCombatToPartyData(partyData, combatState);
     assert.equal(synced.allies[0]?.currentHp, 8);
-    assert.deepEqual(synced.allies[0]?.conditions, []);
+    assert.deepEqual(synced.allies[0]?.conditions, ["prone"]);
   });
 
   it("enforces downed conditions when ally already at 0 HP without conditions", () => {

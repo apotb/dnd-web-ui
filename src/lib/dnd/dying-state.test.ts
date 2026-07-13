@@ -2,16 +2,21 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyDamageAtZeroHp,
+  applyDeathFromSavingThrows,
   applyKnockToZeroHp,
   applyStabilize,
   applyWakeFromZeroHp,
+  DEAD_CONDITION_SLUG,
   DYING_CONDITION_SLUG,
   ensureZeroHpDownedConditions,
   hasDyingCondition,
+  isCharacterDead,
   needsDeathSavingThrow,
   syncCombatAfterHpChange,
+  syncDeathSavesAfterDeadRemoved,
   syncDownedConditionsAfterHpChange,
 } from "./dying-state.ts";
+import { syncCombatDerivedStats } from "@/lib/character/combat-derivation.ts";
 import type { CharacterData } from "@/lib/schemas/character";
 
 function baseCombat(
@@ -53,6 +58,45 @@ describe("dying-state", () => {
     assert.equal(needsDeathSavingThrow(baseCombat({ currentHp: 1, conditions: [DYING_CONDITION_SLUG] })), false);
   });
 
+  it("needsDeathSavingThrow is false when dead", () => {
+    assert.equal(
+      needsDeathSavingThrow(
+        baseCombat({
+          currentHp: 0,
+          conditions: [DEAD_CONDITION_SLUG, "unconscious"],
+          deathSaves: { successes: 0, failures: 3 },
+        })
+      ),
+      false
+    );
+  });
+
+  it("applyDeathFromSavingThrows removes dying and adds dead", () => {
+    const result = applyDeathFromSavingThrows(
+      baseCombat({
+        currentHp: 0,
+        conditions: [DYING_CONDITION_SLUG, "unconscious", "prone"],
+        deathSaves: { successes: 1, failures: 3 },
+      })
+    );
+    assert.equal(isCharacterDead(result), true);
+    assert.equal(hasDyingCondition(result), false);
+    assert.equal(result.deathSaves.failures, 3);
+  });
+
+  it("syncDeathSavesAfterDeadRemoved resets saves when dead is cleared", () => {
+    const previous = baseCombat({
+      currentHp: 0,
+      conditions: [DEAD_CONDITION_SLUG, "unconscious"],
+      deathSaves: { successes: 0, failures: 3 },
+    });
+    const next = syncDeathSavesAfterDeadRemoved(previous, {
+      ...previous,
+      conditions: ["unconscious"],
+    });
+    assert.deepEqual(next.deathSaves, { successes: 0, failures: 0 });
+  });
+
   it("applyStabilize removes dying and resets saves", () => {
     const result = applyStabilize(
       baseCombat({
@@ -80,14 +124,15 @@ describe("dying-state", () => {
     assert.deepEqual(result.deathSaves, { successes: 0, failures: 0 });
   });
 
-  it("applyDamageAtZeroHp adds failures and re-applies dying when stable", () => {
+  it("applyDamageAtZeroHp at 3 failures applies dead state", () => {
     const stable = baseCombat({
       currentHp: 0,
       conditions: ["unconscious", "prone"],
       deathSaves: { successes: 0, failures: 1 },
     });
     const result = applyDamageAtZeroHp(stable, { isCritical: true });
-    assert.ok(hasDyingCondition(result));
+    assert.equal(isCharacterDead(result), true);
+    assert.equal(hasDyingCondition(result), false);
     assert.equal(result.deathSaves.failures, 3);
   });
 
@@ -148,5 +193,74 @@ describe("dying-state", () => {
     assert.ok(result.conditions?.includes("unconscious"));
     assert.ok(result.conditions?.includes("incapacitated"));
     assert.ok(result.conditions?.includes("prone"));
+  });
+
+  it("syncCombatDerivedStats preserves dead condition at 0 HP", () => {
+    const data = {
+      basicInfo: {
+        name: "Test",
+        playerName: "",
+        level: 1,
+        xp: 0,
+        classes: ["fighter"],
+        subclass: "",
+        class: "Fighter",
+        species: "Human",
+        background: "",
+        alignment: "",
+        portrait: "",
+      },
+      abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+      savingThrows: {},
+      skills: {},
+      languages: [],
+      speciesLanguageChoices: [],
+      backgroundLanguageChoices: [],
+      toolProficiencies: [],
+      weaponProficiencies: [],
+      armorProficiencies: [],
+      combat: baseCombat({
+        currentHp: 0,
+        conditions: [DEAD_CONDITION_SLUG, "unconscious"],
+        deathSaves: { successes: 0, failures: 3 },
+      }),
+      attacks: [],
+      customActions: [],
+      spells: { known: [], prepared: [], slots: {}, grantUses: {} },
+      inventory: { items: [], currency: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 } },
+      supplies: {
+        daysWithoutFood: 0,
+        waterGallonsToday: 0,
+        lastFedDate: null,
+        lastWateredDate: null,
+      },
+      exhaustionLevels: [],
+      featureChoices: {
+        fightingStyle: "",
+        favoredEnemy: "",
+        favoredHumanoidSpecies: [],
+        favoredTerrain: "",
+        variantHumanFeat: "",
+        magicInitiateClass: "",
+        magicInitiateCantripIds: [],
+        magicInitiateSpellId: "",
+        bonusDruidCantripId: "",
+        acolyteOfNatureSkill: "",
+        knowledgeDomainLanguages: [],
+        knowledgeDomainSkills: [],
+      },
+      speciesChoices: {
+        halfElfAbilityBonuses: [],
+        speciesSkillChoices: [],
+        speciesWeaponChoices: [],
+        speciesToolChoice: "",
+        speciesSkillOrTool: "",
+      },
+      inspiration: 0,
+    } as CharacterData;
+
+    const synced = syncCombatDerivedStats(data);
+    assert.ok(synced.combat.conditions?.includes(DEAD_CONDITION_SLUG));
+    assert.equal(hasDyingCondition(synced.combat), false);
   });
 });

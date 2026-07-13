@@ -7,7 +7,13 @@ import {
   getInventoryWeightLb,
   type EncumbranceInfo,
 } from "@/lib/character/encumbrance";
-import { syncCombatAfterHpChange, ensureZeroHpDownedConditions } from "@/lib/dnd/dying-state";
+import {
+  syncCombatAfterHpChange,
+  ensureZeroHpDownedConditions,
+  hasDeadCondition,
+  DEAD_CONDITION_SLUG,
+} from "@/lib/dnd/dying-state";
+import { applyConditionSlugs } from "@/lib/dnd/conditions";
 import { syncExhaustionCondition } from "@/lib/combat/combat-conditions";
 import type { CharacterData } from "@/lib/schemas/character";
 import type { Item } from "@/lib/schemas/item";
@@ -391,7 +397,10 @@ export function syncCombatDerivedStats(
   const currentHp = Math.min(data.combat.currentHp, maxHp);
   const exhaustion = data.exhaustionLevels.length;
   let conditions = data.combat.conditions ?? [];
-  if (currentHp === 0) {
+  if (hasDeadCondition(data.combat)) {
+    conditions = ensureZeroHpDownedConditions(conditions);
+    conditions = applyConditionSlugs(conditions, [DEAD_CONDITION_SLUG]);
+  } else if (currentHp === 0) {
     conditions = ensureZeroHpDownedConditions(conditions);
   }
   conditions = syncExhaustionCondition(conditions, exhaustion);

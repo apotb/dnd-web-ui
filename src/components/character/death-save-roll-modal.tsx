@@ -147,7 +147,7 @@ export function DeathSaveRollModal({
               ) : null}
               {appliedResult.becameDead ? (
                 <p className="death-save-roll-outcome death-save-roll-outcome--dead">
-                  Three failures — your character dies.
+                  You have died.
                 </p>
               ) : null}
             </div>

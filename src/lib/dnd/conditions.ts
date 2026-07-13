@@ -180,6 +180,16 @@ export const PHB_CONDITIONS: PhbCondition[] = [
       "• Taking damage while at 0 HP: 1 automatic failure (2 on a critical hit).",
   },
   {
+    slug: "dead",
+    name: "Dead",
+    isStandard: false,
+    source: "Homebrew",
+    description:
+      "The creature has died after three death saving throw failures.\n" +
+      "• Removed from active combat.\n" +
+      "• Character sheet is read-only until the DM restores the character or removes them from the campaign.",
+  },
+  {
     slug: "in-shell",
     name: "In Shell",
     isStandard: false,

@@ -232,7 +232,8 @@ import {
   isTokenProne,
   removeProneFromCharacterData,
 } from "@/lib/combat/prone-actions";
-import { applyStabilize } from "@/lib/dnd/dying-state";
+import { persistCharacterDeath } from "@/lib/combat/character-death-actions";
+import { applyStabilize, hasDeadCondition, syncDeathSavesAfterDeadRemoved } from "@/lib/dnd/dying-state";
 import { getTokenAc, getTokenSaveModifier } from "@/lib/combat/attack-resolution";
 import {
   buildTargetList,
@@ -714,7 +715,14 @@ export function CombatBoard({
   const [helpTargetPickerAllies, setHelpTargetPickerAllies] = useState<
     CombatToken[] | null
   >(null);
-  const [deathSaveRollOpen, setDeathSaveRollOpen] = useState(false);
+  const [deathSaveModal, setDeathSaveModal] = useState<{
+    characterId: string;
+    tokenId: string;
+  } | null>(null);
+  const pendingCombatDeathRef = useRef<{
+    characterId: string;
+    nextData: import("@/lib/schemas/character").CharacterData;
+  } | null>(null);
   const [stabilizeTargetPicker, setStabilizeTargetPicker] = useState<{
     allies: CombatToken[];
     viaSpell: boolean;
@@ -1791,13 +1799,22 @@ export function CombatBoard({
   async function handleApplyDeathSave(
     nextCombat: import("@/lib/schemas/character").CharacterData["combat"]
   ): Promise<boolean> {
-    if (!actingToken || !actingTokenCharacter) return false;
+    const modal = deathSaveModal;
+    const tokenId = modal?.tokenId ?? actingToken?.id;
+    const characterId = modal?.characterId ?? actingTokenCharacter?.id;
+    const character = characterId
+      ? localCharacters.find((entry) => entry.id === characterId) ??
+        (actingTokenCharacter?.id === characterId ? actingTokenCharacter : null)
+      : actingTokenCharacter;
+    if (!tokenId || !character) return false;
+
+    const nextData = { ...character.data, combat: nextCombat };
 
     const saveResult = await saveCharacterData(
-      actingTokenCharacter.id,
-      { ...actingTokenCharacter.data, combat: nextCombat },
+      character.id,
+      nextData,
       undefined,
-      { isDm, originalData: actingTokenCharacter.data }
+      { isDm, originalData: character.data }
     );
     if (saveResult.error) {
       showAlert(saveResult.error);
@@ -1806,13 +1823,15 @@ export function CombatBoard({
 
     setLocalCharacters((current) =>
       current.map((entry) =>
-        entry.id === actingTokenCharacter.id
-          ? { ...entry, data: { ...entry.data, combat: nextCombat } }
-          : entry
+        entry.id === character.id ? { ...entry, data: nextData } : entry
       )
     );
 
-    let nextState = updateTokenInState(combatState, actingToken.id, {
+    if (hasDeadCondition(nextCombat)) {
+      pendingCombatDeathRef.current = { characterId: character.id, nextData };
+    }
+
+    let nextState = updateTokenInState(combatStateRef.current, tokenId, {
       currentHp: nextCombat.currentHp,
     });
     nextState = applyDeathSaveRolled(nextState);
@@ -1823,6 +1842,37 @@ export function CombatBoard({
     }
 
     return true;
+  }
+
+  async function handleDeathSaveModalClose() {
+    const modal = deathSaveModal;
+    const pendingDeath = pendingCombatDeathRef.current;
+    pendingCombatDeathRef.current = null;
+    setDeathSaveModal(null);
+
+    if (!modal || !pendingDeath || pendingDeath.characterId !== modal.characterId) return;
+
+    const { nextCombatState, error } = await persistCharacterDeath({
+      campaignId,
+      characterId: modal.characterId,
+      nextData: pendingDeath.nextData,
+      combatState: combatStateRef.current,
+      isDm,
+      originalData: pendingDeath.nextData,
+      persistCombat: isDm ? persist : undefined,
+    });
+    if (error) {
+      showAlert(error);
+      return;
+    }
+    if (isDm) {
+      setDraft(nextCombatState);
+    }
+  }
+
+  function handleDeathSaveModalCancel() {
+    pendingCombatDeathRef.current = null;
+    setDeathSaveModal(null);
   }
 
   async function handleConfirmStabilize(targetToken: CombatToken, viaSpell: boolean) {
@@ -1968,8 +2018,11 @@ export function CombatBoard({
     }
 
     if (isSavingThrowsOption(option)) {
-      if (!userControlsCombat || !actingTokenCharacter || battleOver) return;
-      setDeathSaveRollOpen(true);
+      if (!userControlsCombat || !actingTokenCharacter || !actingToken || battleOver) return;
+      setDeathSaveModal({
+        characterId: actingTokenCharacter.id,
+        tokenId: actingToken.id,
+      });
       return;
     }
 
@@ -3050,7 +3103,7 @@ export function CombatBoard({
 
   async function handleSelectMultiattackBranch(branchIndex: number) {
     const branches = currentTurnOptionGroups.multiattackBranches;
-    if (!branches || !actingTokenEnemyData) return;
+    if (!branches || !actingTokenEnemyData || !actingToken) return;
     const parsedActions = parseEnemyActions(actingTokenEnemyData.actions);
     const initialRemaining = buildInitialMultiattackRemaining(
       branches[branchIndex],
@@ -3372,7 +3425,10 @@ export function CombatBoard({
     setSavingStates(true);
 
     if (token.kind === "party" && character) {
-      const nextCombat = { ...character.data.combat, conditions: nextConditions };
+      const nextCombat = syncDeathSavesAfterDeadRemoved(character.data.combat, {
+        ...character.data.combat,
+        conditions: nextConditions,
+      });
       const saveResult = await saveCharacterData(
         character.id,
         { ...character.data, combat: nextCombat },
@@ -4826,6 +4882,10 @@ export function CombatBoard({
     );
   }
 
+  const deathSaveModalCharacter = deathSaveModal
+    ? localCharacters.find((entry) => entry.id === deathSaveModal.characterId) ?? null
+    : null;
+
   return (
     <div className="combat-stage">
       <div className="combat-layout">
@@ -5615,12 +5675,12 @@ export function CombatBoard({
           }
         />
       ) : null}
-      {deathSaveRollOpen && actingTokenCharacter
+      {deathSaveModal && deathSaveModalCharacter
         ? createPortal(
             <DeathSaveRollModal
-              data={actingTokenCharacter.data}
-              onCancel={() => setDeathSaveRollOpen(false)}
-              onClose={() => setDeathSaveRollOpen(false)}
+              data={deathSaveModalCharacter.data}
+              onCancel={handleDeathSaveModalCancel}
+              onClose={() => void handleDeathSaveModalClose()}
               onApply={(combat) => handleApplyDeathSave(combat)}
             />,
             document.body

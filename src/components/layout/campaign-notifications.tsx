@@ -45,6 +45,7 @@ import {
   getExhaustionDeathMessage,
   getExhaustionModifiers,
 } from "@/lib/dnd/exhaustion";
+import { getDeathSaveDeathMessage, isCharacterDead } from "@/lib/dnd/dying-state";
 import { canCharacterLevelUp, getCharacterNextLevelUpTarget } from "@/lib/dnd/xp";
 
 type SupplyKind = "food" | "water";
@@ -275,11 +276,17 @@ export function CampaignNotifications({
     !!character?.data.supplies.pendingDehydrationSave;
   const hasPendingInitiativeRoll = !!character?.data.combat.pendingInitiativeRoll;
   const hasPendingShortRest = !!character?.data.combat.pendingShortRest;
-  const isDead = character
+  const isDeadFromExhaustion = character
     ? getExhaustionModifiers(character.data).isDead
     : false;
+  const isDeadFromDeathSaves = character
+    ? isCharacterDead(character.data.combat)
+    : false;
+  const isDead = isDeadFromExhaustion || isDeadFromDeathSaves;
   const deathMessage = character
-    ? getExhaustionDeathMessage(character.data)
+    ? isDeadFromDeathSaves
+      ? getDeathSaveDeathMessage()
+      : getExhaustionDeathMessage(character.data)
     : null;
 
   useEffect(() => {

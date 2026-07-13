@@ -16,6 +16,7 @@ interface CharacterPortraitProps {
   campaignId: string;
   characterId: string;
   canEdit: boolean;
+  isDead?: boolean;
   onPortraitChange: (path: string) => void;
   onPersist: (path: string) => Promise<{ error: string | null }>;
 }
@@ -26,6 +27,7 @@ export function CharacterPortrait({
   campaignId,
   characterId,
   canEdit,
+  isDead = false,
   onPortraitChange,
   onPersist,
 }: CharacterPortraitProps) {
@@ -103,7 +105,7 @@ export function CharacterPortrait({
   return (
     <div className="character-portrait">
       <div
-        className="character-portrait-frame"
+        className={`character-portrait-frame${isDead ? " character-portrait-frame--dead" : ""}`}
         aria-label={
           imageUrl
             ? `Portrait of ${characterName}`

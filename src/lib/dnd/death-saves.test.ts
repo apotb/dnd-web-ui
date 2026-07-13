@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { applyDeathSaveRoll } from "./death-saves.ts";
-import { DYING_CONDITION_SLUG, hasDyingCondition } from "./dying-state.ts";
+import { DYING_CONDITION_SLUG, DEAD_CONDITION_SLUG, hasDyingCondition, isCharacterDead, needsDeathSavingThrow } from "./dying-state.ts";
 import type { CharacterData } from "@/lib/schemas/character";
 
 function dyingCombat(): CharacterData["combat"] {
@@ -29,7 +29,7 @@ describe("death-saves", () => {
     assert.equal(result.combat.currentHp, 1);
     assert.equal(result.regainedConsciousness, true);
     assert.equal(hasDyingCondition(result.combat), false);
-    assert.deepEqual(result.combat.conditions, []);
+    assert.deepEqual(result.combat.conditions, ["prone"]);
   });
 
   it("3 successes stabilizes and removes dying", () => {
@@ -44,7 +44,7 @@ describe("death-saves", () => {
     assert.ok(result.combat.conditions?.includes("unconscious"));
   });
 
-  it("3 failures marks dead without removing dying", () => {
+  it("3 failures marks dead and removes dying", () => {
     const combat = {
       ...dyingCombat(),
       deathSaves: { successes: 0, failures: 2 },
@@ -52,5 +52,9 @@ describe("death-saves", () => {
     const result = applyDeathSaveRoll(combat, 5);
     assert.equal(result.becameDead, true);
     assert.equal(result.combat.deathSaves.failures, 3);
+    assert.ok(result.combat.conditions?.includes(DEAD_CONDITION_SLUG));
+    assert.equal(hasDyingCondition(result.combat), false);
+    assert.equal(needsDeathSavingThrow(result.combat), false);
+    assert.equal(isCharacterDead(result.combat), true);
   });
 });

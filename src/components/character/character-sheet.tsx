@@ -66,6 +66,7 @@ import {
   getSpellAttackBonus,
   getSpellSaveDc,
 } from "@/lib/dnd/calculations";
+import { isCharacterDead, syncDeathSavesAfterDeadRemoved } from "@/lib/dnd/dying-state";
 import { applyCurrencyDelta as applyWalletCurrencyDelta } from "@/lib/dnd/currency";
 import { getCharacterLevel, xpProgressForLevel, canCharacterLevelUp } from "@/lib/dnd/xp";
 import {
@@ -279,6 +280,8 @@ interface CharacterSheetProps {
   onUseHpPool?: (featureId: string) => void;
   /** DM View: open level-up modal when XP threshold is met. */
   onStartLevelUp?: () => void;
+  /** When set, death save rolls use this instead of a local combat patch (e.g. combat removal on death). */
+  onDeathSaveApply?: (combat: CharacterData["combat"]) => void | Promise<void>;
 }
 
 function GrantedFeatureRow({
@@ -752,10 +755,12 @@ export function CharacterSheet({
   hpPoolCombatPreferred = false,
   onUseHpPool,
   onStartLevelUp,
+  onDeathSaveApply,
 }: CharacterSheetProps) {
   const showDmUi = useShowDmUi(isDm);
   const canMutate = editable || canToggleEquipment;
   const canEditAbilities = editable && showDmUi;
+  const isDead = isCharacterDead(data.combat);
 
   const update = (patch: Partial<CharacterData>) => {
     if (!canMutate || !onChange) return;
@@ -1531,6 +1536,11 @@ export function CharacterSheet({
             <h1 className="text-2xl font-bold">
               {data.basicInfo.name || "Unnamed Character"}
             </h1>
+            {isDead ? (
+              <Badge variant="destructive" className="text-xs uppercase tracking-wide">
+                Dead
+              </Badge>
+            ) : null}
             {headerActions ? (
               <div className="flex items-baseline gap-3 flex-wrap">
                 {headerActions}
@@ -1677,6 +1687,7 @@ export function CharacterSheet({
                   characterName={data.basicInfo.name || "Unnamed Character"}
                   campaignId={campaignId}
                   characterId={characterId}
+                  isDead={isDead}
                   canEdit={canEditPortrait && !!onPersistPortrait}
                   onPortraitChange={(path) => {
                     if (!onChange) return;
@@ -2176,9 +2187,11 @@ export function CharacterSheet({
                     </Label>
                     <Tooltip
                       content={
-                        data.combat.currentHp !== 0
-                          ? "Death saves apply at 0 hit points"
-                          : null
+                        isDead
+                          ? "Character is dead"
+                          : data.combat.currentHp !== 0
+                            ? "Death saves apply at 0 hit points"
+                            : null
                       }
                     >
                       <span className="inline-flex w-full">
@@ -2187,7 +2200,7 @@ export function CharacterSheet({
                           variant="secondary"
                           size="sm"
                           className="w-full"
-                          disabled={data.combat.currentHp !== 0}
+                          disabled={isDead || data.combat.currentHp !== 0}
                           onClick={() => setDeathSaveRollOpen(true)}
                         >
                           Roll
@@ -2204,6 +2217,7 @@ export function CharacterSheet({
                       variant="outline"
                       size="sm"
                       className="w-full"
+                      disabled={isDead}
                       onClick={() =>
                         updateCombat({
                           deathSaves: { successes: 0, failures: 0 },
@@ -2228,16 +2242,20 @@ export function CharacterSheet({
                 catalog={conditionCatalog}
                 editable={editable}
                 protectedSlugs={protectedConditionSlugs}
-                onChange={(conditions) =>
-                  updateCombat({
-                    conditions: finalizeDmConditionEdit(
-                      conditions,
-                      data.combat.currentHp,
-                      managedCombatConditions,
-                      data.exhaustionLevels.length
-                    ),
-                  })
-                }
+                onChange={(conditions) => {
+                  const nextConditions = finalizeDmConditionEdit(
+                    conditions,
+                    data.combat.currentHp,
+                    managedCombatConditions,
+                    data.exhaustionLevels.length
+                  );
+                  update({
+                    combat: syncDeathSavesAfterDeadRemoved(data.combat, {
+                      ...data.combat,
+                      conditions: nextConditions,
+                    }),
+                  });
+                }}
               />
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -3819,8 +3837,13 @@ export function CharacterSheet({
             data={data}
             onCancel={() => setDeathSaveRollOpen(false)}
             onClose={() => setDeathSaveRollOpen(false)}
-            onApply={(combat) => {
-              updateCombat(combat);
+            onApply={async (combat) => {
+              if (onDeathSaveApply) {
+                await onDeathSaveApply(combat);
+              } else {
+                updateCombat(combat);
+              }
+              setDeathSaveRollOpen(false);
             }}
           />,
           document.body
