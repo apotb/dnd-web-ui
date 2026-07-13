@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CharacterClaimBanner } from "@/components/character/character-claim-banner";
 import {
@@ -65,6 +65,8 @@ export function CharacterSheetsList({
   hideTitle = false,
   initialCombatState,
 }: CharacterSheetsListProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const showDmUi = useShowDmUi(isDm);
   const createCharacterHref = `/campaigns/${campaignId}/create-character`;
@@ -93,7 +95,9 @@ export function CharacterSheetsList({
     if (!fromQuery || !sortedCharacters.some((c) => c.id === fromQuery)) return;
     setSelectedId(fromQuery);
     localStorage.setItem(selectionStorageKey(campaignId), fromQuery);
-  }, [campaignId, searchParams, sortedCharacters]);
+    // Only react to URL changes — not realtime character list updates (e.g. autosave).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sortedCharacters read when searchParams changes
+  }, [campaignId, searchParams]);
 
   useEffect(() => {
     if (sortedCharacters.length === 0) {
@@ -104,11 +108,18 @@ export function CharacterSheetsList({
 
     if (!restored) {
       const fromQuery = searchParams.get("character");
-      if (!fromQuery) {
-        const stored = localStorage.getItem(selectionStorageKey(campaignId));
-        if (stored && sortedCharacters.some((c) => c.id === stored)) {
-          setSelectedId(stored);
+      if (fromQuery) {
+        if (sortedCharacters.some((c) => c.id === fromQuery)) {
+          setSelectedId(fromQuery);
+          localStorage.setItem(selectionStorageKey(campaignId), fromQuery);
+          setRestored(true);
         }
+        return;
+      }
+
+      const stored = localStorage.getItem(selectionStorageKey(campaignId));
+      if (stored && sortedCharacters.some((c) => c.id === stored)) {
+        setSelectedId(stored);
       }
       setRestored(true);
       return;
@@ -119,6 +130,17 @@ export function CharacterSheetsList({
       localStorage.removeItem(selectionStorageKey(campaignId));
     }
   }, [campaignId, sortedCharacters, selectedId, restored, searchParams]);
+
+  function syncSelectionUrl(id: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (id) {
+      params.set("character", id);
+    } else {
+      params.delete("character");
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
 
   const userOwnedCharacter = useMemo(
     () => (userId ? sortedCharacters.find((c) => c.owner_user_id === userId) : null) ?? null,
@@ -147,6 +169,7 @@ export function CharacterSheetsList({
       } else {
         localStorage.removeItem(key);
       }
+      syncSelectionUrl(id);
     };
 
     if (selectedCanEdit && viewerRef.current) {
