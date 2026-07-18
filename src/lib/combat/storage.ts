@@ -39,29 +39,6 @@ export function validateCombatImageFile(file: File): string | null {
   return null;
 }
 
-export function validateSquareCombatImageFile(file: File): Promise<string | null> {
-  const basic = validateCombatImageFile(file);
-  if (basic) return Promise.resolve(basic);
-
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      if (image.naturalWidth !== image.naturalHeight) {
-        resolve("Background must be a square image (equal width and height).");
-        return;
-      }
-      resolve(null);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve("Could not read the selected image.");
-    };
-    image.src = url;
-  });
-}
-
 export async function uploadEnemyPortrait(
   supabase: SupabaseClient,
   enemySlug: string,
@@ -118,7 +95,7 @@ export async function uploadCombatBackground(
   campaignId: string,
   file: File
 ): Promise<{ path: string | null; error: string | null }> {
-  const validationError = await validateSquareCombatImageFile(file);
+  const validationError = validateCombatImageFile(file);
   if (validationError) {
     return { path: null, error: validationError };
   }

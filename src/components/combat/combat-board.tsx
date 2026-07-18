@@ -1743,7 +1743,9 @@ export function CombatBoard({
     (currentTurnToken.kind === "enemy" || currentTurnToken.kind === "ally");
 
   const provokingMovePending =
-    !battleOver && pendingOpportunityAttacks?.provokingTokenId === currentTurnToken?.id;
+    !battleOver &&
+    pendingOpportunityAttacks != null &&
+    pendingOpportunityAttacks.provokingTokenId === currentTurnToken?.id;
 
   async function handleEndTurn() {
     if (!userCanEndTurn || endingTurn) return;
