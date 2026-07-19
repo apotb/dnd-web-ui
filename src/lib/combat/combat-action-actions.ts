@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { saveCharacterData } from "@/lib/character/save-character-data";
 import { applyObjectPickup } from "@/lib/combat/object-pickup";
+import { updateTokenInState } from "@/lib/combat/state-utils";
 import { applyAmmoRefill } from "@/lib/combat/ammo-refill";
 import { applyEquipmentChange } from "@/lib/combat/object-equipment-change";
 import {
@@ -15,6 +16,7 @@ import {
   applyActionUsed,
   applyBonusActionUsed,
   applyDashActionUsed,
+  applyDeathSaveRolled,
   applyDisengageUsed,
   applyMainHandAttackUsed,
 } from "@/lib/combat/turn";
@@ -187,6 +189,29 @@ export async function recordCombatGetUp(
   }
 
   return { next, partyData: nextPartyData };
+}
+
+export async function recordCombatDeathSave(
+  campaignId: string,
+  state: CombatState,
+  options: { isDm: boolean; tokenId: string; currentHp: number }
+): Promise<{ next: CombatState; error?: string }> {
+  let next = updateTokenInState(state, options.tokenId, {
+    currentHp: options.currentHp,
+  });
+  next = applyDeathSaveRolled(next);
+
+  if (options.isDm) {
+    const error = await persistCombatState(campaignId, next);
+    return { next, error: error ?? undefined };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.rpc("record_combat_death_save", {
+    p_campaign_id: campaignId,
+  });
+
+  return { next, error: error?.message };
 }
 
 export async function recordCombatActionUsed(

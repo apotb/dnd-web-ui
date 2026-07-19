@@ -186,6 +186,7 @@ import {
   recordCombatActionUsed,
   recordCombatBonusActionUsed,
   recordCombatDash,
+  recordCombatDeathSave,
   recordCombatDisengage,
   recordCombatGetUp,
   recordCombatEquipmentChange,
@@ -296,7 +297,6 @@ import { getHelpAttackAdvantage, getHelpAttackAdvantageLabel } from "@/lib/comba
 import { endCombatTurn } from "@/lib/combat/turn-actions";
 import {
   applyActionGranted,
-  applyDeathSaveRolled,
   canAdvanceTurnWithDeathSave,
   canUserActForToken,
   canUserControlTurn,
@@ -1837,14 +1837,21 @@ export function CombatBoard({
       pendingCombatDeathRef.current = { characterId: character.id, nextData };
     }
 
-    let nextState = updateTokenInState(combatStateRef.current, tokenId, {
-      currentHp: nextCombat.currentHp,
-    });
-    nextState = applyDeathSaveRolled(nextState);
-    const persistError = await persist(nextState);
-    if (persistError) {
-      showAlert(persistError);
+    const { next, error } = await recordCombatDeathSave(
+      campaignId,
+      combatStateRef.current,
+      {
+        isDm,
+        tokenId,
+        currentHp: nextCombat.currentHp,
+      }
+    );
+    if (error) {
+      showAlert(error);
       return false;
+    }
+    if (isDm) {
+      setDraft(next);
     }
 
     return true;
